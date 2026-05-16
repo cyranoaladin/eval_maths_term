@@ -13,8 +13,11 @@ import {
 import { eq } from "drizzle-orm";
 import { MAX_SCORE } from "@contracts/evaluation-data";
 import { signStudentToken, signResultsToken, verifyResultsToken } from "../anticheat/session-token";
+import { processHeartbeat } from "../anticheat/heartbeat";
+import { ingestEvents } from "../anticheat/event-aggregator";
 import { logger } from "../lib/logger";
 import { checkRateLimit, getClientIp, RateLimits } from "../lib/rate-limit";
+import { FingerprintComponentsSchema, computeFingerprintHash } from "../anticheat/fingerprint";
 
 function safeParseJson<T>(value: unknown): T | null {
   if (value == null) return null;
@@ -77,6 +80,7 @@ export const sessionRouter = createRouter({
         evaluationId: z.number(),
         studentName: z.string().min(1).max(255),
         studentEmail: z.string().email().optional(),
+        fingerprintComponents: z.record(z.string(), z.unknown()).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -110,6 +114,14 @@ export const sessionRouter = createRouter({
       const expiresAt = new Date(now + evaluation.duration * 60 * 1000 + 30 * 1000);
       const shuffleSeed = nanoid(16);
 
+      // Phase 3 : fingerprint + IP initiaux
+      const fpParsed = input.fingerprintComponents
+        ? FingerprintComponentsSchema.safeParse(input.fingerprintComponents)
+        : null;
+      const fingerprintHash = fpParsed?.success
+        ? computeFingerprintHash(fpParsed.data)
+        : null;
+
       const [row] = await db.insert(sessions).values({
         evaluationId: input.evaluationId,
         studentName: input.studentName,
@@ -118,6 +130,9 @@ export const sessionRouter = createRouter({
         tabSwitchCount: 0,
         expiresAt,
         shuffleSeed,
+        ipAddress: ip,
+        userAgent: ctx.req.headers.get("user-agent") ?? null,
+        fingerprintHash: fingerprintHash ?? null,
       });
 
       const sessionId = Number(row.insertId);
@@ -149,12 +164,20 @@ export const sessionRouter = createRouter({
     }),
 
   /**
-   * Heartbeat : le client envoie un ping toutes les 15s.
-   * Renvoie serverTime pour resynchroniser le timer client.
-   * III.4 : met à jour lastHeartbeatAt.
+   * Heartbeat Phase 3 : ping toutes les 15s.
+   * Ingère le fingerprint + IP, détecte les mismatches, met à jour lastHeartbeatAt.
+   * Déclenche l'idle-sweeper en parallèle (fire-and-forget).
    */
   heartbeat: studentQuery
-    .mutation(async ({ ctx }) => {
+    .input(
+      z.object({
+        clientTime: z.number(),
+        focused: z.boolean(),
+        currentQuestionIndex: z.number().int().nonnegative(),
+        fingerprintHash: z.string().max(64),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
       const { sessionId } = ctx.studentSession;
 
       // III.9 : rate limit heartbeat
@@ -165,22 +188,34 @@ export const sessionRouter = createRouter({
         });
       }
 
-      const session = await assertSessionActive(sessionId);
-      const db = getDb();
+      const ip = getClientIp(ctx.req);
+      const result = await processHeartbeat(
+        {
+          sessionToken: ctx.req.headers.get("x-session-token") ?? "",
+          ...input,
+        },
+        ip,
+      );
 
-      await db
-        .update(sessions)
-        .set({ lastHeartbeatAt: new Date() })
-        .where(eq(sessions.id, sessionId));
+      // Injecter les événements de mismatch si détectés
+      const mismatchEvents = [
+        ...(result.fingerprintMismatch ? [{ type: "fingerprint_mismatch" as const, timestamp: Date.now() }] : []),
+        ...(result.ipMismatch          ? [{ type: "multi_device" as const,         timestamp: Date.now() }] : []),
+      ];
+      if (mismatchEvents.length > 0) {
+        await ingestEvents(sessionId, mismatchEvents);
+      }
 
-      const remaining = session.expiresAt
-        ? Math.max(0, session.expiresAt.getTime() - Date.now())
-        : null;
+      // Fire-and-forget idle sweeper
+      import("../anticheat/idle-sweeper").then(({ runIdleSweep }) => runIdleSweep()).catch(() => {});
 
       return {
         serverTime: new Date().toISOString(),
-        remainingMs: remaining,
-        status: session.status,
+        remainingMs: result.remainingMs,
+        status: result.status,
+        fingerprintMismatch: result.fingerprintMismatch,
+        ipMismatch: result.ipMismatch,
+        expired: result.expired,
       };
     }),
 

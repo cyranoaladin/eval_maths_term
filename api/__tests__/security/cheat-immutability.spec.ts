@@ -99,8 +99,8 @@ describe("cheat-immutability : absence de routes de modification", () => {
     expect(keys).not.toContain("reset");
   });
 
-  it("cheat-router n'a que la route report", () => {
+  it("cheat-router n'a que les routes d'ingestion (report + reportBatch)", () => {
     const keys = Object.keys(cheatRouter._def.record);
-    expect(keys).toEqual(["report"]);
+    expect(keys).toEqual(["report", "reportBatch"]);
   });
 });

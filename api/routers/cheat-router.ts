@@ -6,6 +6,7 @@ import { cheatEvents, sessions } from "@db/schema";
 import { eq } from "drizzle-orm";
 import { checkRateLimit, RateLimits } from "../lib/rate-limit";
 import { logger } from "../lib/logger";
+import { ingestEvents } from "../anticheat/event-aggregator";
 
 const CHEAT_EVENT_TYPES = [
   "tab_switch",
@@ -19,6 +20,8 @@ const CHEAT_EVENT_TYPES = [
   "fingerprint_mismatch",
   "multi_device",
   "prolonged_blur",
+  "idle_disconnect",
+  "window_size_anomaly",
 ] as const;
 
 const cheatEventTypeSchema = z.enum(CHEAT_EVENT_TYPES);
@@ -97,5 +100,64 @@ export const cheatRouter = createRouter({
       });
 
       return { recorded: rows.length };
+    }),
+
+  /**
+   * Phase 3 — reportBatch : remplace report sur le client Phase 3.
+   * Utilise event-aggregator (déduplication fenêtre 500ms) côté serveur.
+   * Accepte count + timestamp epoch (ms) — plus léger que timestamp ISO.
+   */
+  reportBatch: studentQuery
+    .input(
+      z.object({
+        events: z
+          .array(
+            z.object({
+              type: cheatEventTypeSchema,
+              timestamp: z.number().int().positive(),
+              count: z.number().min(1).max(100).default(1),
+              metadata: z.record(z.string(), z.unknown()).optional(),
+            }),
+          )
+          .min(1)
+          .max(50),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { sessionId } = ctx.studentSession;
+
+      if (
+        !checkRateLimit(
+          `cheat-report:${sessionId}`,
+          RateLimits.cheatReport.max,
+          RateLimits.cheatReport.windowMs,
+        )
+      ) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: "Trop de signalements d'événements",
+        });
+      }
+
+      const db = getDb();
+      const [session] = await db
+        .select({ status: sessions.status })
+        .from(sessions)
+        .where(eq(sessions.id, sessionId))
+        .limit(1);
+
+      if (!session || session.status !== "in_progress") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Session non active" });
+      }
+
+      const result = await ingestEvents(sessionId, input.events);
+
+      logger.info("[cheat] reportBatch", {
+        sessionId,
+        accepted: result.accepted,
+        deduplicated: result.deduplicated,
+      });
+
+      return { accepted: result.accepted, deduplicated: result.deduplicated };
     }),
 });
