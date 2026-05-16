@@ -9,6 +9,7 @@ import {
   json,
   boolean,
   bigint,
+  index,
 } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
@@ -17,7 +18,7 @@ export const users = mysqlTable("users", {
   name: varchar("name", { length: 255 }),
   email: varchar("email", { length: 320 }),
   avatar: text("avatar"),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: mysqlEnum("role", ["student", "teacher", "admin"]).default("teacher").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt")
     .defaultNow()
@@ -67,13 +68,25 @@ export const sessions = mysqlTable("sessions", {
   studentEmail: varchar("studentEmail", { length: 320 }),
   startedAt: timestamp("startedAt").defaultNow().notNull(),
   endedAt: timestamp("endedAt"),
-  status: mysqlEnum("status", ["in_progress", "completed", "timed_out", "cheating_detected"]).default("in_progress").notNull(),
+  // Expiration calculée côté serveur (startedAt + durée + 30s de grâce)
+  expiresAt: timestamp("expiresAt"),
+  status: mysqlEnum("status", ["in_progress", "completed", "timed_out", "auto_submit", "cheating_detected"]).default("in_progress").notNull(),
+  // Note: tabSwitchCount est maintenant calculé depuis cheat_events — conservé pour compatibilité
   tabSwitchCount: int("tabSwitchCount").default(0).notNull(),
+  // Note: cheatEvents JSON est déprécié — utiliser la table cheat_events
   cheatEvents: json("cheatEvents").$type<Array<{type: string, timestamp: string}>>(),
   totalScore: int("totalScore"),
   maxScore: int("maxScore"),
+  normalizedScore: int("normalizedScore"), // note sur 20 (x100 pour éviter les décimales, /100 à l'affichage)
   timeSpent: int("timeSpent"), // en secondes
-});
+  shuffleSeed: varchar("shuffleSeed", { length: 64 }), // graine de mélange déterministe
+  resultsToken: text("resultsToken"), // token de résultats émis après soumission
+  lastHeartbeatAt: timestamp("lastHeartbeatAt"), // dernier heartbeat reçu
+}, (t) => [
+  index("idx_sessions_started").on(t.startedAt),
+  index("idx_sessions_status").on(t.status),
+  index("idx_sessions_eval").on(t.evaluationId),
+]);
 
 export type Session = typeof sessions.$inferSelect;
 export type InsertSession = typeof sessions.$inferInsert;
@@ -90,7 +103,38 @@ export const responses = mysqlTable("responses", {
   maxScore: int("maxScore"),
   llmFeedback: text("llmFeedback"), // feedback de la LLM
   gradedAt: timestamp("gradedAt"),
-});
+}, (t) => [
+  index("idx_responses_session").on(t.sessionId),
+]);
 
 export type Response = typeof responses.$inferSelect;
 export type InsertResponse = typeof responses.$inferInsert;
+
+/**
+ * Événements de triche — append-only, jamais modifiés par le client.
+ * Remplace la colonne JSON cheatEvents sur sessions (migrée progressivement).
+ */
+export const cheatEvents = mysqlTable("cheat_events", {
+  id: serial("id").primaryKey(),
+  sessionId: bigint("sessionId", { mode: "number", unsigned: true }).notNull(),
+  type: mysqlEnum("type", [
+    "tab_switch",
+    "blur",
+    "context_menu",
+    "copy",
+    "paste",
+    "fullscreen_exit",
+    "print",
+    "devtools_open",
+    "fingerprint_mismatch",
+    "multi_device",
+    "prolonged_blur",
+  ]).notNull(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  metadata: json("metadata"), // ex: { count: 30, fromTabIndex: 0 }
+}, (t) => [
+  index("idx_cheat_session").on(t.sessionId),
+]);
+
+export type CheatEvent = typeof cheatEvents.$inferSelect;
+export type InsertCheatEvent = typeof cheatEvents.$inferInsert;

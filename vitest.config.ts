@@ -10,10 +10,13 @@ export default defineConfig({
       "@": path.resolve(templateRoot, "src"),
       "@contracts": path.resolve(templateRoot, "contracts"),
       "@assets": path.resolve(templateRoot, "attached_assets"),
+      "@db": path.resolve(templateRoot, "db"),
+      "db": path.resolve(templateRoot, "db"),
     },
   },
   test: {
     environment: "node",
     include: ["api/**/*.test.ts", "api/**/*.spec.ts"],
+    setupFiles: ["api/__tests__/setup.ts"],
   },
 });

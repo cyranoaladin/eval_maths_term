@@ -30,7 +30,7 @@ dist-ssr
 *.db
 *.sqlite
 *.sqlite3
-db/migrations/*.sql
+# Note: db/migrations/*.sql est intentionnellement suivi par Git (migrations Drizzle)
 # TypeScript cache
 *.tsbuildinfo
 # Build outputs

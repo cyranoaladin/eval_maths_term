@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createRouter, publicQuery, authedQuery } from "./middleware";
+import { createRouter, publicQuery, teacherQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { evaluations, questions, sessions, responses } from "@db/schema";
 import { eq } from "drizzle-orm";
@@ -25,7 +25,7 @@ function safeParseJson<T>(value: unknown): T | null {
 
 export const evaluationRouter = createRouter({
   // Initialiser l'évaluation dans la DB (à appeler une fois au setup) — protégé par auth
-  init: authedQuery.mutation(async () => {
+  init: teacherQuery.mutation(async () => {
     const db = getDb();
 
     // Vérifier si l'évaluation existe déjà
@@ -307,13 +307,13 @@ export const evaluationRouter = createRouter({
     }),
 
   // Récupérer toutes les sessions (pour le dashboard prof) — protégé par auth
-  getAllSessions: authedQuery.query(async () => {
+  getAllSessions: teacherQuery.query(async () => {
     const db = getDb();
     return db.select().from(sessions).orderBy(sessions.startedAt);
   }),
 
   // Récupérer les détails complets d'une session avec questions — protégé par auth
-  getSessionDetails: authedQuery
+  getSessionDetails: teacherQuery
     .input(z.object({ sessionId: z.number() }))
     .query(async ({ input }) => {
       const db = getDb();
