@@ -31,6 +31,8 @@ export interface GradingResult {
   gradingMode: string;
   llmConfidence: number | null;
   partialCreditApplied: boolean;
+  /** Vrai si la question nécessite le LLM mais que skipLLM=true a été passé */
+  needsLLM?: boolean;
 }
 
 export interface GradeResponseArgs {
@@ -42,6 +44,12 @@ export interface GradeResponseArgs {
   maxPoints: number;
   /** Index soumis par l'élève pour un QCM (déjà résolu via resolveOriginalIndex) */
   resolvedQcmIndex?: number;
+  /**
+   * Si true, ne fait jamais appel au LLM.
+   * Pour les questions nécessitant le LLM, retourne score=0, needsLLM=true.
+   * Utilisé par auto-submit (latence inacceptable en synchrone).
+   */
+  skipLLM?: boolean;
 }
 
 export async function gradeResponse(args: GradeResponseArgs): Promise<GradingResult> {
@@ -147,6 +155,20 @@ async function gradeTrueFalse(args: GradeResponseArgs): Promise<GradingResult> {
     };
   }
 
+  // skipLLM : pas d'appel LLM en auto-submit
+  if (args.skipLLM) {
+    return {
+      score: answerPts,
+      maxPoints,
+      isCorrect: false,
+      feedback: "Réponse correcte. Justification à corriger manuellement par l'enseignant.",
+      gradingMode: "true_false+pending_llm",
+      llmConfidence: null,
+      partialCreditApplied: true,
+      needsLLM: true,
+    };
+  }
+
   // Correction LLM de la justification
   try {
     const llmArgs: GradingPromptArgs = {
@@ -230,8 +252,20 @@ async function gradeShortAnswer(args: GradeResponseArgs): Promise<GradingResult>
     }
   }
 
-  // 3. Fallback LLM
+  // 3. Fallback LLM (ignoré si skipLLM)
   if (rubric.llmReviewRequired) {
+    if (args.skipLLM) {
+      return {
+        score: 0,
+        maxPoints,
+        isCorrect: false,
+        feedback: "À corriger manuellement par l'enseignant.",
+        gradingMode: "pending_llm",
+        llmConfidence: null,
+        partialCreditApplied: false,
+        needsLLM: true,
+      };
+    }
     try {
       const llmArgs: GradingPromptArgs = {
         question: questionText,
