@@ -1,10 +1,12 @@
 import type { Context } from "hono";
-import { setCookie } from "hono/cookie";
+import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 import * as jose from "jose";
 import * as cookie from "cookie";
+import { nanoid } from "nanoid";
 import { env } from "../lib/env";
-import { getSessionCookieOptions } from "../lib/cookies";
-import { Session } from "@contracts/constants";
+import { getSessionCookieOptions, isLocalhost } from "../lib/cookies";
+import { logger } from "../lib/logger";
+import { Session, OAuthState, Paths } from "@contracts/constants";
 import { Errors } from "@contracts/errors";
 import { signSessionToken, verifySessionToken } from "./session";
 import { users as kimiUsers } from "./platform";
@@ -71,34 +73,77 @@ export async function authenticateRequest(headers: Headers) {
   return user;
 }
 
+/**
+ * Génère un state OAuth sécurisé (nanoid 32 chars) et le stocke
+ * en cookie HttpOnly SameSite=Lax pour vérification CSRF au callback.
+ * À appeler depuis le handler de démarrage OAuth côté client.
+ */
+export function createOAuthInitHandler() {
+  return async (c: Context) => {
+    const state = nanoid(32);
+    const localhost = isLocalhost(c.req.raw.headers);
+
+    setCookie(c, OAuthState.cookieName, state, {
+      httpOnly: true,
+      path: "/",
+      sameSite: "Lax",
+      secure: !localhost,
+      maxAge: OAuthState.maxAgeMs / 1000,
+    });
+
+    const redirectUri = `${c.req.url.split("/api")[0]}${Paths.oauthCallback}`;
+    const authUrl = new URL(`${env.kimiAuthUrl}/api/oauth/authorize`);
+    authUrl.searchParams.set("client_id", env.appId);
+    authUrl.searchParams.set("redirect_uri", redirectUri);
+    authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("state", state);
+
+    return c.redirect(authUrl.toString(), 302);
+  };
+}
+
 export function createOAuthCallbackHandler() {
   return async (c: Context) => {
     const code = c.req.query("code");
-    const state = c.req.query("state");
+    const stateFromQuery = c.req.query("state");
     const error = c.req.query("error");
     const errorDescription = c.req.query("error_description");
 
     if (error) {
       if (error === "access_denied") {
-        return c.redirect("/", 302);
+        return c.redirect(Paths.login, 302);
       }
-      return c.json(
-        { error, error_description: errorDescription },
-        400,
-      );
+      logger.warn("[OAuth] Erreur du provider OAuth", { error, errorDescription });
+      return c.json({ error, error_description: errorDescription }, 400);
     }
 
-    if (!code || !state) {
-      return c.json({ error: "code and state are required" }, 400);
+    if (!code || !stateFromQuery) {
+      return c.json({ error: "Les paramètres code et state sont requis" }, 400);
     }
+
+    // III.6 : Vérification CSRF du state OAuth
+    const storedState = getCookie(c, OAuthState.cookieName);
+    if (!storedState || storedState !== stateFromQuery) {
+      logger.warn("[OAuth] Échec CSRF : state OAuth invalide ou absent", {
+        hasStoredState: !!storedState,
+        statesMatch: storedState === stateFromQuery,
+      });
+      return c.json({ error: "Paramètre state invalide (protection CSRF)" }, 403);
+    }
+
+    // Suppression immédiate du cookie state après vérification
+    deleteCookie(c, OAuthState.cookieName, { path: "/" });
 
     try {
-      const redirectUri = atob(state);
+      const localhost = isLocalhost(c.req.raw.headers);
+      const redirectUri = `${localhost ? "http" : "https"}://${c.req.header("host")}${Paths.oauthCallback}`;
+
       const tokenResp = await exchangeAuthCode(code, redirectUri);
       const { userId } = await verifyAccessToken(tokenResp.access_token);
       const userProfile = await kimiUsers.getProfile(tokenResp.access_token);
+
       if (!userProfile) {
-        throw new Error("Failed to fetch user profile from Kimi Open");
+        throw new Error("Impossible de récupérer le profil utilisateur Kimi Open");
       }
 
       await upsertUser({
@@ -120,9 +165,9 @@ export function createOAuthCallbackHandler() {
       });
 
       return c.redirect("/", 302);
-    } catch (error) {
-      console.error("[OAuth] Callback failed", error);
-      return c.json({ error: "OAuth callback failed" }, 500);
+    } catch (err) {
+      logger.errorWithStack("[OAuth] Échec du callback", err);
+      return c.json({ error: "Échec de l'authentification OAuth" }, 500);
     }
   };
 }
