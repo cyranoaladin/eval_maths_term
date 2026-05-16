@@ -137,6 +137,7 @@ export default function Evaluation() {
 
   const { enterFullscreen } = useAntiCheat({
     enabled: isStarted && !isSubmitted,
+    sessionToken: "",
     onCheatDetected: handleCheatDetected,
     onFullscreenExit: () => {
       // Demander à l'utilisateur de revenir en plein écran

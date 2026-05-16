@@ -25,7 +25,11 @@ export interface StudentAnswer {
 }
 
 export interface CheatEvent {
-  type: "tab_switch" | "blur" | "context_menu" | "copy" | "paste" | "fullscreen_exit" | "print";
+  type:
+    | "tab_switch" | "blur" | "context_menu" | "copy" | "paste"
+    | "fullscreen_exit" | "print" | "devtools_open"
+    | "fingerprint_mismatch" | "multi_device" | "prolonged_blur"
+    | "idle_disconnect" | "window_size_anomaly";
   timestamp: string;
 }
 
