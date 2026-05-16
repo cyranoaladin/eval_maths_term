@@ -288,8 +288,8 @@ export const sessionRouter = createRouter({
             status: finalStatus,
             totalScore,
             maxScore: MAX_SCORE,
-            // III.5 : normalizedScore calculé serveur (stocké *100 pour éviter décimales en INT)
-            normalizedScore: Math.round(normalizedScore * 100),
+            // III.5 : normalizedScore calculé serveur — DECIMAL(5,2) attend une string en Drizzle
+            normalizedScore: (Math.round(normalizedScore * 4) / 4).toFixed(2),
             timeSpent: input.timeSpent ?? null,
             endedAt: new Date(),
             resultsToken,
@@ -363,7 +363,7 @@ export const sessionRouter = createRouter({
         status: session.status,
         totalScore: session.totalScore,
         maxScore: session.maxScore,
-        normalizedScore: session.normalizedScore !== null ? session.normalizedScore / 100 : null,
+        normalizedScore: session.normalizedScore !== null ? parseFloat(session.normalizedScore) : null,
         timeSpent: session.timeSpent,
         responses: resps,
       };
@@ -415,7 +415,7 @@ export const sessionRouter = createRouter({
       return {
         session: {
           ...session,
-          normalizedScore: session.normalizedScore !== null ? session.normalizedScore / 100 : null,
+          normalizedScore: session.normalizedScore !== null ? parseFloat(session.normalizedScore) : null,
         },
         responses: resps.map((r) => ({
           ...r,

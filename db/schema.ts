@@ -10,6 +10,8 @@ import {
   boolean,
   bigint,
   index,
+  decimal,
+  tinyint,
 } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
@@ -53,8 +55,12 @@ export const questions = mysqlTable("questions", {
   correctAnswer: text("correctAnswer").notNull(), // réponse correcte
   justificationRequired: boolean("justificationRequired").default(false), // pour Vrai/Faux
   points: int("points").notNull().default(1),
+  // Phase 2 : rubric pédagogique — JAMAIS exposée au client
+  gradingRubric: json("gradingRubric"),
   order: int("order").notNull().default(0),
   imageUrl: text("imageUrl"), // optionnel
+  tags: json("tags").$type<string[]>(),
+  difficulty: tinyint("difficulty", { unsigned: true }),
 });
 
 export type Question = typeof questions.$inferSelect;
@@ -77,7 +83,7 @@ export const sessions = mysqlTable("sessions", {
   cheatEvents: json("cheatEvents").$type<Array<{type: string, timestamp: string}>>(),
   totalScore: int("totalScore"),
   maxScore: int("maxScore"),
-  normalizedScore: int("normalizedScore"), // note sur 20 (x100 pour éviter les décimales, /100 à l'affichage)
+  normalizedScore: decimal("normalizedScore", { precision: 5, scale: 2 }), // note sur 20 (ex: 19.75)
   timeSpent: int("timeSpent"), // en secondes
   shuffleSeed: varchar("shuffleSeed", { length: 64 }), // graine de mélange déterministe
   resultsToken: text("resultsToken"), // token de résultats émis après soumission
@@ -102,6 +108,11 @@ export const responses = mysqlTable("responses", {
   score: int("score"),
   maxScore: int("maxScore"),
   llmFeedback: text("llmFeedback"), // feedback de la LLM
+  // Phase 2 : métadonnées de correction
+  gradingMode: varchar("gradingMode", { length: 20 }), // ex: "exact", "symbolic", "numeric", "llm"
+  llmConfidence: decimal("llmConfidence", { precision: 3, scale: 2 }),
+  gradingReason: text("gradingReason"),
+  partialCreditApplied: boolean("partialCreditApplied").default(false).notNull(),
   gradedAt: timestamp("gradedAt"),
 }, (t) => [
   index("idx_responses_session").on(t.sessionId),

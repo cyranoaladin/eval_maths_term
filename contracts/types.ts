@@ -1,3 +1,5 @@
+import type { GradingRubric } from "./grading-rubric";
+
 export type QuestionType = "qcm" | "short_answer" | "true_false";
 
 export interface EvaluationQuestion {
@@ -9,6 +11,11 @@ export interface EvaluationQuestion {
   justificationRequired?: boolean;
   points: number;
   order: number;
+  imageUrl?: string;
+  // Phase 2 : rubric pédagogique — JAMAIS exposée au client
+  gradingRubric?: GradingRubric;
+  tags?: string[];
+  difficulty?: 1 | 2 | 3; // 1=facile, 2=moyen, 3=difficile
 }
 
 export interface StudentAnswer {
