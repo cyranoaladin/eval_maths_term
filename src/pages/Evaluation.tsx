@@ -128,7 +128,6 @@ export default function Evaluation() {
       updateSession.mutate({
         sessionId,
         tabSwitchCount: cheatEvents.length,
-        cheatEvents: JSON.stringify([...cheatEvents, event]),
       });
     }
 
