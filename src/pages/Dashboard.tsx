@@ -33,14 +33,22 @@ import {
   Eye,
   Clock,
   Home,
+  ChevronDown,
+  ChevronUp,
+  Radio,
 } from "lucide-react";
 import { trpc } from "@/providers/trpc-client";
+import { LiveDashboard } from "@/components/teacher/LiveDashboard";
 
 const COLORS = ["#22c55e", "#3b82f6", "#f59e0b", "#ef4444"];
 
 export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSession, setSelectedSession] = useState<number | null>(null);
+  const [liveOpen, setLiveOpen] = useState(true);
+
+  const { data: evaluationList } = trpc.evaluation.list.useQuery();
+  const activeEvaluationId = evaluationList?.[0]?.id ?? null;
 
   const { data: sessions, isLoading } = trpc.evaluation.getAllSessions.useQuery();
   const { data: sessionDetails } = trpc.evaluation.getSessionDetails.useQuery(
@@ -130,6 +138,43 @@ export default function Dashboard() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+        {/* Phase 3 : Live dashboard prof */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Radio className="h-5 w-5 text-red-500 animate-pulse" aria-hidden="true" />
+                <CardTitle className="text-base">Surveillance en direct</CardTitle>
+                {activeEvaluationId && (
+                  <Badge variant="outline" className="text-xs">
+                    Éval #{activeEvaluationId}
+                  </Badge>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setLiveOpen((o) => !o)}
+                aria-expanded={liveOpen}
+                aria-label={liveOpen ? "Réduire la surveillance" : "Afficher la surveillance"}
+              >
+                {liveOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </div>
+          </CardHeader>
+          {liveOpen && (
+            <CardContent>
+              {activeEvaluationId ? (
+                <LiveDashboard evaluationId={activeEvaluationId} />
+              ) : (
+                <p className="text-sm text-gray-400 py-4 text-center">
+                  Aucune évaluation active. Le suivi en direct apparaîtra ici dès qu'une session démarre.
+                </p>
+              )}
+            </CardContent>
+          )}
+        </Card>
+
         {/* Stats Cards */}
         <div className="grid md:grid-cols-4 gap-4">
           <Card>
