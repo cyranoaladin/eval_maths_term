@@ -146,6 +146,21 @@ describe("processHeartbeat", () => {
     expect(result.status).toBe("completed");
   });
 
+  it("lève UNAUTHORIZED avec message générique si le rejet n'est pas une Error", async () => {
+    (verifyStudentToken as ReturnType<typeof vi.fn>).mockRejectedValue("string-error");
+    (getDb as ReturnType<typeof vi.fn>).mockReturnValue(makeDbMock(null));
+
+    try {
+      await processHeartbeat(
+        { sessionToken: "bad", clientTime: NOW, focused: true, currentQuestionIndex: 0, fingerprintHash: "x" },
+        "1.2.3.4",
+      );
+      expect.fail("Devrait lever une erreur");
+    } catch (err: unknown) {
+      expect((err as { message?: string }).message).toBe("Token invalide");
+    }
+  });
+
   it("pas de mismatch si fingerprintHash non encore enregistré (null en BDD)", async () => {
     const freshSession = { ...BASE_SESSION, fingerprintHash: null, ipAddress: null };
     (verifyStudentToken as ReturnType<typeof vi.fn>).mockResolvedValue(BASE_CLAIMS);

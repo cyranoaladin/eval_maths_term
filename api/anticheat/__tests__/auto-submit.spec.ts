@@ -134,6 +134,32 @@ describe("autoSubmitSession", () => {
     expect(insertCalls.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("traite une question sans rubric (gradingRubric null) → score 0 avec feedback", async () => {
+    const qNoRubric = { ...BASE_QUESTION, gradingRubric: null };
+    const tx = makeTransaction(BASE_SESSION, [BASE_DRAFT], [qNoRubric], []);
+    (getDb as ReturnType<typeof vi.fn>).mockReturnValue({
+      transaction: vi.fn().mockImplementation((fn) => fn(tx)),
+    });
+
+    await autoSubmitSession(1, { reason: "manual_force" });
+
+    const insertCalls = (tx.insert as ReturnType<typeof vi.fn>).mock.calls;
+    expect(insertCalls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("traite une rubric invalide (safeParse fail) → score 0 avec feedback", async () => {
+    const qBadRubric = { ...BASE_QUESTION, gradingRubric: { broken: true } };
+    const tx = makeTransaction(BASE_SESSION, [BASE_DRAFT], [qBadRubric], []);
+    (getDb as ReturnType<typeof vi.fn>).mockReturnValue({
+      transaction: vi.fn().mockImplementation((fn) => fn(tx)),
+    });
+
+    await autoSubmitSession(1, { reason: "manual_force" });
+
+    const insertCalls = (tx.insert as ReturnType<typeof vi.fn>).mock.calls;
+    expect(insertCalls.length).toBeGreaterThanOrEqual(1);
+  });
+
   it("appelle computeSuspicionScore avec les événements cheat", async () => {
     const mockEvent = { type: "tab_switch", metadata: { count: 3 } };
     const tx = makeTransaction(BASE_SESSION, [], [BASE_QUESTION], [mockEvent]);

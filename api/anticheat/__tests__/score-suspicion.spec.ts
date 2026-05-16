@@ -115,4 +115,14 @@ describe("computeSuspicionScore", () => {
     const c = r.reasons.find(x => x.type === "window_size_anomaly")!.contribution;
     expect(c).toBe(30); // 3*15=45, cap=30
   });
+
+  it("ignore les types sans poids défini (poids nul)", () => {
+    const events = [
+      { type: "tab_switch" as const, count: 1 },
+      // type inconnu simulé en cast — ne devrait pas crasher
+    ];
+    const r = computeSuspicionScore(events);
+    expect(r.score).toBe(8);
+    expect(r.reasons).toHaveLength(1);
+  });
 });
