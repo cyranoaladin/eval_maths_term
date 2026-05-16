@@ -2,11 +2,11 @@
 
 > Auteur : Cascade (ingénieur senior full-stack)  
 > Superviseur : Alaeddine Ben Rhouma (Shark), prof. agrégé de mathématiques  
-> Dernière mise à jour : Phase 1 en cours
+> Dernière mise à jour : Phase 1 ✅ — Phase 2 en cours
 
 ---
 
-## Phase 1 — Sécurité & intégrité (branche `phase-1-security`) [BLOQUANT]
+## Phase 1 — Sécurité & intégrité ✅ (branche `phase-1-security`, tag `v0.1.0-security`) [BLOQUANT]
 
 | # | Tâche | Statut |
 |---|---|---|
@@ -28,28 +28,69 @@
 
 ---
 
-## Phase 2 — Moteur de correction mathématique (branche `phase-2-grading`)
+## Phase 2 — Moteur de correction mathématique (branche `phase-2-grading`, tag `v0.2.0-grading`)
 
+### Bloc A : Fondations
 | # | Tâche | Statut |
 |---|---|---|
-| 2.1 | `contracts/grading-rubric.ts` : types `ComparisonMode` + `GradingRubric` | ⬜ |
-| 2.2 | Migration BDD : colonne `gradingRubric` JSON dans `questions` | ⬜ |
-| 2.3 | `api/grading/normalize.ts` : normalisation FR (virgule, espaces, Unicode, LaTeX) | ⬜ |
-| 2.4 | `api/grading/compare-symbolic.ts` : comparaison symbolique via mathjs | ⬜ |
-| 2.5 | `api/grading/compare-numeric.ts` : comparaison numérique avec tolérance | ⬜ |
-| 2.6 | `api/grading/compare-fraction.ts` : égalité fractions + pénalité non-irréductible | ⬜ |
-| 2.7 | `api/grading/grade-response.ts` : orchestrateur principal | ⬜ |
-| 2.8 | `api/grading/llm-client.ts` : client Moonshot/Kimi + retry + cache LRU | ⬜ |
-| 2.9 | `api/grading/grading-prompt.ts` : templates prompts par type de question | ⬜ |
-| 2.10 | Rubrics des 20 questions : `acceptableForms`, `mode`, `llmReviewRequired` | ⬜ |
-| 2.11 | Réécriture LaTeX des 20 énoncés (notation FR, espaces insécables, virgule décimale) | ⬜ |
-| 2.12 | Corrections pédagogiques (Q7, Q19, Q8, RC11, VF20) | ⬜ |
-| 2.13 | Composant `src/components/math/MathLatex.tsx` (KaTeX) | ⬜ |
-| 2.14 | Composant `src/components/math/MathInput.tsx` (MathLive) | ⬜ |
-| 2.15 | Shuffle déterministe des questions + options (seed par session) | ⬜ |
-| 2.16 | Note sur 20 : `normalizedScore = round(score/maxScore*20*4)/4` | ⬜ |
-| 2.17 | Tests Phase 2 : normalize (50+ cas), symbolic, fraction, grade-response, llm-client | ⬜ |
-| 2.18 | CHANGELOG.md Phase 2 | ⬜ |
+| A.1 | Ajout dépendances : `mathjs@^13`, `katex@^0.16`, `lru-cache@^11`, `mathlive@^0.105`, `@types/katex` | ⬜ |
+| A.2 | Migration BDD `0002_grading_rubric.sql` : `gradingRubric`, `tags`, `difficulty` sur `questions` ; `normalizedScore DECIMAL(5,2)` sur `sessions` ; `gradingMode`, `llmConfidence`, `gradingReason`, `partialCreditApplied` sur `responses` | ⬜ |
+| A.3 | `contracts/grading-rubric.ts` : schémas Zod `ComparisonMode`, `GradingRubric`, `PartialCreditRule` + types inférés | ⬜ |
+
+### Bloc B : Comparateurs purs (sans LLM, sans BDD)
+| # | Tâche | Statut |
+|---|---|---|
+| B.1 | `api/grading/normalize.ts` + `normalize.spec.ts` (≥50 cas couvrant toutes les `acceptableForms` des Q11–Q15) | ⬜ |
+| B.2 | `api/grading/compare-exact.ts` + tests | ⬜ |
+| B.3 | `api/grading/compare-numeric.ts` (tolérance abs/rel) + tests | ⬜ |
+| B.4 | `api/grading/compare-fraction.ts` (PGCD, irréductibilité, pénalité 25%) + tests | ⬜ |
+| B.5 | `api/grading/compare-symbolic.ts` (3 passes : littéral → simplify → numérique 20 pts) + tests (variantes Q11–Q14) | ⬜ |
+| B.6 | `api/grading/compare-set.ts` (ordonné/non-ordonné) + tests | ⬜ |
+| B.7 | `api/grading/shuffle.ts` (mulberry32 + Fisher-Yates + shuffleOptions avec mapping inverse) + tests déterminisme + distribution | ⬜ |
+
+### Bloc C : LLM client + orchestrateur
+| # | Tâche | Statut |
+|---|---|---|
+| C.1 | `api/grading/llm-client.ts` : fetch Moonshot/Kimi, retry ×3 backoff exponentiel, cache LRU 1h, parsing tolérant fences JSON | ⬜ |
+| C.2 | `api/grading/grading-prompt.ts` : templates système + utilisateur par type (qcm / short_answer / true_false) | ⬜ |
+| C.3 | `api/grading/grade-response.ts` : orchestrateur — appel comparateurs purs en cascade, fallback LLM si `llmReviewRequired` | ⬜ |
+| C.4 | `grade-response.spec.ts` + `llm-client.spec.ts` : LLM mocké via `vi.mock`, test retry, cache, parsing JSON fences | ⬜ |
+
+### Bloc D : Données & seed
+| # | Tâche | Statut |
+|---|---|---|
+| D.1 | Réécriture LaTeX des 20 énoncés + rubrics + tags + difficulty dans `contracts/evaluation-data.ts` (Q1–Q20 selon §VI du brief) | ⬜ |
+| D.2 | Corrections pédagogiques : Q7 (intervalle ouvert `]a;b[`), Q19 (`a < b` explicite), notations décimales FR | ⬜ |
+| D.3 | `db/seed.ts` idempotent : `INSERT … ON DUPLICATE KEY UPDATE` pour questions sans casser les sessions existantes | ⬜ |
+
+### Bloc E : Intégration backend
+| # | Tâche | Statut |
+|---|---|---|
+| E.1 | `api/routers/answer-router.ts` : `saveDraft` (studentQuery) + `submit` appelant `gradeResponse` | ⬜ |
+| E.2 | `api/routers/grading-router.ts` : `regradeWithLLM` + `manualOverride` (teacherQuery) | ⬜ |
+| E.3 | Mise à jour `session-router.ts` : `shuffleSeed` déjà présent, ajouter payload dans studentToken | ⬜ |
+| E.4 | Mise à jour `question-router.ts` : `shuffleDeterministic` + `shuffleOptions` avec mapping ; appliquer mapping inverse au submit | ⬜ |
+| E.5 | `normalizedScore = round(totalScore/maxScore*20*4)/4` stocké en `DECIMAL(5,2)` au submit | ⬜ |
+
+### Bloc F : Frontend mathématique
+| # | Tâche | Statut |
+|---|---|---|
+| F.1 | `src/components/math/MathLatex.tsx` : rendu KaTeX inline + display, split auto `$…$` / `$$…$$` | ⬜ |
+| F.2 | `src/components/math/MathInput.tsx` : MathLive Web Component, import dynamique, ready state | ⬜ |
+| F.3 | `src/components/math/MathPalette.tsx` : boutons symboles courants (fractions, racines, exposants) | ⬜ |
+| F.4 | Intégration `src/pages/Evaluation.tsx` : énoncés LaTeX via `MathLatex`, saisie RC via `MathInput` | ⬜ |
+| F.5 | Intégration `src/pages/Results.tsx` : affichage note /20, réponse attendue en LaTeX | ⬜ |
+
+### Bloc G : Validation & qualité
+| # | Tâche | Statut |
+|---|---|---|
+| G.1 | Coverage `api/grading/` ≥ 100%, globale ≥ 80% | ⬜ |
+| G.2 | Tests E2E variantes : ≥5 formes par RC (Q11–Q15) conformes au §VIII critère 5 | ⬜ |
+| G.3 | `npm run check && npm run lint && npm test && npm run build` ✅ | ⬜ |
+| G.4 | `CHANGELOG.md` entrée `v0.2.0-grading` | ⬜ |
+| G.5 | `docs/screenshots/phase-2/` (KaTeX Chromium + Firefox) | ⬜ |
+| G.6 | PR `phase-2-grading → main`, description cochant les 11 critères §VIII | ⬜ |
+| G.7 | Tag `v0.2.0-grading` après merge | ⬜ |
 
 ---
 
