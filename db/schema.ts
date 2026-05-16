@@ -76,10 +76,14 @@ export const sessions = mysqlTable("sessions", {
   endedAt: timestamp("endedAt"),
   // Expiration calculée côté serveur (startedAt + durée + 30s de grâce)
   expiresAt: timestamp("expiresAt"),
-  status: mysqlEnum("status", ["in_progress", "completed", "timed_out", "auto_submit", "cheating_detected"]).default("in_progress").notNull(),
+  // Phase 3 metadata
+  ipAddress: varchar("ipAddress", { length: 45 }),
+  userAgent: text("userAgent"),
+  fingerprintHash: varchar("fingerprintHash", { length: 64 }),
+  status: mysqlEnum("status", ["in_progress", "completed", "timed_out", "cheating_detected", "auto_submitted_idle"]).default("in_progress").notNull(),
   // Note: tabSwitchCount est maintenant calculé depuis cheat_events — conservé pour compatibilité
   tabSwitchCount: int("tabSwitchCount").default(0).notNull(),
-  // Note: cheatEvents JSON est déprécié — utiliser la table cheat_events
+  // DEPRECATED: cheatEvents JSON — ne plus écrire, utiliser la table cheat_events. Drop prévu en v0.4.0.
   cheatEvents: json("cheatEvents").$type<Array<{type: string, timestamp: string}>>(),
   totalScore: int("totalScore"),
   maxScore: int("maxScore"),
@@ -88,6 +92,8 @@ export const sessions = mysqlTable("sessions", {
   shuffleSeed: varchar("shuffleSeed", { length: 64 }), // graine de mélange déterministe
   resultsToken: text("resultsToken"), // token de résultats émis après soumission
   lastHeartbeatAt: timestamp("lastHeartbeatAt"), // dernier heartbeat reçu
+  suspicionScore: tinyint("suspicionScore", { unsigned: true }).default(0),
+  suspicionVerdict: mysqlEnum("suspicionVerdict", ["clean", "minor", "moderate", "severe"]).default("clean"),
 }, (t) => [
   index("idx_sessions_started").on(t.startedAt),
   index("idx_sessions_status").on(t.status),
@@ -140,6 +146,8 @@ export const cheatEvents = mysqlTable("cheat_events", {
     "fingerprint_mismatch",
     "multi_device",
     "prolonged_blur",
+    "idle_disconnect",
+    "window_size_anomaly",
   ]).notNull(),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   metadata: json("metadata"), // ex: { count: 30, fromTabIndex: 0 }
@@ -149,3 +157,21 @@ export const cheatEvents = mysqlTable("cheat_events", {
 
 export type CheatEvent = typeof cheatEvents.$inferSelect;
 export type InsertCheatEvent = typeof cheatEvents.$inferInsert;
+export type CheatEventType = CheatEvent["type"];
+
+/**
+ * Brouillons auto-save (Phase 3).
+ * Séparés de `responses` qui sont immuables après submit.
+ * committedAt IS NULL = brouillon actif ; IS NOT NULL = archivé (audit trail).
+ */
+export const answerDrafts = mysqlTable("answer_drafts", {
+  sessionId: bigint("sessionId", { mode: "number", unsigned: true }).notNull(),
+  questionId: bigint("questionId", { mode: "number", unsigned: true }).notNull(),
+  answer: text("answer"),
+  justification: text("justification"),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull().$onUpdate(() => new Date()),
+  committedAt: timestamp("committedAt"),
+});
+
+export type AnswerDraft = typeof answerDrafts.$inferSelect;
+export type InsertAnswerDraft = typeof answerDrafts.$inferInsert;

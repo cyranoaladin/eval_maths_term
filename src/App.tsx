@@ -7,12 +7,13 @@ import Dashboard from "./pages/Dashboard"
 import Preview from "./pages/Preview"
 import Login from "./pages/Login"
 import AuthLayout from "./components/AuthLayout"
+import { StudentSessionProvider } from "./providers/StudentSessionContext"
 
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
-      <Route path="/evaluation" element={<Evaluation />} />
+      <Route path="/evaluation" element={<StudentSessionProvider><Evaluation /></StudentSessionProvider>} />
       <Route path="/results" element={<Results />} />
       <Route path="/login" element={<Login />} />
       <Route path="/dashboard" element={<AuthLayout><Dashboard /></AuthLayout>} />

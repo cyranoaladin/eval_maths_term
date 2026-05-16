@@ -1,104 +1,82 @@
 import { useEffect, useRef, useCallback } from "react";
 import type { CheatEvent } from "@contracts/types";
+import { useCheatBuffer, type UseCheatBufferResult } from "./useCheatBuffer";
+import type { CheatEventType } from "@db/schema";
 
 interface AntiCheatOptions {
   enabled: boolean;
-  onCheatDetected: (event: CheatEvent) => void;
+  sessionToken: string;
+  /** @deprecated — utiliser sessionToken + useCheatBuffer. Conservé pour rétro-compat. */
+  onCheatDetected?: (event: CheatEvent) => void;
   onFullscreenExit?: () => void;
 }
 
-export function useAntiCheat(options: AntiCheatOptions) {
-  const { enabled, onCheatDetected, onFullscreenExit } = options;
+export interface UseAntiCheatResult {
+  enterFullscreen: () => Promise<void>;
+  warningCount: () => number;
+  buffer: UseCheatBufferResult;
+}
+
+export function useAntiCheat(options: AntiCheatOptions): UseAntiCheatResult {
+  const { enabled, sessionToken, onCheatDetected, onFullscreenExit } = options;
   const warningCount = useRef(0);
   const isActive = useRef(true);
 
+  const buffer = useCheatBuffer({ enabled, sessionToken });
+
+  const report = useCallback(
+    (type: CheatEventType) => {
+      const event: CheatEvent = { type, timestamp: new Date().toISOString() };
+      warningCount.current++;
+      buffer.track(type);
+      onCheatDetected?.(event);
+    },
+    [buffer, onCheatDetected],
+  );
+
   const handleVisibilityChange = useCallback(() => {
     if (!isActive.current || !enabled) return;
-
-    if (document.hidden) {
-      const event: CheatEvent = {
-        type: "tab_switch",
-        timestamp: new Date().toISOString(),
-      };
-      warningCount.current++;
-      onCheatDetected(event);
-    }
-  }, [enabled, onCheatDetected]);
+    if (document.hidden) report("tab_switch");
+  }, [enabled, report]);
 
   const handleBlur = useCallback(() => {
     if (!isActive.current || !enabled) return;
-
-    const event: CheatEvent = {
-      type: "blur",
-      timestamp: new Date().toISOString(),
-    };
-    warningCount.current++;
-    onCheatDetected(event);
-  }, [enabled, onCheatDetected]);
+    report("blur");
+  }, [enabled, report]);
 
   const handleContextMenu = useCallback((e: MouseEvent) => {
     if (!isActive.current || !enabled) return;
     e.preventDefault();
-
-    const event: CheatEvent = {
-      type: "context_menu",
-      timestamp: new Date().toISOString(),
-    };
-    warningCount.current++;
-    onCheatDetected(event);
-  }, [enabled, onCheatDetected]);
+    report("context_menu");
+  }, [enabled, report]);
 
   const handleCopy = useCallback((e: ClipboardEvent) => {
     if (!isActive.current || !enabled) return;
     e.preventDefault();
-
-    const event: CheatEvent = {
-      type: "copy",
-      timestamp: new Date().toISOString(),
-    };
-    warningCount.current++;
-    onCheatDetected(event);
-  }, [enabled, onCheatDetected]);
+    report("copy");
+  }, [enabled, report]);
 
   const handlePaste = useCallback((e: ClipboardEvent) => {
     if (!isActive.current || !enabled) return;
     e.preventDefault();
-
-    const event: CheatEvent = {
-      type: "paste",
-      timestamp: new Date().toISOString(),
-    };
-    warningCount.current++;
-    onCheatDetected(event);
-  }, [enabled, onCheatDetected]);
+    report("paste");
+  }, [enabled, report]);
 
   const handleFullscreenChange = useCallback(() => {
     if (!isActive.current || !enabled) return;
-
     if (!document.fullscreenElement) {
-      const event: CheatEvent = {
-        type: "fullscreen_exit",
-        timestamp: new Date().toISOString(),
-      };
-      warningCount.current++;
-      onCheatDetected(event);
+      report("fullscreen_exit");
       onFullscreenExit?.();
     }
-  }, [enabled, onCheatDetected, onFullscreenExit]);
+  }, [enabled, report, onFullscreenExit]);
 
   const handlePrint = useCallback((e: KeyboardEvent) => {
     if (!isActive.current || !enabled) return;
-
     if ((e.ctrlKey || e.metaKey) && e.key === "p") {
       e.preventDefault();
-      const event: CheatEvent = {
-        type: "print",
-        timestamp: new Date().toISOString(),
-      };
-      warningCount.current++;
-      onCheatDetected(event);
+      report("print");
     }
-  }, [enabled, onCheatDetected]);
+  }, [enabled, report]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (!isActive.current || !enabled) return;
@@ -177,5 +155,6 @@ export function useAntiCheat(options: AntiCheatOptions) {
   return {
     enterFullscreen,
     warningCount: () => warningCount.current,
+    buffer,
   };
 }

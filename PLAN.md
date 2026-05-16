@@ -2,7 +2,7 @@
 
 > Auteur : Cascade (ingénieur senior full-stack)  
 > Superviseur : Alaeddine Ben Rhouma (Shark), prof. agrégé de mathématiques  
-> Dernière mise à jour : Phase 1 ✅ — Phase 2 en cours
+> Dernière mise à jour : Phase 1 ✅ — Phase 2 ✅ — Phase 3 en cours
 
 ---
 
@@ -28,89 +28,73 @@
 
 ---
 
-## Phase 2 — Moteur de correction mathématique (branche `phase-2-grading`, tag `v0.2.0-grading`)
+## Phase 2 — Moteur de correction mathématique ✅ (branche `phase-2-grading`, tag `v0.2.0-grading`)
+
+Toutes les tâches complétées : comparateurs purs, LLM client Moonshot/Kimi, 20 questions LaTeX, rubrics pédagogiques, composants MathLatex/MathInput/MathPalette, 201 tests verts. Mergé dans `main` avec tag `v0.2.0-grading`.
+
+---
+
+## Phase 3 — Anti-triche professionnel (branche `phase-3-anticheat`, tag `v0.3.0-anticheat`)
 
 ### Bloc A : Fondations
 | # | Tâche | Statut |
 |---|---|---|
-| A.1 | Ajout dépendances : `mathjs@^13`, `katex@^0.16`, `lru-cache@^11`, `mathlive@^0.105`, `@types/katex` | ⬜ |
-| A.2 | Migration BDD `0002_grading_rubric.sql` : `gradingRubric`, `tags`, `difficulty` sur `questions` ; `normalizedScore DECIMAL(5,2)` sur `sessions` ; `gradingMode`, `llmConfidence`, `gradingReason`, `partialCreditApplied` sur `responses` | ⬜ |
-| A.3 | `contracts/grading-rubric.ts` : schémas Zod `ComparisonMode`, `GradingRubric`, `PartialCreditRule` + types inférés | ⬜ |
+| A.1 | `vitest.setup.ts` racine + `setupFiles` dans `vitest.config.ts` ; suppression des `vi.stubEnv` manuels | ⬜ |
+| A.2 | Migration BDD `0003_anticheat.sql` : métadonnées sessions, table `answer_drafts`, enum `cheat_events` étendu | ⬜ |
+| A.3 | Dépendance `idb-keyval@^6.2.2` | ⬜ |
+| A.4 | `db/schema.ts` : champs Phase 3 (ipAddress, fingerprintHash, suspicionScore, suspicionVerdict, answerDrafts) | ⬜ |
 
-### Bloc B : Comparateurs purs (sans LLM, sans BDD)
+### Bloc B : Modules anticheat purs
 | # | Tâche | Statut |
 |---|---|---|
-| B.1 | `api/grading/normalize.ts` + `normalize.spec.ts` (≥50 cas couvrant toutes les `acceptableForms` des Q11–Q15) | ⬜ |
-| B.2 | `api/grading/compare-exact.ts` + tests | ⬜ |
-| B.3 | `api/grading/compare-numeric.ts` (tolérance abs/rel) + tests | ⬜ |
-| B.4 | `api/grading/compare-fraction.ts` (PGCD, irréductibilité, pénalité 25%) + tests | ⬜ |
-| B.5 | `api/grading/compare-symbolic.ts` (3 passes : littéral → simplify → numérique 20 pts) + tests (variantes Q11–Q14) | ⬜ |
-| B.6 | `api/grading/compare-set.ts` (ordonné/non-ordonné) + tests | ⬜ |
-| B.7 | `api/grading/shuffle.ts` (mulberry32 + Fisher-Yates + shuffleOptions avec mapping inverse) + tests déterminisme + distribution | ⬜ |
+| B.1 | `api/anticheat/fingerprint.ts` + `contracts/fingerprint-canonical.ts` + tests | ⬜ |
+| B.2 | `api/anticheat/score-suspicion.ts` + `contracts/anticheat-config.ts` + tests | ⬜ |
+| B.3 | `api/anticheat/event-aggregator.ts` (coalescing 500 ms) + tests | ⬜ |
 
-### Bloc C : LLM client + orchestrateur
+### Bloc C : Heartbeat + idle sweeper + auto-submit
 | # | Tâche | Statut |
 |---|---|---|
-| C.1 | `api/grading/llm-client.ts` : fetch Moonshot/Kimi, retry ×3 backoff exponentiel, cache LRU 1h, parsing tolérant fences JSON | ⬜ |
-| C.2 | `api/grading/grading-prompt.ts` : templates système + utilisateur par type (qcm / short_answer / true_false) | ⬜ |
-| C.3 | `api/grading/grade-response.ts` : orchestrateur — appel comparateurs purs en cascade, fallback LLM si `llmReviewRequired` | ⬜ |
-| C.4 | `grade-response.spec.ts` + `llm-client.spec.ts` : LLM mocké via `vi.mock`, test retry, cache, parsing JSON fences | ⬜ |
+| C.1 | `api/anticheat/heartbeat.ts` (refresh lastHeartbeatAt, détection mismatch) + tests | ⬜ |
+| C.2 | `api/anticheat/auto-submit.ts` (drafts → responses, skipLLM, suspicion finale) + tests | ⬜ |
+| C.3 | `api/anticheat/idle-sweeper.ts` (scan stale 180 s, déclenche auto-submit) + tests | ⬜ |
+| C.4 | Patch `api/grading/grade-response.ts` : ajout paramètre `skipLLM` | ⬜ |
 
-### Bloc D : Données & seed
+### Bloc D : Routers
 | # | Tâche | Statut |
 |---|---|---|
-| D.1 | Réécriture LaTeX des 20 énoncés + rubrics + tags + difficulty dans `contracts/evaluation-data.ts` (Q1–Q20 selon §VI du brief) | ⬜ |
-| D.2 | Corrections pédagogiques : Q7 (intervalle ouvert `]a;b[`), Q19 (`a < b` explicite), notations décimales FR | ⬜ |
-| D.3 | `db/seed.ts` idempotent : `INSERT … ON DUPLICATE KEY UPDATE` pour questions sans casser les sessions existantes | ⬜ |
+| D.1 | Patch `session-router.ts` : mutation `heartbeat` + ingestion fingerprint au démarrage | ⬜ |
+| D.2 | Patch `answer-router.ts` : mutation `saveDraft` + query `listDrafts` | ⬜ |
+| D.3 | Patch `cheat-router.ts` : mutation `reportBatch` (déprécier `reportOne`) | ⬜ |
+| D.4 | Nouveau `api/routers/teacher-live-router.ts` (query `snapshot`, polling 5 s) | ⬜ |
+| D.5 | Intégration `idle-sweeper` dans heartbeat + snapshot | ⬜ |
 
-### Bloc E : Intégration backend
+### Bloc E : Hooks frontend
 | # | Tâche | Statut |
 |---|---|---|
-| E.1 | `api/routers/answer-router.ts` : `saveDraft` (studentQuery) + `submit` appelant `gradeResponse` | ⬜ |
-| E.2 | `api/routers/grading-router.ts` : `regradeWithLLM` + `manualOverride` (teacherQuery) | ⬜ |
-| E.3 | Mise à jour `session-router.ts` : `shuffleSeed` déjà présent, ajouter payload dans studentToken | ⬜ |
-| E.4 | Mise à jour `question-router.ts` : `shuffleDeterministic` + `shuffleOptions` avec mapping ; appliquer mapping inverse au submit | ⬜ |
-| E.5 | `normalizedScore = round(totalScore/maxScore*20*4)/4` stocké en `DECIMAL(5,2)` au submit | ⬜ |
+| E.1 | `src/lib/idb-queue.ts` (wrapper idb-keyval FIFO) | ⬜ |
+| E.2 | `src/hooks/useFingerprint.ts` (canvas hash, WebGL, crypto.subtle) | ⬜ |
+| E.3 | `src/hooks/useHeartbeat.ts` (poll 15 s, cancelRef, remainingMs) | ⬜ |
+| E.4 | `src/hooks/useCheatBuffer.ts` (coalescing + flush 5 s) | ⬜ |
+| E.5 | `src/hooks/useAutoSave.ts` (debounce 2 s + IDB queue retry 5 s) | ⬜ |
+| E.6 | Refonte `src/hooks/useAntiCheat.ts` → branche sur `useCheatBuffer` | ⬜ |
 
-### Bloc F : Frontend mathématique
+### Bloc F : Composants UI
 | # | Tâche | Statut |
 |---|---|---|
-| F.1 | `src/components/math/MathLatex.tsx` : rendu KaTeX inline + display, split auto `$…$` / `$$…$$` | ⬜ |
-| F.2 | `src/components/math/MathInput.tsx` : MathLive Web Component, import dynamique, ready state | ⬜ |
-| F.3 | `src/components/math/MathPalette.tsx` : boutons symboles courants (fractions, racines, exposants) | ⬜ |
-| F.4 | Intégration `src/pages/Evaluation.tsx` : énoncés LaTeX via `MathLatex`, saisie RC via `MathInput` | ⬜ |
-| F.5 | Intégration `src/pages/Results.tsx` : affichage note /20, réponse attendue en LaTeX | ⬜ |
+| F.1 | `src/components/anticheat/FullscreenGuard.tsx` | ⬜ |
+| F.2 | `src/components/anticheat/AutoSaveIndicator.tsx` | ⬜ |
+| F.3 | `src/components/anticheat/HeartbeatStatus.tsx` | ⬜ |
+| F.4 | `src/components/anticheat/CheatBanner.tsx` | ⬜ |
+| F.5 | `src/components/anticheat/DevToolsDetector.tsx` | ⬜ |
+| F.6 | `src/components/teacher/LiveDashboard.tsx` + `LiveSessionRow.tsx` + `SuspicionBadge.tsx` | ⬜ |
 
-### Bloc G : Validation & qualité
+### Bloc G : Validation
 | # | Tâche | Statut |
 |---|---|---|
-| G.1 | Coverage `api/grading/` ≥ 100%, globale ≥ 80% | ⬜ |
-| G.2 | Tests E2E variantes : ≥5 formes par RC (Q11–Q15) conformes au §VIII critère 5 | ⬜ |
-| G.3 | `npm run check && npm run lint && npm test && npm run build` ✅ | ⬜ |
-| G.4 | `CHANGELOG.md` entrée `v0.2.0-grading` | ⬜ |
-| G.5 | `docs/screenshots/phase-2/` (KaTeX Chromium + Firefox) | ⬜ |
-| G.6 | PR `phase-2-grading → main`, description cochant les 11 critères §VIII | ⬜ |
-| G.7 | Tag `v0.2.0-grading` après merge | ⬜ |
-
----
-
-## Phase 3 — Anti-triche professionnel (branche `phase-3-anticheat`)
-
-| # | Tâche | Statut |
-|---|---|---|
-| 3.1 | `src/hooks/useHeartbeat.ts` : mutation `session.heartbeat` toutes les 15s | ⬜ |
-| 3.2 | `src/hooks/useAutoSave.ts` : debounce 2s + IndexedDB offline queue | ⬜ |
-| 3.3 | `api/routers/cheat-router.ts` : ingestion batch, append-only, throttlé | ⬜ |
-| 3.4 | `api/anticheat/event-aggregator.ts` : dédoublonnage + coalescing | ⬜ |
-| 3.5 | `api/anticheat/fingerprint.ts` : hash SHA-256 multi-facteur | ⬜ |
-| 3.6 | `api/anticheat/heartbeat.ts` : logique auto-submit à 180s sans heartbeat | ⬜ |
-| 3.7 | `api/anticheat/score-suspicion.ts` : score 0–100 + verdict pédagogique | ⬜ |
-| 3.8 | Détection DevTools (performance.now + debugger trap) | ⬜ |
-| 3.9 | Détection multi-device (IP + fingerprint diff entre heartbeats) | ⬜ |
-| 3.10 | Lockdown navigateur : user-select, drag-drop, prefetch | ⬜ |
-| 3.11 | UX : bandeau auto-save, pop-up fullscreen, aria-live | ⬜ |
-| 3.12 | Tests Phase 3 | ⬜ |
-| 3.13 | CHANGELOG.md Phase 3 | ⬜ |
+| G.1 | Coverage `api/anticheat/` ≥ 100 % | ⬜ |
+| G.2 | `npm run check && lint && test && build` ✅ | ⬜ |
+| G.3 | `CHANGELOG.md` entrée `v0.3.0` + note dépréciation `sessions.cheatEvents` | ⬜ |
+| G.4 | PR `phase-3-anticheat → main`, checklist 14 critères | ⬜ |
 
 ---
 

@@ -80,7 +80,7 @@ describe("role-access : routes élève protégées", () => {
 
   it("session.heartbeat refuse un contexte sans studentSession", async () => {
     const caller = sessionRouter.createCaller(makeCtx());
-    await expect(caller.heartbeat()).rejects.toMatchObject({
+    await expect(caller.heartbeat({ clientTime: Date.now(), focused: true, currentQuestionIndex: 0, fingerprintHash: "abc" })).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
   });

@@ -133,7 +133,6 @@ export const evaluationRouter = createRouter({
         studentEmail: input.studentEmail || null,
         status: "in_progress",
         tabSwitchCount: 0,
-        cheatEvents: [],
       });
 
       return {
@@ -149,7 +148,6 @@ export const evaluationRouter = createRouter({
         sessionId: z.number(),
         status: z.enum(["in_progress", "completed", "timed_out", "cheating_detected"]).optional(),
         tabSwitchCount: z.number().optional(),
-        cheatEvents: z.string().optional(),
         totalScore: z.number().optional(),
         timeSpent: z.number().optional(),
       })
@@ -172,7 +170,6 @@ export const evaluationRouter = createRouter({
 
       if (input.status !== undefined) updates.status = input.status;
       if (input.tabSwitchCount !== undefined) updates.tabSwitchCount = input.tabSwitchCount;
-      if (input.cheatEvents !== undefined) updates.cheatEvents = input.cheatEvents;
       if (input.totalScore !== undefined) updates.totalScore = input.totalScore;
       if (input.timeSpent !== undefined) updates.timeSpent = input.timeSpent;
       if (input.status === "completed" || input.status === "timed_out" || input.status === "cheating_detected") {

@@ -13,7 +13,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createRouter, studentQuery } from "../middleware";
 import { getDb } from "../queries/connection";
-import { responses, sessions, questions } from "@db/schema";
+import { responses, sessions, questions, answerDrafts } from "@db/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
@@ -134,5 +134,87 @@ export const answerRouter = createRouter({
       .where(eq(responses.sessionId, sessionId));
 
     return saved;
+  }),
+
+  /**
+   * Phase 3 — Auto-save : upsert d'un brouillon dans answer_drafts.
+   * Différent de `save` qui écrit dans responses (utilisation finale).
+   * Les drafts sont committedAt IS NULL jusqu'à l'auto-submit ou le submit final.
+   */
+  saveDraft: studentQuery
+    .input(
+      z.object({
+        questionId: z.number().int().positive(),
+        answer: z.string().max(MAX_ANSWER_LEN),
+        justification: z.string().max(MAX_JUSTIFICATION_LEN).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { sessionId, evaluationId } = ctx.studentSession;
+      const db = getDb();
+
+      const [session] = await db
+        .select({ status: sessions.status, expiresAt: sessions.expiresAt })
+        .from(sessions)
+        .where(eq(sessions.id, sessionId))
+        .limit(1);
+
+      if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Session introuvable" });
+      if (session.status !== "in_progress") throw new TRPCError({ code: "BAD_REQUEST", message: "Session terminée" });
+      if (session.expiresAt && Date.now() > session.expiresAt.getTime()) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Session expirée" });
+      }
+
+      const [question] = await db
+        .select({ id: questions.id })
+        .from(questions)
+        .where(and(eq(questions.id, input.questionId), eq(questions.evaluationId, evaluationId)))
+        .limit(1);
+
+      if (!question) throw new TRPCError({ code: "NOT_FOUND", message: "Question introuvable" });
+
+      const existing = await db
+        .select({ sessionId: answerDrafts.sessionId })
+        .from(answerDrafts)
+        .where(and(eq(answerDrafts.sessionId, sessionId), eq(answerDrafts.questionId, input.questionId)))
+        .limit(1);
+
+      if (existing.length > 0) {
+        await db
+          .update(answerDrafts)
+          .set({ answer: input.answer, justification: input.justification ?? null })
+          .where(and(eq(answerDrafts.sessionId, sessionId), eq(answerDrafts.questionId, input.questionId)));
+      } else {
+        await db.insert(answerDrafts).values({
+          sessionId,
+          questionId: input.questionId,
+          answer: input.answer,
+          justification: input.justification ?? null,
+        });
+      }
+
+      logger.debug("Draft auto-save", { sessionId, questionId: input.questionId });
+      return { saved: true };
+    }),
+
+  /**
+   * Phase 3 — Retourne les brouillons actifs (committedAt IS NULL) de la session.
+   * Permet de restaurer l'état en cas de rechargement de page.
+   */
+  listDrafts: studentQuery.query(async ({ ctx }) => {
+    const { sessionId } = ctx.studentSession;
+    const db = getDb();
+
+    const drafts = await db
+      .select({
+        questionId: answerDrafts.questionId,
+        answer: answerDrafts.answer,
+        justification: answerDrafts.justification,
+        updatedAt: answerDrafts.updatedAt,
+      })
+      .from(answerDrafts)
+      .where(and(eq(answerDrafts.sessionId, sessionId)));
+
+    return drafts.filter((d) => d.answer !== null);
   }),
 });

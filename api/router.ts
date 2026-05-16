@@ -6,6 +6,7 @@ import { sessionRouter } from "./routers/session-router";
 import { questionRouter } from "./routers/question-router";
 import { cheatRouter } from "./routers/cheat-router";
 import { answerRouter } from "./routers/answer-router";
+import { teacherLiveRouter } from "./routers/teacher-live-router";
 import { createRouter, publicQuery } from "./middleware";
 
 export const appRouter = createRouter({
@@ -18,6 +19,7 @@ export const appRouter = createRouter({
   question: questionRouter,
   cheat: cheatRouter,
   answer: answerRouter,
+  teacherLive: teacherLiveRouter,
 });
 
 export type AppRouter = typeof appRouter;
