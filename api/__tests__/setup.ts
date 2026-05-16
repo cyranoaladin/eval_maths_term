@@ -12,5 +12,6 @@ process.env.STUDENT_SESSION_SECRET = "test_student_secret_xxxxxxxxxxxxxxxxxxxxxx
 process.env.DATABASE_URL = "mysql://test:test@localhost:3306/test_db";
 process.env.KIMI_AUTH_URL = "http://localhost:9999";
 process.env.KIMI_OPEN_URL = "http://localhost:9998";
+process.env.LLM_API_KEY = process.env.LLM_API_KEY ?? "test-llm-key-for-tests";
 process.env.ALLOWED_ORIGINS = "http://localhost:3000";
 process.env.LOG_LEVEL = "error";
