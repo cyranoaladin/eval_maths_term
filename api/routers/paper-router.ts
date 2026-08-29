@@ -429,6 +429,7 @@ export const paperRouter = createRouter({
           answers: input.answers,
           openMarks: input.openMarks,
           enteredById: ctx.user.id,
+          acteur: { id: ctx.user.id, email: ctx.user.email },
         });
       } catch (e) {
         throw new TRPCError({

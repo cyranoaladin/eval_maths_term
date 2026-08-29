@@ -381,3 +381,58 @@ export const paperCopies = mysqlTable("paper_copies", {
 
 export type PaperCopy = typeof paperCopies.$inferSelect;
 export type InsertPaperCopy = typeof paperCopies.$inferInsert;
+
+/**
+ * Journal des interventions sur les notes.
+ *
+ * Une note attribuée ou modifiée par un enseignant engage sa responsabilité :
+ * il faut pouvoir répondre à « qui a changé cette note, quand, de combien, et
+ * pourquoi ». Le journal est **append-only** : aucune route ne le modifie ni
+ * ne le supprime.
+ *
+ * `actorEmail` est dénormalisé volontairement : si le compte enseignant
+ * disparaît, la trace doit rester lisible.
+ */
+export const gradeAudit = mysqlTable("grade_audit", {
+  id: serial("id").primaryKey(),
+  sessionId: bigint("sessionId", { mode: "number", unsigned: true }).notNull(),
+  /** Nul pour une action portant sur la copie entière (recorrection). */
+  responseId: bigint("responseId", { mode: "number", unsigned: true }),
+  questionId: bigint("questionId", { mode: "number", unsigned: true }),
+  actorId: bigint("actorId", { mode: "number", unsigned: true }),
+  actorEmail: varchar("actorEmail", { length: 320 }),
+  action: mysqlEnum("action", ["manual_override", "manual_paper", "regrade"]).notNull(),
+  oldScore: decimal("oldScore", { precision: 6, scale: 2 }),
+  newScore: decimal("newScore", { precision: 6, scale: 2 }),
+  oldMode: varchar("oldMode", { length: 24 }),
+  newMode: varchar("newMode", { length: 24 }),
+  reason: varchar("reason", { length: 500 }),
+  requestId: varchar("requestId", { length: 64 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => [
+  index("idx_grade_audit_session").on(t.sessionId),
+  index("idx_grade_audit_created").on(t.createdAt),
+  foreignKey({
+    columns: [t.sessionId],
+    foreignColumns: [sessions.id],
+    name: "fk_grade_audit_session",
+  }).onDelete("cascade"),
+  foreignKey({
+    columns: [t.responseId],
+    foreignColumns: [responses.id],
+    name: "fk_grade_audit_response",
+  }).onDelete("set null"),
+  foreignKey({
+    columns: [t.questionId],
+    foreignColumns: [questions.id],
+    name: "fk_grade_audit_question",
+  }).onDelete("set null"),
+  foreignKey({
+    columns: [t.actorId],
+    foreignColumns: [users.id],
+    name: "fk_grade_audit_actor",
+  }).onDelete("set null"),
+]);
+
+export type GradeAudit = typeof gradeAudit.$inferSelect;
+export type InsertGradeAudit = typeof gradeAudit.$inferInsert;

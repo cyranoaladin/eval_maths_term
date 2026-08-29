@@ -22,6 +22,7 @@ import { paperCopies, paperExams, questions, responses, sessions } from "@db/sch
 import { gradeSessionResponses } from "../grading/grade-session";
 import { logger } from "../lib/logger";
 import { toDecimal } from "../lib/decimal";
+import { recordGradeAudit } from "../grading/grade-audit";
 
 export interface EntryAnswer {
   questionId: number;
@@ -79,6 +80,11 @@ export function answerToChoice(
   return null;
 }
 
+export interface Acteur {
+  id: number;
+  email: string | null;
+}
+
 export async function saveManualEntry(args: {
   paperExamId: number;
   studentId: number;
@@ -87,6 +93,8 @@ export async function saveManualEntry(args: {
   /** Notes des questions rédigées, saisies par l'enseignant. */
   openMarks?: OpenMark[];
   enteredById: number;
+  /** Auteur de la saisie, pour le journal des interventions. */
+  acteur?: Acteur;
 }): Promise<SaveEntryResult> {
   const db = getDb();
 
@@ -212,6 +220,24 @@ export async function saveManualEntry(args: {
     .update(sessions)
     .set({ timeSpent: null })
     .where(eq(sessions.id, sessionId!));
+
+  // Les points des questions rédigées sont attribués par l'enseignant : ce
+  // sont des interventions humaines, tracées comme telles.
+  for (const m of marques) {
+    const max = bareme.get(m.questionId);
+    if (max === undefined) continue;
+    await recordGradeAudit({
+      sessionId: sessionId!,
+      questionId: m.questionId,
+      actorId: args.acteur?.id ?? args.enteredById,
+      actorEmail: args.acteur?.email ?? null,
+      action: "manual_paper",
+      oldScore: null,
+      newScore: Math.max(0, Math.min(max, Math.round(m.score * 4) / 4)),
+      newMode: "manual_paper",
+      reason: "Correction de la question rédigée sur la copie",
+    });
+  }
 
   logger.info("[paper] Copie saisie", {
     paperExamId: args.paperExamId,

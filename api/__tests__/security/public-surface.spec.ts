@@ -82,6 +82,7 @@ describe("surface publique : inventaire des procédures", () => {
         "evaluation.listForTeacher",
         "evaluation.listPublic",
         "evaluation.seed",
+        "grading2.auditTrail",
         "grading2.getResults",
         "grading2.gradeSession",
         "grading2.overrideGrade",
@@ -171,9 +172,16 @@ describe("surface publique : routes enseignant inaccessibles sans rôle", () => 
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
+  it("grading2.auditTrail refuse un anonyme", async () => {
+    // Le journal contient qui a changé quelle note : jamais accessible.
+    await expect(caller().grading2.auditTrail({ sessionId: 1 })).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+  });
+
   it("grading2.overrideGrade refuse un anonyme", async () => {
     await expect(
-      caller().grading2.overrideGrade({ responseId: 1, score: 20 }),
+      caller().grading2.overrideGrade({ responseId: 1, score: 20, reason: "test" }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
