@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
-import { createRouter, publicQuery, studentQuery, teacherQuery } from "../middleware";
+import { createRouter, publicQuery, studentQuery, teacherQuery, lireJetonEleve } from "../middleware";
 import { getDb } from "../queries/connection";
 import {
   evaluations,
@@ -194,7 +194,7 @@ export const sessionRouter = createRouter({
       const ip = getClientIp(ctx.req);
       const result = await processHeartbeat(
         {
-          sessionToken: ctx.req.headers.get("x-session-token") ?? "",
+          sessionToken: lireJetonEleve(ctx.req),
           ...input,
         },
         ip,

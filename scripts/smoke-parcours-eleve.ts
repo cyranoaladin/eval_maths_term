@@ -87,6 +87,30 @@ async function main() {
   const qcm = questions.filter((q) => q.type === "qcm");
   check("les QCM ont leurs options", qcm.every((q) => Array.isArray(q.options) && q.options.length > 0));
 
+  console.log("\n3 bis. Surveillance : heartbeat et brouillons");
+  // Le heartbeat lisait un en-tête que personne n'émettait : il répondait 401
+  // à chaque envoi, sans que l'élève ni l'enseignant ne puissent le voir.
+  const battement = await client.session.heartbeat.mutate({
+    clientTime: Date.now(),
+    focused: true,
+    currentQuestionIndex: 0,
+    fingerprintHash: "smoke-empreinte",
+  });
+  check("session.heartbeat est accepté", battement.status !== undefined, battement.status);
+  check("le temps restant vient du serveur",
+    typeof battement.remainingMs === "number" && battement.remainingMs > 0,
+    `${Math.round((battement.remainingMs ?? 0) / 1000)} s`);
+  check("la session n'est pas déclarée expirée", battement.expired === false);
+
+  // Un brouillon écrit doit se relire : c'est ce qui permet de reprendre une
+  // copie après un rechargement de page ou une coupure réseau.
+  const qBrouillon = questions[0]!;
+  await client.answer.saveDraft.mutate({ questionId: qBrouillon.id, answer: "brouillon-smoke" });
+  const brouillons = await client.answer.listDrafts.query();
+  check("le brouillon enregistré est relu",
+    brouillons.some((d) => d.questionId === qBrouillon.id && d.answer === "brouillon-smoke"),
+    `${brouillons.length} brouillon(s)`);
+
   console.log("\n4. Soumission");
   const answers = questions.map((q) => ({
     questionId: q.id,

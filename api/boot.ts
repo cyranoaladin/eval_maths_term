@@ -6,6 +6,7 @@ import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter } from "./router";
 import { createContext } from "./context";
 import { env } from "./lib/env";
+import { STUDENT_SESSION_HEADER } from "./middleware";
 import { logger } from "./lib/logger";
 import { createOAuthCallbackHandler, createOAuthInitHandler } from "./kimi/auth";
 import { csrfMiddleware } from "./lib/csrf";
@@ -33,7 +34,7 @@ app.use("/api/*", cors({
   origin: env.allowedOrigins,
   credentials: true,
   allowMethods: ["GET", "POST", "OPTIONS"],
-  allowHeaders: ["Content-Type", "Authorization", "x-student-session-token"],
+  allowHeaders: ["Content-Type", "Authorization", STUDENT_SESSION_HEADER],
 }));
 
 // Route OAuth — démarrage du flow (génère le state CSRF)
