@@ -87,8 +87,10 @@ export default function PaperEntry() {
     grilleRef.current?.focus();
   }, []);
 
-  const questions = data?.questions ?? [];
-  const redigees = data?.openQuestions ?? [];
+  // Mémoïsées : sans cela, `?? []` crée un tableau à chaque rendu et les
+  // callbacks qui en dépendent sont recréés inutilement.
+  const questions = useMemo(() => data?.questions ?? [], [data]);
+  const redigees = useMemo(() => data?.openQuestions ?? [], [data]);
 
   const notes = useMemo(() => {
     if (notesRedigees) return notesRedigees;
