@@ -6,7 +6,7 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { createRouter, teacherQuery } from "../middleware";
 import { getDb } from "../queries/connection";
 import {
@@ -234,6 +234,92 @@ export const paperRouter = createRouter({
       const parTirage = new Map(copies.map((c) => [c.paperExamId, Number(c.n)]));
 
       return rows.map((r) => ({ ...r, copyCount: parTirage.get(r.id) ?? 0 }));
+    }),
+
+  /**
+   * Vue transversale des tirages, pour le tableau de bord.
+   *
+   * Aucune route existante ne traverse les évaluations : composer côté client
+   * demanderait une requête par évaluation.
+   */
+  overview: teacherQuery
+    .input(z.object({ limite: z.number().int().min(1).max(50).default(10) }).optional())
+    .query(async ({ input, ctx }) => {
+      const db = getDb();
+      const limite = input?.limite ?? 10;
+
+      const tirages = await db
+        .select({
+          id: paperExams.id,
+          label: paperExams.label,
+          status: paperExams.status,
+          generatedAt: paperExams.generatedAt,
+          createdAt: paperExams.createdAt,
+          evaluationId: paperExams.evaluationId,
+          evaluationTitle: evaluations.title,
+          className: classes.name,
+        })
+        .from(paperExams)
+        .innerJoin(classes, eq(classes.id, paperExams.classId))
+        .innerJoin(evaluations, eq(evaluations.id, paperExams.evaluationId))
+        .where(eq(classes.ownerId, ctx.user.id))
+        .orderBy(desc(paperExams.id))
+        .limit(limite);
+
+      if (tirages.length === 0) {
+        return { tirages: [], derniersResultats: [] };
+      }
+
+      const ids = tirages.map((t) => t.id);
+      const copies = await db
+        .select({
+          paperExamId: paperCopies.paperExamId,
+          enteredAt: paperCopies.enteredAt,
+          sessionId: paperCopies.sessionId,
+          normalizedScore: sessions.normalizedScore,
+          studentLast: students.lastName,
+          studentFirst: students.firstName,
+        })
+        .from(paperCopies)
+        .innerJoin(students, eq(students.id, paperCopies.studentId))
+        .leftJoin(sessions, eq(sessions.id, paperCopies.sessionId))
+        .where(inArray(paperCopies.paperExamId, ids));
+
+      const parTirage = new Map<number, { total: number; saisies: number; notes: number[] }>();
+      for (const c of copies) {
+        const e = parTirage.get(c.paperExamId) ?? { total: 0, saisies: 0, notes: [] };
+        e.total++;
+        if (c.enteredAt !== null) e.saisies++;
+        const n = toNumber(c.normalizedScore);
+        if (n !== null) e.notes.push(n);
+        parTirage.set(c.paperExamId, e);
+      }
+
+      return {
+        tirages: tirages.map((t) => {
+          const e = parTirage.get(t.id) ?? { total: 0, saisies: 0, notes: [] };
+          return {
+            ...t,
+            copies: e.total,
+            saisies: e.saisies,
+            restantes: e.total - e.saisies,
+            moyenne: e.notes.length
+              ? Math.round((e.notes.reduce((a, b) => a + b, 0) / e.notes.length) * 100) / 100
+              : null,
+          };
+        }),
+        // Dernières copies notées, tous tirages confondus.
+        derniersResultats: copies
+          .filter((c) => c.enteredAt !== null)
+          .sort((a, b) => (b.enteredAt?.getTime() ?? 0) - (a.enteredAt?.getTime() ?? 0))
+          .slice(0, 8)
+          .map((c) => ({
+            paperExamId: c.paperExamId,
+            eleve: `${c.studentLast} ${c.studentFirst}`.trim(),
+            note20: toNumber(c.normalizedScore),
+            saisieLe: c.enteredAt,
+          })),
+      };
     }),
 
   // ─── Saisie manuelle ──────────────────────────────────────────────────────

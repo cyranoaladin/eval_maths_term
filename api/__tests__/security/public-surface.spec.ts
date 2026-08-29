@@ -95,6 +95,7 @@ describe("surface publique : inventaire des procédures", () => {
         "paper.listClasses",
         "paper.listExams",
         "paper.listStudents",
+        "paper.overview",
         "paper.results",
         "paper.saveEntry",
         "paper.status",
@@ -214,6 +215,7 @@ describe("surface publique : routes enseignant inaccessibles sans rôle", () => 
     await expect(c.authoring.llmStatus()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     // Le tirage produit le corrigé : il ne doit jamais être atteignable.
     await expect(c.paper.listClasses()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(c.paper.overview()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(
       c.paper.createAndGenerate({ evaluationId: 1, classId: 1 }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
