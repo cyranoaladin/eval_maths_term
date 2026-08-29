@@ -7,6 +7,8 @@ import type { PublicQuestion, PublicEvaluationInfo } from "@contracts/public-typ
 import { logger } from "../lib/logger";
 import { shuffleDeterministic } from "../grading/shuffle";
 import { optionShuffleSeed } from "../grading/grade-session";
+import { modeSaisie } from "../grading/input-mode";
+import type { GradingRubric } from "@contracts/grading-rubric";
 
 export const questionRouter = createRouter({
   /**
@@ -29,6 +31,9 @@ export const questionRouter = createRouter({
           points: questions.points,
           order: questions.order,
           imageUrl: questions.imageUrl,
+          // Lu pour en dériver la seule nature du champ de saisie. Le barème
+          // lui-même ne quitte jamais cette fonction.
+          gradingRubric: questions.gradingRubric,
           // CRITIQUE : correctAnswer est exclu volontairement — ne jamais le renvoyer au client
         })
         .from(questions)
@@ -55,6 +60,9 @@ export const questionRouter = createRouter({
         points: q.points,
         order: q.order,
         imageUrl: q.imageUrl ?? null,
+        ...(q.type === "short_answer"
+          ? { inputMode: modeSaisie(q.gradingRubric as GradingRubric | null) }
+          : {}),
       }));
 
       // Mélange des questions selon le shuffleSeed (mulberry32)

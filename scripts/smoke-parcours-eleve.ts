@@ -84,6 +84,20 @@ async function main() {
   const serialized = JSON.stringify(questions);
   check("aucune correction ne fuit (correctAnswer)", !serialized.includes("correctAnswer"));
   check("aucune rubric ne fuit (gradingRubric)", !serialized.includes("gradingRubric"));
+  // Liste close : toute nouvelle clé exposée à l'élève doit être décidée ici,
+  // pas héritée par accident d'un `select` élargi côté serveur.
+  const clesAutorisees = new Set([
+    "id", "type", "question", "options", "justificationRequired",
+    "points", "order", "imageUrl", "inputMode",
+  ]);
+  const clesVues = new Set(questions.flatMap((q) => Object.keys(q)));
+  const clesInattendues = [...clesVues].filter((k) => !clesAutorisees.has(k));
+  check("aucune clé inattendue n'est exposée", clesInattendues.length === 0,
+    clesInattendues.join(", ") || "aucune");
+  const courtes = questions.filter((q) => q.type === "short_answer");
+  check("les réponses courtes portent la nature de leur champ",
+    courtes.length > 0 && courtes.every((q) => q.inputMode === "math" || q.inputMode === "text"),
+    courtes.map((q) => q.inputMode).join(", "));
   const qcm = questions.filter((q) => q.type === "qcm");
   check("les QCM ont leurs options", qcm.every((q) => Array.isArray(q.options) && q.options.length > 0));
 

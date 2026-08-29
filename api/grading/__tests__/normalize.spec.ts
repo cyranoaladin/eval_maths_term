@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { evaluate } from "mathjs";
 import { normalizeExpression } from "../normalize";
 
 /**
@@ -232,5 +233,72 @@ describe("LaTeX produit par le champ de saisie mathématique", () => {
     expect(normalizeExpression("∞")).toBe("Infinity");
     expect(normalizeExpression("+\\infty")).toBe("Infinity");
     expect(normalizeExpression("-\\infty")).toBe("-Infinity");
+  });
+});
+
+/**
+ * Ce que MathLive écrit réellement quand un élève tape au clavier.
+ *
+ * Les chaînes ci-dessous ne sont pas inventées : elles ont été relevées dans un
+ * navigateur, en tapant la séquence indiquée en commentaire dans le champ de
+ * l'écran d'évaluation. LaTeX autorise un argument d'un seul caractère sans
+ * accolades, et MathLive en profite : « 1/2 » ne produit pas `\frac{1}{2}` mais
+ * `\frac12`. La normalisation ne reconnaissait que la forme accoladée — la
+ * fraction la plus courante de toutes était donc rendue illisible pour mathjs.
+ */
+describe("normalizeExpression — sorties réelles de MathLive", () => {
+  const mathjs = { evaluable: (e: string) => { try { evaluate(e, { x: 2 }); return true; } catch { return false; } } };
+
+  it("lit une fraction écrite sans accolades", () => {
+    expect(normalizeExpression("\\frac12")).toBe("((1)/(2))");      // frappe « 1/2 »
+    expect(normalizeExpression("\\frac34")).toBe("((3)/(4))");      // frappe « 3/4 »
+    expect(normalizeExpression("-\\frac12")).toBe("-((1)/(2))");    // frappe « -1/2 »
+  });
+
+  it("lit les formes mixtes d'écriture d'une fraction", () => {
+    expect(normalizeExpression("\\frac1{2}")).toBe("((1)/(2))");
+    expect(normalizeExpression("\\frac{1}2")).toBe("((1)/(2))");
+    expect(normalizeExpression("\\dfrac12")).toBe("((1)/(2))");
+  });
+
+  it("lit une racine écrite sans accolades", () => {
+    expect(normalizeExpression("\\sqrt2")).toBe("sqrt(2)");
+    expect(normalizeExpression("\\sqrt{\\left(2\\right)}")).toBe("sqrt((2))"); // frappe « sqrt(2) »
+  });
+
+  it("rend évaluables par mathjs les expressions réellement produites", () => {
+    // Le vrai critère : mathjs doit savoir lire le résultat. Une chaîne
+    // « normalisée » qu'il refuse vaut zéro pour l'élève.
+    const relevees = [
+      "\\frac12",                       // 1/2
+      "\\frac34",                       // 3/4
+      "-\\frac12",                      // -1/2
+      "2\\cdot x",                      // 2*x
+      "x^2",                             // x^2
+      "x^{\\left(\\frac12\\right)}",   // x^(1/2)
+      "\\sqrt{\\left(2\\right)}",       // sqrt(2)
+      "\\ln\\left(x\\right)",           // ln(x)
+      "0,5",                             // 0,5 (virgule française)
+      "3.14",                            // 3.14
+      "\\frac{2}{3\\cdot x}",            // 2/(3*x)
+    ];
+    for (const brute of relevees) {
+      const normalisee = normalizeExpression(brute);
+      expect(
+        mathjs.evaluable(normalisee),
+        `mathjs refuse « ${normalisee} » issue de « ${brute} »`,
+      ).toBe(true);
+    }
+  });
+
+  it("conserve la valeur, pas seulement la lisibilité", () => {
+    // Une normalisation qui rendrait l'expression lisible en changeant sa
+    // valeur serait bien pire qu'une normalisation absente.
+    expect(evaluate(normalizeExpression("\\frac12"))).toBe(0.5);
+    expect(evaluate(normalizeExpression("\\frac34"))).toBe(0.75);
+    expect(evaluate(normalizeExpression("-\\frac12"))).toBe(-0.5);
+    expect(evaluate(normalizeExpression("0,5"))).toBe(0.5);
+    expect(evaluate(normalizeExpression("\\sqrt{\\left(2\\right)}"))).toBeCloseTo(Math.SQRT2, 12);
+    expect(evaluate(normalizeExpression("x^{\\left(\\frac12\\right)}"), { x: 9 })).toBeCloseTo(3, 12);
   });
 });

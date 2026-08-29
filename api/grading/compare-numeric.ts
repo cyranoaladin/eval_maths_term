@@ -5,6 +5,7 @@
  * Utilisée pour les limites, intégrales, probabilités (Q11, Q13, Q15).
  */
 import { normalizeExpression } from "./normalize";
+import { evaluate } from "mathjs";
 
 export interface NumericResult {
   equal: boolean;
@@ -51,6 +52,17 @@ function parseNumericSafe(expr: string): number | null {
     const num = parseInt(fracMatch[1], 10);
     const den = parseInt(fracMatch[2], 10);
     if (den !== 0) return num / den;
+  }
+
+  // Tout le reste : la normalisation produit déjà une chaîne que mathjs sait
+  // lire. Les cas particuliers ci-dessus étaient une liste écrite à la main —
+  // `log(2)`, `log(3)`, `log(5)`… — et toute réponse numérique écrite comme une
+  // expression un peu composée en sortait « non convertible », donc fausse.
+  try {
+    const v = evaluate(normalized);
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+  } catch {
+    // Expression illisible : on laisse le comparateur le dire.
   }
 
   return null;

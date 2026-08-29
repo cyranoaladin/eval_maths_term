@@ -70,6 +70,18 @@ export function normalizeExpression(s: string): string {
     // \bln\b ne matche pas 'ln2' car '2' est \w — on utilise un lookahead plus large
     .replace(/\bln\(/g, "log(")
     .replace(/\bln(?=[^a-zA-Z]|$)/g, "log")  // ln sans parenthèse (ex: ln2, ln x, ln)
+    // 8c. Arguments LaTeX d'un seul caractère : LaTeX autorise `\frac12` et
+    // `\sqrt2`, et c'est exactement ce que MathLive écrit quand l'élève tape
+    // « 1/2 » — la fraction la plus courante de toutes. La règle suivante ne
+    // reconnaissait que la forme accoladée : `\frac12` traversait la
+    // normalisation intact et mathjs le refusait, comptant la réponse fausse.
+    // On rétablit les accolades sans rien changer au sens.
+    .replace(
+      /\\([dt]?frac)(?:\{([^{}]*)\}|([^{}\\]))(?:\{([^{}]*)\}|([^{}\\]))/g,
+      (_m, nom, numAcc, numSeul, denAcc, denSeul) =>
+        `\\${nom}{${numAcc ?? numSeul}}{${denAcc ?? denSeul}}`,
+    )
+    .replace(/\\sqrt(?!\{)([0-9a-zA-Z])/g, "sqrt($1)")
     // 9. Fractions LaTeX \frac{num}{den} et \dfrac{num}{den}
     // Gestion imbriquée à 1 niveau — pour les fractions imbriquées, le LLM prend le relais
     .replace(/\\d?frac\{([^{}]+)\}\{([^{}]+)\}/g, "(($1)/($2))")
@@ -96,6 +108,11 @@ export function normalizeExpression(s: string): string {
     // 14. Lowercase final — mathjs est case-sensitive pour les constantes (pi, e)
     // mais on lowercase tout sauf les noms de fonctions déjà en minuscule
     .toLowerCase()
+    // 14b. Les fonctions écrites en majuscules — « LN(2) » — n'étaient
+    // traduites nulle part : les règles ci-dessus s'appliquent avant le passage
+    // en minuscules, et mathjs ne connaît pas `ln`. On rattrape après.
+    .replace(/\bln\(/g, "log(")
+    .replace(/\bln(?=[^a-z]|$)/g, "log")
     // 15. `Infinity` est la seule constante mathjs qui porte une majuscule :
     // le passage en minuscules ci-dessus la rendait illisible, et toute réponse
     // comportant une limite infinie était comptée fausse.

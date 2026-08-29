@@ -47,10 +47,13 @@ export default function Evaluation() {
   const [isStarted, setIsStarted] = useState(!!sessionToken);
   /**
    * Écrire une fraction ou une racine au clavier est pénible et source
-   * d'erreurs de syntaxe. Le champ mathématique est donc proposé par défaut,
-   * avec un repli clavier pour qui préfère taper « 1/2 ».
+   * d'erreurs de syntaxe : le champ mathématique est proposé par défaut sur les
+   * questions dont la correction porte sur un objet mathématique, avec un repli
+   * clavier pour qui préfère taper « 1/2 ». Sur une question dont la réponse
+   * attendue est textuelle, c'est l'inverse — l'éditeur de formules ne ferait
+   * que gêner.
    */
-  const [saisieClavier, setSaisieClavier] = useState<Record<number, boolean>>({});
+  const [saisieClavier, setSaisieClavier] = useState<Record<number, boolean | undefined>>({});
 
   const answersRef = useRef<Record<number, { answer: string; justification?: string }>>({});
   const handleSubmitRef = useRef<(isTimeout?: boolean) => Promise<void>>(async () => {});
@@ -513,21 +516,28 @@ export default function Evaluation() {
                         onClick={() =>
                           setSaisieClavier((prev) => ({
                             ...prev,
-                            [currentQ.id]: !prev[currentQ.id],
+                            [currentQ.id]:
+                              !(prev[currentQ.id] ?? currentQ.inputMode === "text"),
                           }))
                         }
                         className="text-xs text-blue-700 hover:underline"
                       >
-                        {saisieClavier[currentQ.id]
+                        {(saisieClavier[currentQ.id] ??
+                          currentQ.inputMode === "text")
                           ? "Saisie mathématique"
                           : "Saisie au clavier"}
                       </button>
                     </div>
 
-                    {saisieClavier[currentQ.id] ? (
+                    {(saisieClavier[currentQ.id] ??
+                      currentQ.inputMode === "text") ? (
                       <Textarea
                         id={`answer-${currentQ.id}`}
-                        placeholder="Par exemple : 1/2 ou 2*exp(2x)-3"
+                        placeholder={
+                          currentQ.inputMode === "text"
+                            ? "Écrivez votre réponse"
+                            : "Par exemple : 1/2 ou 2*exp(2x)-3"
+                        }
                         value={answers[currentQ.id]?.answer || ""}
                         onChange={(e) => handleAnswer(currentQ.id, e.target.value)}
                         className="min-h-[80px]"
