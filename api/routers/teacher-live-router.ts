@@ -11,6 +11,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createRouter, teacherQuery } from "../middleware";
 import { getDb } from "../queries/connection";
+import { assertSessionAccessible } from "../queries/ownership";
 import { sessions, cheatEvents, answerDrafts } from "@db/schema";
 import { eq } from "drizzle-orm";
 import { runIdleSweep } from "../anticheat/idle-sweeper";
@@ -109,7 +110,8 @@ export const teacherLiveRouter = createRouter({
    */
   forceSubmit: teacherQuery
     .input(z.object({ sessionId: z.number().int().positive() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await assertSessionAccessible(input.sessionId, ctx.user.id);
       const db = getDb();
       const [session] = await db
         .select({ status: sessions.status })

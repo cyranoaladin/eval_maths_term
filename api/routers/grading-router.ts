@@ -19,6 +19,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createRouter, teacherQuery } from "../middleware";
 import { getDb } from "../queries/connection";
+import { assertSessionAccessible } from "../queries/ownership";
 import { responses, sessions, questions } from "@db/schema";
 import { eq } from "drizzle-orm";
 import { gradeSessionResponses } from "../grading/grade-session";
@@ -41,17 +42,8 @@ export const gradingRouter2 = createRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
+      await assertSessionAccessible(input.sessionId, ctx.user.id);
       const db = getDb();
-
-      const [session] = await db
-        .select({ id: sessions.id })
-        .from(sessions)
-        .where(eq(sessions.id, input.sessionId))
-        .limit(1);
-
-      if (!session) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Session introuvable" });
-      }
 
       const [avant] = await db
         .select({ totalScore: sessions.totalScore })
@@ -82,7 +74,8 @@ export const gradingRouter2 = createRouter({
    */
   getResults: teacherQuery
     .input(z.object({ sessionId: z.number().int().positive() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      await assertSessionAccessible(input.sessionId, ctx.user.id);
       const db = getDb();
 
       const [session] = await db
@@ -175,6 +168,9 @@ export const gradingRouter2 = createRouter({
       if (!avant) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Réponse introuvable" });
       }
+      // Modifier une note exige d'être l'enseignant de l'évaluation, pas
+      // seulement d'être enseignant.
+      await assertSessionAccessible(avant.sessionId, ctx.user.id);
 
       // Le barème de la question borne la note : on ne peut pas attribuer
       // plus de points que la question n'en vaut.
@@ -230,7 +226,8 @@ export const gradingRouter2 = createRouter({
   /** Historique des interventions sur une copie — lecture seule. */
   auditTrail: teacherQuery
     .input(z.object({ sessionId: z.number().int().positive() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      await assertSessionAccessible(input.sessionId, ctx.user.id);
       const db = getDb();
       const lignes = await db
         .select()

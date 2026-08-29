@@ -10,7 +10,8 @@ import {
   responses,
   cheatEvents as cheatEventsTable,
 } from "@db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
+import { assertSessionAccessible } from "../queries/ownership";
 import { gradeSessionResponses } from "../grading/grade-session";
 import { signStudentToken, signResultsToken, verifyResultsToken } from "../anticheat/session-token";
 import { processHeartbeat } from "../anticheat/heartbeat";
@@ -413,9 +414,18 @@ export const sessionRouter = createRouter({
    * Récupère toutes les sessions pour le dashboard prof.
    * III.2 : exige le rôle teacher.
    */
-  getAllForTeacher: teacherQuery.query(async () => {
+  getAllForTeacher: teacherQuery.query(async ({ ctx }) => {
     const db = getDb();
-    const rows = await db.select().from(sessions).orderBy(sessions.startedAt);
+    // Un enseignant ne voit que les copies de ses propres évaluations. Les
+    // évaluations sans propriétaire restent partagées — voir
+    // `api/queries/ownership.ts`.
+    const rows = await db
+      .select()
+      .from(sessions)
+      .innerJoin(evaluations, eq(evaluations.id, sessions.evaluationId))
+      .where(or(eq(evaluations.ownerId, ctx.user.id), isNull(evaluations.ownerId)))
+      .orderBy(sessions.startedAt)
+      .then((lignes) => lignes.map((l) => l.sessions));
     // Conversion à la frontière : le pilote MySQL rend les DECIMAL en chaînes,
     // et le client fait des moyennes avec ces valeurs.
     return rows.map((s) => ({
@@ -431,7 +441,8 @@ export const sessionRouter = createRouter({
    */
   getDetailsForTeacher: teacherQuery
     .input(z.object({ sessionId: z.number() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      await assertSessionAccessible(input.sessionId, ctx.user.id);
       const db = getDb();
       const [session] = await db
         .select()

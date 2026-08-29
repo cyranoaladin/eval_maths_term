@@ -10,7 +10,10 @@
  * `TEACHER_SESSION_SECRET`, que seul le détenteur du `.env` possède. Aucune
  * route de l'application ne délivre ce jeton.
  *
- * Usage : npx tsx scripts/dev-session.ts [nom] [email]
+ * Usage : npx tsx scripts/dev-session.ts [nom] [email] [identifiant]
+ *
+ * L'identifiant permet de fabriquer un second enseignant, nécessaire pour
+ * vérifier qu'un professeur n'accède pas aux copies d'un autre.
  */
 import "dotenv/config";
 import { eq } from "drizzle-orm";
@@ -19,7 +22,7 @@ import { getDb } from "../api/queries/connection";
 import { users } from "../db/schema";
 import { env } from "../api/lib/env";
 
-const UNION_ID = "dev-teacher";
+const UNION_ID_PAR_DEFAUT = "dev-teacher";
 
 async function main() {
   if (process.env.NODE_ENV === "production") {
@@ -29,6 +32,7 @@ async function main() {
 
   const name = process.argv[2] ?? "Enseignant (dev)";
   const email = process.argv[3] ?? "dev@localhost";
+  const UNION_ID = process.argv[4] ?? UNION_ID_PAR_DEFAUT;
   const db = getDb();
 
   const [existing] = await db.select().from(users).where(eq(users.unionId, UNION_ID)).limit(1);
