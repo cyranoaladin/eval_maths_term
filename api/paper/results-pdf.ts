@@ -208,6 +208,32 @@ export function renderRelevePdf(releve: Releve): Promise<Buffer> {
 
     enTeteTableau();
 
+    /**
+     * Un nom trop long pour sa colonne était coupé net, sans point de suspension :
+     * « François-Xavier de La Rochefoucauld- » sur un relevé remis à une
+     * famille. On réduit d'abord le corps — un nom long tient presque toujours
+     * à 7 points —, et on n'abrège qu'en dernier recours, avec une marque
+     * visible que le nom est incomplet.
+     */
+    function ecrireNom(nom: string, x: number, y: number, largeurCol: number) {
+      const corpsNormal = 9.5;
+      for (const corps of [corpsNormal, 8.5, 7.5, 7]) {
+        doc.fontSize(corps);
+        if (doc.widthOfString(nom) <= largeurCol) {
+          doc.text(nom, x, y, { width: largeurCol, lineBreak: false });
+          doc.fontSize(corpsNormal);
+          return;
+        }
+      }
+      doc.fontSize(7);
+      let abrege = nom;
+      while (abrege.length > 1 && doc.widthOfString(`${abrege}…`) > largeurCol) {
+        abrege = abrege.slice(0, -1);
+      }
+      doc.text(`${abrege}…`, x, y, { width: largeurCol, lineBreak: false });
+      doc.fontSize(corpsNormal);
+    }
+
     doc.fontSize(9.5);
     for (const l of releve.lignes) {
       // Saut de page : on réimprime l'en-tête du tableau.
@@ -220,7 +246,6 @@ export function renderRelevePdf(releve: Releve): Promise<Buffer> {
       const y = doc.y;
       const cells: Array<[string, (typeof colonnes)[number]]> = [
         [l.copyNumber !== null ? String(l.copyNumber) : "—", colonnes[0]],
-        [l.nom, colonnes[1]],
         [
           l.points !== null
             ? `${String(l.points).replace(".", ",")} / ${l.maxPoints ?? "?"}`
@@ -233,6 +258,8 @@ export function renderRelevePdf(releve: Releve): Promise<Buffer> {
       ];
 
       doc.fillColor(l.saisie ? "#0f172a" : "#94a3b8");
+      ecrireNom(l.nom, gauche + colonnes[1].x, y, colonnes[1].w);
+      doc.y = y;
       for (const [texte, col] of cells) {
         doc.text(texte, gauche + col.x, y, { width: col.w, align: col.align });
         doc.y = y;
