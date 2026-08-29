@@ -111,6 +111,27 @@ app.get("/api/paper/:examId/:file", async (c) => {
 
   if (!row) return c.json({ error: "Tirage introuvable" }, 404);
 
+  // Le relevé de notes est produit à la demande : il reflète l'état courant
+  // des corrections, y compris les interventions manuelles postérieures au
+  // tirage. Le lire sur disque servirait une version périmée.
+  if (descriptor.genere) {
+    const { buildReleve, renderRelevePdf } = await import("./paper/results-pdf");
+    try {
+      const pdf = await renderRelevePdf(await buildReleve(examId));
+      return c.body(pdf as unknown as ArrayBuffer, 200, {
+        "Content-Type": descriptor.type,
+        "Content-Disposition": `inline; filename="${file}"`,
+        "Cache-Control": "private, no-store",
+      });
+    } catch (e) {
+      logger.error("[paper] Relevé de notes non produit", {
+        examId,
+        error: String(e).slice(0, 200),
+      });
+      return c.json({ error: "Relevé indisponible" }, 500);
+    }
+  }
+
   const { readFile } = await import("node:fs/promises");
   const { join } = await import("node:path");
   try {

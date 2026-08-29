@@ -27,10 +27,12 @@ export function workdirFor(paperExamId: number): string {
 }
 
 /** Documents téléchargeables — liste fermée, aucune traversée de chemin possible. */
-export const DOWNLOADABLE: Record<string, { label: string; type: string }> = {
+export const DOWNLOADABLE: Record<string, { label: string; type: string; genere?: boolean }> = {
   "sujet.pdf": { label: "Sujet à imprimer", type: "application/pdf" },
   "corrige.pdf": { label: "Corrigé", type: "application/pdf" },
   "catalog.pdf": { label: "Catalogue des questions", type: "application/pdf" },
+  // Produit à la demande depuis la base, pas lu sur le disque.
+  "resultats.pdf": { label: "Relevé de notes", type: "application/pdf", genere: true },
 };
 
 export interface GenerateResult {

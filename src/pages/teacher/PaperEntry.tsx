@@ -205,8 +205,13 @@ export default function PaperEntry() {
                 <PenLine className="h-4 w-4 mr-1.5" /> Corriger les copies
               </Link>
             </Button>
+            <Button asChild variant="outline" size="sm">
+              <a href={`/api/paper/${paperExamId}/resultats.pdf`} target="_blank" rel="noreferrer">
+                <Download className="h-4 w-4 mr-1.5" /> Relevé de notes (PDF)
+              </a>
+            </Button>
             <Button variant="outline" size="sm" onClick={() => exporterCsv(resultats)}>
-              <Download className="h-4 w-4 mr-1.5" /> Exporter les notes (CSV)
+              <Download className="h-4 w-4 mr-1.5" /> Notes (CSV)
             </Button>
           </div>
         </div>
