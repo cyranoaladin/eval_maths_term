@@ -23,6 +23,7 @@ import {
   AlertTriangle, ArrowLeft, Check, History, Lock, RefreshCw, Users, X,
 } from "lucide-react";
 import { MathLatex } from "@/components/math/MathLatex";
+import { SuspicionBadge } from "@/components/teacher/SuspicionBadge";
 import { trpc } from "@/providers/trpc-client";
 import type { GradingRubric } from "@contracts/grading-rubric";
 
@@ -195,7 +196,21 @@ export default function Correction() {
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div>
-                      <CardTitle className="text-base">{copieCourante.name}</CardTitle>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <CardTitle className="text-base">{copieCourante.name}</CardTitle>
+                        {/*
+                          Le score de suspicion n'était visible que sur le
+                          tableau de surveillance, pendant la composition — donc
+                          plus du tout au moment où l'enseignant note la copie.
+                          C'est pourtant là qu'il en a besoin.
+                        */}
+                        {detail?.session.suspicionVerdict && (
+                          <SuspicionBadge
+                            verdict={detail.session.suspicionVerdict}
+                            score={detail.session.suspicionScore ?? 0}
+                          />
+                        )}
+                      </div>
                       <p className="text-sm text-muted-foreground mt-1">
                         {detail?.session.totalScore ?? 0}/{detail?.session.maxScore ?? 0} points
                         {detail?.session.normalizedScore != null && (
@@ -231,6 +246,14 @@ export default function Correction() {
                       </Button>
                     </div>
                   </div>
+                  {(detail?.cheatEvents.length ?? 0) > 0 && (
+                    <p className="text-xs text-amber-700">
+                      {detail!.cheatEvents.length} incident
+                      {detail!.cheatEvents.length > 1 ? "s" : ""} de surveillance :{" "}
+                      {[...new Set(detail!.cheatEvents.map((e) => e.type))].join(", ")}.
+                      Un score élevé ne vaut pas preuve — c'est à vous de trancher.
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     Une recorrection réapplique le barème automatique.
                     <span className="font-medium"> Les notes posées à la main sont conservées.</span>

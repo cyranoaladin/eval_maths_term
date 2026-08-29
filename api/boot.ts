@@ -149,6 +149,16 @@ app.get("/api/paper/:examId/:file", async (c) => {
 
 app.all("/api/*", (c) => c.json({ error: "Ressource introuvable" }, 404));
 
+/**
+ * Le balayage d'inactivité doit tourner de lui-même : sans lui, une copie
+ * abandonnée n'est remise que si un autre élève émet un heartbeat. Il ne
+ * démarre pas sous `NODE_ENV=test`, où les seuils sont pilotés par les tests.
+ */
+if (env.nodeEnv !== "test") {
+  const { demarrerBalayageInactivite } = await import("./anticheat/idle-scheduler");
+  demarrerBalayageInactivite();
+}
+
 export default app;
 
 if (env.isProduction) {
