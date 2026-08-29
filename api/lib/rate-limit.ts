@@ -51,8 +51,33 @@ export function checkRateLimit(key: string, max: number, windowMs: number): bool
  * Clé : IP (pour les routes publiques) ou sessionId (pour les routes élève).
  */
 export const RateLimits = {
-  /** Démarrage d'une session : 5 requêtes/minute par IP */
+  /**
+   * Démarrage d'une session, par **candidat** : cinq tentatives par minute
+   * pour un même nom sur une même évaluation. C'est ce qui borne une personne
+   * qui s'acharne, et c'est le comportement que la limite doit viser.
+   */
   sessionStart: { max: 5, windowMs: 60_000 },
+  /**
+   * Plafond par adresse IP.
+   *
+   * L'ancienne limite était de cinq ouvertures par minute et par IP. Un
+   * établissement sort par une seule adresse : une classe de trente-cinq
+   * élèves qui entrent en salle ne pouvait matériellement pas commencer. La
+   * mesure de charge l'a montré sans appel — sur 5 576 tentatives réparties
+   * sur 200 élèves, 10 sessions se sont ouvertes et 5 566 ont été refusées.
+   *
+   * Le pire cas légitime est connu : un surveillant dit « vous pouvez
+   * commencer » et deux cents élèves cliquent dans la même minute. La fenêtre
+   * est donc de cinq minutes, pour absorber cette pointe sans la lisser
+   * artificiellement, et le plafond de six cents ouvertures — trois fois un
+   * établissement entier, de quoi encaisser les reprises.
+   *
+   * Un script d'attaque, lui, en tente des milliers : la mesure de charge en a
+   * produit plus de cinq mille en moins de deux minutes. Il est arrêté à six
+   * cents. La protection n'est pas affaiblie, elle est reportée sur la clé qui
+   * distingue réellement l'abus du trafic légitime.
+   */
+  sessionStartPerIp: { max: 600, windowMs: 300_000 },
   /** Signalement d'événements de triche : 10/min par sessionId */
   cheatReport: { max: 10, windowMs: 60_000 },
   /** Sauvegarde de réponses : 30/min par sessionId */

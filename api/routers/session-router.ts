@@ -88,12 +88,24 @@ export const sessionRouter = createRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      // III.9 : rate limit sur session.start
+      // III.9 : limitation du démarrage de session, en deux étages.
+      //
+      // Par candidat d'abord : c'est la personne qui s'acharne que la limite
+      // doit borner. Par adresse ensuite, avec un plafond dimensionné pour un
+      // établissement — tous les élèves d'un lycée sortent par la même IP, et
+      // une limite pensée pour un poste isolé leur interdisait de composer.
       const ip = getClientIp(ctx.req);
-      if (!checkRateLimit(`session-start:${ip}`, RateLimits.sessionStart.max, RateLimits.sessionStart.windowMs)) {
+      const candidat = `${ip}|${input.evaluationId}|${input.studentName.trim().toLowerCase()}`;
+      if (!checkRateLimit(`session-start:${candidat}`, RateLimits.sessionStart.max, RateLimits.sessionStart.windowMs)) {
         throw new TRPCError({
           code: "TOO_MANY_REQUESTS",
-          message: "Trop de tentatives. Veuillez patienter une minute.",
+          message: "Trop de tentatives pour ce nom. Veuillez patienter une minute.",
+        });
+      }
+      if (!checkRateLimit(`session-start-ip:${ip}`, RateLimits.sessionStartPerIp.max, RateLimits.sessionStartPerIp.windowMs)) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: "Trop d'ouvertures simultanées depuis ce réseau. Veuillez patienter une minute.",
         });
       }
 

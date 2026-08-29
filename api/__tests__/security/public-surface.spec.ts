@@ -12,6 +12,7 @@
  * qui redeviendrait publique échouerait ici en atteignant la couche SQL.
  */
 import { describe, expect, it } from "vitest";
+import { RateLimits } from "../../lib/rate-limit";
 import { appRouter } from "../../router";
 import type { TrpcContext } from "../../context";
 
@@ -250,5 +251,37 @@ describe("surface publique : session.getResults exige un jeton de résultats", (
     await expect(
       caller().session.getResults({ resultsToken: "not.a.jwt" }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+});
+
+/**
+ * Le limiteur de démarrage de session, tel que la mesure de charge l'a
+ * requalifié.
+ *
+ * L'ancienne clé — cinq ouvertures par minute et par adresse IP — rendait une
+ * salle d'examen impossible : un établissement sort par une seule adresse.
+ * La nouvelle borne d'abord la personne, puis l'établissement. Ces deux
+ * chiffres sont un arbitrage métier : ils doivent bouger délibérément, pas par
+ * inadvertance.
+ */
+describe("limitation du démarrage de session", () => {
+  it("borne une même personne à cinq tentatives par minute", () => {
+    expect(RateLimits.sessionStart.max).toBe(5);
+    expect(RateLimits.sessionStart.windowMs).toBe(60_000);
+  });
+
+  it("absorbe deux cents élèves qui commencent à la même minute", () => {
+    // Pire cas légitime : un surveillant dit « vous pouvez commencer ». La
+    // fenêtre de cinq minutes encaisse la pointe, reprises comprises.
+    const parMinute =
+      RateLimits.sessionStartPerIp.max / (RateLimits.sessionStartPerIp.windowMs / 60_000);
+    expect(parMinute).toBeGreaterThanOrEqual(100);
+    expect(RateLimits.sessionStartPerIp.max).toBeGreaterThanOrEqual(400);
+  });
+
+  it("garde un plafond par adresse : la limite n'est pas supprimée", () => {
+    // Un script d'attaque en tente des milliers — la mesure de charge en a
+    // produit plus de cinq mille en moins de deux minutes.
+    expect(RateLimits.sessionStartPerIp.max).toBeLessThan(2_000);
   });
 });
