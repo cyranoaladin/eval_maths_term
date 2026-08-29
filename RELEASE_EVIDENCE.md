@@ -14,10 +14,10 @@ observée. Un critère non vérifié reste `IN_PROGRESS`, jamais `PASS`.
 | | |
 |---|---|
 | Branche | `phase-3.5-convergence` |
-| HEAD | `99a5a4b` |
+| HEAD | `075ce17` |
 | Base de la finalisation | `5a24b63` (`feat(dashboard)`) |
 | Worktree | propre |
-| Dernière mise à jour | 2026-08-29 (lot sécurité) |
+| Dernière mise à jour | 2026-08-29 (lot déploiement) |
 
 ## 2. Commits de la finalisation
 
@@ -32,6 +32,10 @@ observée. Un critère non vérifié reste `IN_PROGRESS`, jamais `PASS`.
 | `5433023` | Correction | Limites infinies, mode exact sans référence, déconnexion invisible |
 | `a0142df` | Couverture | Couvrir les chemins de correction jamais éprouvés |
 | `99a5a4b` | Sécurité | Un enseignant accédait aux copies de tous les autres |
+| `cfb1cf9` | Documentation | Registre de preuve |
+| `5b9b357` | Charge / build | Le quota de démarrage rendait une salle d'examen impossible ; le bundle de production ne démarrait pas |
+| `1c91d3c` | Recettes | Scores décimaux et typographie du relevé |
+| `075ce17` | Déploiement | Secrets du dépôt en production ; migration impossible depuis l'image |
 
 Commits antérieurs de la même campagne, déjà poussés : `864ec4a` (scores
 décimaux), `ceeb833` (journal d'audit), `e4c05a6` (écran de correction),
@@ -54,21 +58,23 @@ décimaux), `ceeb833` (journal d'audit), `e4c05a6` (écran de correction),
 | 11 | Score de suspicion affiché au prof avec verdict | PASS | badge et incidents sur l'écran de correction (`src/pages/teacher/Correction.tsx`) ; verdict « mineur » 20/100 constaté sur copie abandonnée |
 | 12 | Couverture ≥ 80 % global, 100 % `api/grading/` | IN_PROGRESS | — |
 | 13 | Migrations Drizzle committées | PASS | `db/migrations/` suivi par Git |
-| 14 | `docker compose up` < 30 s | IN_PROGRESS | — |
+| 14 | `docker compose up` < 30 s | IN_PROGRESS | `bash scripts/recette-docker.sh` — 18/18 sur le runtime de production, démarrage 781 ms. **Reste** : une génération AMC réelle (sujet, corrigé, catalogue) depuis le conteneur |
 | 15 | CI GitHub Actions verte sur `main` | IN_PROGRESS | verte sur la branche ; fusion non autorisée à ce stade |
 | 16 | 0 `any`, 0 `@ts-ignore` non commenté | PASS | `npx vitest run api/__tests__/typage-strict.spec.ts` — garde durable, 2 suppressions recensées nominativement |
-| 17 | Audit : 100 % des modifications manuelles | IN_PROGRESS | journal implémenté ; batterie de tests §K à écrire |
-| 18 | Export CSV et PDF fonctionnel | IN_PROGRESS | PDF vérifié par `scripts/smoke-export-pdf.ts` ; recette typographique §J à faire |
+| 17 | Audit : 100 % des modifications manuelles | IN_PROGRESS | `npx tsx scripts/smoke-correction-audit.ts <cookie>` (auteur, ancienne/nouvelle valeur, motif, requestId, survie au regrade) + `smoke-cloisonnement-enseignants.ts` (refus sans propriété). **Reste** : refus d'un override anonyme en test automatisé, second override créant une seconde entrée |
+| 18 | Export CSV et PDF fonctionnel | IN_PROGRESS | `npx tsx scripts/smoke-releve-typographie.ts` — accents, apostrophes, noms longs, 60 élèves, pagination, virgule décimale, colonne « Reprise ». **Reste** : la recette CSV |
 | 19 | Login + AuthLayout + NotFound en français | PASS | interface en fr-FR |
-| 20 | k6 : 200 élèves, p95 < 500 ms | IN_PROGRESS | — |
+| 20 | k6 : 200 élèves, p95 < 500 ms | **FAIL** | mesuré, voir §9 : tout ce que fait un élève en composition passe sous 500 ms ; la remise simultanée de 200 copies ne passe pas (p95 6,73 s) |
 | 21 | RGPD : mentions, confidentialité, export | PASS | commit `4a0b188` |
 | 22 | `SECURITY.md` à jour | PASS | présent, à resynchroniser en fin de campagne |
 | 23 | `README.md` réécrit, quickstart vierge | PASS | commit `62c9e6a` |
 
-**PASS : 16 / 23. IN_PROGRESS : 7. FAIL : 0. BLOCKED_EXTERNAL : 0.**
+**PASS : 16 / 23. IN_PROGRESS : 6. FAIL : 1. BLOCKED_EXTERNAL : 0.**
 
-Restent ouverts : 7 (viewport mobile), 12 (couverture), 14 (Docker), 15 (CI sur `main`),
-17 (batterie d'audit §K), 18 (recette typographique §J), 20 (k6).
+Restent ouverts : 7 (viewport mobile), 12 (couverture), 14 (génération AMC en
+conteneur), 15 (CI sur `main`, fusion non autorisée à ce stade), 17 (deux cas
+d'audit), 18 (recette CSV). Le critère 20 est **en échec mesuré**, pas en
+attente : voir §9.
 
 ## 4. Défauts découverts pendant la finalisation
 
@@ -96,6 +102,11 @@ Restent ouverts : 7 (viewport mobile), 12 (couverture), 14 (Docker), 15 (CI sur 
 | 20 | Le mode de correction « exact » confrontait la réponse à la chaîne vide : il ne reconnaissait jamais rien | critique | `5433023` |
 | 21 | Le score de suspicion était calculé avant l'inscription de la déconnexion : copie abandonnée = « Propre » 0/100 | majeur | `5433023` |
 | 22 | **Aucun contrôle de propriété sur les routes enseignant** : lecture, recorrection, modification de note, remise forcée et journal d'audit des copies de n'importe quel collègue | critique (sécurité) | `99a5a4b` |
+| 23 | **Le bundle de production ne démarrait pas** : collision `createRequire` entre le banner esbuild et pdfkit. Le développement passe par Vite, jamais par le bundle | bloquant | `5b9b357` |
+| 24 | Le quota de démarrage (5/min/IP) rendait une salle d'examen impossible derrière un NAT d'établissement | bloquant | `5b9b357` |
+| 25 | Un nom d'élève trop long était coupé net et sans marque sur le relevé remis aux familles | majeur | `1c91d3c` |
+| 26 | **Les secrets de session avaient une valeur par défaut publiée dans le dépôt** : une production qui les oublie signe ses cookies enseignant avec une chaîne lisible dans le code source | critique (sécurité) | `075ce17` |
+| 27 | La procédure de migration documentée était inapplicable : `drizzle-kit` est retiré de l'image de production | bloquant | `075ce17` |
 
 ## 5. Migrations ajoutées
 
@@ -176,11 +187,83 @@ npx vitest run --coverage.enabled --coverage.provider=v8 --coverage.all \
 
 ## 9. Charge (k6)
 
-Non encore exécutée.
+Scénario : `load/parcours-eleve.k6.js`, 200 utilisateurs virtuels, **une copie
+chacun** — parcours complet, pas une route isolée. Cible : le build de
+production (`node dist/boot.js`), pas le serveur de développement.
+
+```
+docker run --rm -i --network host -e BASE_URL=http://localhost:3000 -e VUS=200 \
+  grafana/k6 run - < load/parcours-eleve.k6.js
+```
+
+**Premier passage, quota d'origine** : 10 sessions ouvertes sur 5 576
+tentatives, 5 566 refus (429). La limite de cinq ouvertures par minute et par
+IP rendait une salle d'examen impossible. Clé requalifiée (voir défaut 24).
+
+**Second passage, après requalification** :
+
+| Mesure | Valeur | Critère |
+|---|---|---|
+| Sessions ouvertes | 200 / 200 | — |
+| Copies remises | 200 | — |
+| Refus de quota | 0 | — |
+| Échecs métier | 0,00 % | 0 |
+| Débit | 135 req/s | — |
+| p50 global | 78,9 ms | < 200 ms ✅ |
+| p95 global | 6,73 s | < 500 ms ❌ |
+| p99 global | 6,84 s | < 1 s ❌ |
+
+Décomposition par opération — c'est elle qui dit où passe le temps :
+
+| Opération | p95 | Critère |
+|---|---|---|
+| `session.start` | 202 ms | ✅ |
+| `question.getForActiveSession` | 145 ms | ✅ |
+| `answer.saveDraft` | 260 ms | ✅ |
+| `session.heartbeat` | 355 ms | ✅ |
+| `session.submit` | ≈ 6,7 s | ❌ |
+
+**Lecture.** Tout ce qu'un élève fait pendant qu'il compose tient largement
+sous 500 ms avec deux cents élèves en même temps. Le seul dépassement est la
+remise, et il est concentré : deux cents copies remises dans la même seconde,
+chacune déclenchant la correction complète de vingt et une questions. Les deux
+cents copies sont corrigées en seize secondes au total.
+
+Le critère 20, tel qu'il est écrit, n'est **pas** atteint. Le tenir supposerait
+de rendre la correction asynchrone — une file de travaux —, ce que la mission
+exclut explicitement (pas de Redis, pas de nouveau moteur). Le levier interne
+identifié est la boucle d'écriture de `gradeSessionResponses`, qui applique
+vingt et une mises à jour séquentielles par copie ; les paralléliser
+diviserait le coût unitaire sans suffire à passer sous 500 ms en pointe. Rien
+de tout cela n'est engagé sans arbitrage.
 
 ## 10. Docker / AMC
 
-Non encore exécuté.
+`bash scripts/recette-docker.sh` — **18 étapes, 18 vérifiées**, sur le runtime
+destiné à la production et non sur la machine de développement.
+
+| | Étape | Résultat |
+|---|---|---|
+| 1 | image de base | 428 Mo |
+| 2 | image avec impression (`Dockerfile.amc`) | 2 799 Mo |
+| 3 | base vierge | démarre |
+| 4 | migrations depuis l'image (`node dist/migrate.js`) | appliquées |
+| 5 | schéma créé | 13 tables |
+| 6 | `responses.score` dans l'image déployée | `decimal(6,2)` |
+| 7 | secret de développement en production | refusé au démarrage |
+| 8–9 | santé et démarrage | **781 ms** (< 30 s) |
+| 10 | `auto-multiple-choice` utilisable | version 1.6.0-1 |
+| 11 | classe LaTeX d'AMC | `/usr/share/texmf/tex/latex/AMC/automultiplechoice.sty` |
+| 12–14 | montée de version d'une base peuplée | note 1,75 intacte |
+| 15–16 | application et polices mathématiques servies | HTTP 200 |
+| 17 | API publique | répond |
+| 18 | route enseignant sans authentification | HTTP 401 |
+
+**Ce qui manque au critère 14** : une génération AMC réelle depuis le
+conteneur — sujet, corrigé, catalogue — puis saisie papier, correction,
+intervention manuelle et relevé PDF. Les briques sont vérifiées séparément sur
+la machine de développement (`scripts/smoke-chaine-papier.ts`), pas encore
+enchaînées dans l'image.
 
 ## 11. CI distante
 
