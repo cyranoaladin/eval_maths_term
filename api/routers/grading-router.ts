@@ -22,6 +22,7 @@ import { getDb } from "../queries/connection";
 import { responses, sessions, questions } from "@db/schema";
 import { eq } from "drizzle-orm";
 import { gradeSessionResponses } from "../grading/grade-session";
+import { toDecimal, toNumberOr } from "../lib/decimal";
 
 export const gradingRouter2 = createRouter({
   /**
@@ -97,7 +98,7 @@ export const gradingRouter2 = createRouter({
           order: q?.order ?? 0,
           answer: r.answer,
           justification: r.justification,
-          score: r.score ?? 0,
+          score: toNumberOr(r.score, 0),
           maxScore: q?.points ?? 0,
           isCorrect: r.isCorrect ?? false,
           feedback: r.llmFeedback ?? null,
@@ -115,7 +116,7 @@ export const gradingRouter2 = createRouter({
         status: session.status,
         startedAt: session.startedAt,
         endedAt: session.endedAt,
-        totalScore: session.totalScore ?? 0,
+        totalScore: toNumberOr(session.totalScore, 0),
         maxScore: session.maxScore ?? 0,
         normalizedScore: session.normalizedScore
           ? parseFloat(session.normalizedScore)
@@ -141,7 +142,7 @@ export const gradingRouter2 = createRouter({
       await db
         .update(responses)
         .set({
-          score: input.score,
+          score: toDecimal(input.score),
           llmFeedback: input.feedback ?? null,
           gradingMode: "manual_override",
           gradedAt: new Date(),

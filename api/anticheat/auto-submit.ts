@@ -24,6 +24,7 @@ import { resolveSubmittedQcmIndex } from "../grading/grade-session";
 import { computeSuspicionScore } from "./score-suspicion";
 import { GradingRubricSchema } from "../../contracts/grading-rubric";
 import { logger } from "../lib/logger";
+import { toDecimal } from "../lib/decimal";
 import type { CheatEventType } from "@db/schema";
 
 export type AutoSubmitReason =
@@ -145,7 +146,7 @@ export async function autoSubmitSession(
         answer: draft.answer ?? "",
         justification: draft.justification,
         isCorrect: result.isCorrect,
-        score: result.score,
+        score: toDecimal(result.score),
         maxScore: q.points,
         llmFeedback: result.needsLLM
           ? "À corriger manuellement par l'enseignant."
@@ -204,9 +205,9 @@ export async function autoSubmitSession(
       .set({
         status: "auto_submitted_idle",
         endedAt: new Date(),
-        totalScore,
+        totalScore: toDecimal(totalScore),
         maxScore: realMaxScore,
-        normalizedScore: normalizedScore.toFixed(2),
+        normalizedScore: toDecimal(normalizedScore),
         suspicionScore: suspicion.score,
         suspicionVerdict: suspicion.verdict,
         timeSpent: session.startedAt

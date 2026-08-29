@@ -110,7 +110,8 @@ export const sessions = mysqlTable("sessions", {
   tabSwitchCount: int("tabSwitchCount").default(0).notNull(),
   // DEPRECATED: cheatEvents JSON — ne plus écrire, utiliser la table cheat_events. Drop prévu en v0.4.0.
   cheatEvents: json("cheatEvents").$type<Array<{type: string, timestamp: string}>>(),
-  totalScore: int("totalScore"),
+  /** Somme des points obtenus — décimale pour la même raison que `responses.score`. */
+  totalScore: decimal("totalScore", { precision: 7, scale: 2 }),
   maxScore: int("maxScore"),
   normalizedScore: decimal("normalizedScore", { precision: 5, scale: 2 }), // note sur 20 (ex: 19.75)
   timeSpent: int("timeSpent"), // en secondes
@@ -151,7 +152,12 @@ export const responses = mysqlTable("responses", {
   answer: text("answer").notNull(), // réponse de l'élève
   justification: text("justification"), // pour Vrai/Faux avec justification
   isCorrect: boolean("isCorrect"),
-  score: int("score"),
+  /**
+   * Points obtenus — décimal, pas entier : le moteur produit du crédit partiel
+   * (fraction non réduite à 75 %, justification à moitié juste, note manuelle
+   * au quart de point). Une colonne entière les arrondissait en silence.
+   */
+  score: decimal("score", { precision: 6, scale: 2 }),
   maxScore: int("maxScore"),
   llmFeedback: text("llmFeedback"), // feedback de la LLM
   // Phase 2 : métadonnées de correction

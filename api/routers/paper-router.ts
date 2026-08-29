@@ -18,6 +18,7 @@ import { isAmcAvailable } from "../paper/amc-runner";
 import { answerToChoice, saveManualEntry } from "../paper/manual-entry";
 import { anonymizeStudent, exportStudentData } from "../paper/student-data";
 import { logger } from "../lib/logger";
+import { toNumber } from "../lib/decimal";
 
 async function assertOwnedClass(classId: number, userId: number) {
   const db = getDb();
@@ -335,9 +336,10 @@ export const paperRouter = createRouter({
           continue;
         }
         // Question rédigée : c'est la note attribuée qu'on réaffiche.
-        if (r.score !== null) {
+        const points = toNumber(r.score);
+        if (points !== null) {
           const bloc = notesParSession.get(r.sessionId) ?? {};
-          bloc[r.questionId] = r.score;
+          bloc[r.questionId] = points;
           notesParSession.set(r.sessionId, bloc);
         }
       }
@@ -375,7 +377,7 @@ export const paperRouter = createRouter({
           entered: c.enteredAt !== null,
           answers: c.sessionId ? parSession.get(c.sessionId) ?? {} : {},
           openMarks: c.sessionId ? notesParSession.get(c.sessionId) ?? {} : {},
-          totalScore: c.totalScore,
+          totalScore: toNumber(c.totalScore),
           maxScore: c.maxScore,
           normalizedScore: c.normalizedScore !== null ? parseFloat(c.normalizedScore) : null,
         })),
@@ -472,7 +474,7 @@ export const paperRouter = createRouter({
           name: `${r.lastName} ${r.firstName}`.trim(),
           copyNumber: r.copyNumber,
           entered: r.enteredAt !== null,
-          totalScore: r.totalScore,
+          totalScore: toNumber(r.totalScore),
           maxScore: r.maxScore,
           normalizedScore: r.normalizedScore !== null ? parseFloat(r.normalizedScore) : null,
         })),

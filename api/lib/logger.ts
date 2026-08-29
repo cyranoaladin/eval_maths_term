@@ -1,4 +1,5 @@
 import { env } from "./env";
+import { currentRequestId } from "./request-id";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -16,10 +17,14 @@ function shouldLog(level: LogLevel): boolean {
 }
 
 function formatEntry(level: LogLevel, message: string, data?: Record<string, unknown>): string {
+  // L'identifiant vient du contexte de la requête : aucun appelant n'a à le
+  // transmettre, et aucune ligne n'en est dépourvue pendant une requête.
+  const requestId = currentRequestId();
   return JSON.stringify({
     time: new Date().toISOString(),
     level,
     msg: message,
+    ...(requestId ? { requestId } : {}),
     ...data,
   });
 }

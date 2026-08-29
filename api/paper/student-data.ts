@@ -27,6 +27,7 @@ import {
   students,
 } from "@db/schema";
 import { logger } from "../lib/logger";
+import { toNumber } from "../lib/decimal";
 
 export interface StudentDataExport {
   genereLe: string;
@@ -151,7 +152,9 @@ export async function exportStudentData(studentId: number): Promise<StudentDataE
       saisieLe: c.copie.enteredAt?.toISOString() ?? null,
       note20: c.session?.normalizedScore ? parseFloat(c.session.normalizedScore) : null,
       points:
-        c.session?.totalScore != null ? `${c.session.totalScore}/${c.session.maxScore}` : null,
+        c.session?.totalScore != null
+          ? `${toNumber(c.session.totalScore)}/${c.session.maxScore}`
+          : null,
     })),
     sessionsEnLigne: {
       methodeDeRapprochement:
@@ -170,7 +173,7 @@ export async function exportStudentData(studentId: number): Promise<StudentDataE
       evaluation: x.evaluation,
       question: x.question,
       reponse: x.r.answer,
-      points: x.r.score,
+      points: toNumber(x.r.score),
       surPoints: x.r.maxScore,
       commentaire: x.r.llmFeedback,
     })),

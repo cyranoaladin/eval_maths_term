@@ -21,6 +21,7 @@ import { getDb } from "../queries/connection";
 import { paperCopies, paperExams, questions, responses, sessions } from "@db/schema";
 import { gradeSessionResponses } from "../grading/grade-session";
 import { logger } from "../lib/logger";
+import { toDecimal } from "../lib/decimal";
 
 export interface EntryAnswer {
   questionId: number;
@@ -181,7 +182,7 @@ export async function saveManualEntry(args: {
         sessionId: sessionId!,
         questionId: m.questionId,
         answer: "(corrigée sur copie)",
-        score: points,
+        score: toDecimal(points),
         maxScore: max,
         isCorrect: points >= max,
         gradingMode: "manual_paper",

@@ -20,6 +20,7 @@ import { getDb } from "../queries/connection";
 import { questions, responses, sessions } from "@db/schema";
 import { GradingRubricSchema } from "../../contracts/grading-rubric";
 import { logger } from "../lib/logger";
+import { toDecimal, toNumberOr } from "../lib/decimal";
 import { gradeResponse } from "./grade-response";
 import { resolveOriginalIndex, shuffleDeterministic } from "./shuffle";
 
@@ -182,7 +183,7 @@ export async function gradeSessionResponses(
 
     // Note attribuée par l'enseignant : on la conserve telle quelle.
     if (estNoteManuelle(resp.gradingMode)) {
-      totalScore += resp.score ?? 0;
+      totalScore += toNumberOr(resp.score, 0);
       gradedCount++;
       continue;
     }
@@ -199,7 +200,7 @@ export async function gradeSessionResponses(
       await db
         .update(responses)
         .set({
-          score: 0,
+          score: toDecimal(0),
           maxScore: q.points,
           isCorrect: false,
           llmFeedback: "À corriger manuellement par l'enseignant.",
@@ -239,7 +240,7 @@ export async function gradeSessionResponses(
       await db
         .update(responses)
         .set({
-          score: result.score,
+          score: toDecimal(result.score),
           maxScore: result.maxPoints,
           isCorrect: result.isCorrect,
           llmFeedback: result.needsLLM
@@ -265,7 +266,7 @@ export async function gradeSessionResponses(
         sessionId,
         error: String(e),
       });
-      totalScore += resp.score ?? 0;
+      totalScore += toNumberOr(resp.score, 0);
       needsManualReview++;
     }
   }
@@ -276,9 +277,9 @@ export async function gradeSessionResponses(
   await db
     .update(sessions)
     .set({
-      totalScore,
+      totalScore: toDecimal(totalScore),
       maxScore,
-      normalizedScore: normalizedScore.toFixed(2),
+      normalizedScore: toDecimal(normalizedScore),
     })
     .where(eq(sessions.id, sessionId));
 

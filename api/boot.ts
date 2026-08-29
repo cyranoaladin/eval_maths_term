@@ -9,9 +9,22 @@ import { env } from "./lib/env";
 import { logger } from "./lib/logger";
 import { createOAuthCallbackHandler, createOAuthInitHandler } from "./kimi/auth";
 import { csrfMiddleware } from "./lib/csrf";
+import { REQUEST_ID_HEADER, normaliserRequestId, withRequestId } from "./lib/request-id";
 import { Paths } from "@contracts/constants";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
+
+/**
+ * Identifiant de requête — premier middleware, pour que tout ce qui suit en
+ * bénéficie. Repris de l'appelant s'il est bien formé, sinon généré. Renvoyé
+ * dans la réponse : un utilisateur qui signale une anomalie peut donner cet
+ * identifiant, et les journaux du serveur y mènent directement.
+ */
+app.use("*", async (c, next) => {
+  const requestId = normaliserRequestId(c.req.header(REQUEST_ID_HEADER));
+  c.header(REQUEST_ID_HEADER, requestId);
+  await withRequestId(requestId, () => next());
+});
 
 app.use(bodyLimit({ maxSize: 10 * 1024 * 1024 }));
 

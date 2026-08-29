@@ -16,6 +16,7 @@ import { signStudentToken, signResultsToken, verifyResultsToken } from "../antic
 import { processHeartbeat } from "../anticheat/heartbeat";
 import { ingestEvents } from "../anticheat/event-aggregator";
 import { logger } from "../lib/logger";
+import { toNumber } from "../lib/decimal";
 import { checkRateLimit, getClientIp, RateLimits } from "../lib/rate-limit";
 import { FingerprintComponentsSchema, computeFingerprintHash } from "../anticheat/fingerprint";
 import { computeSuspicionScore } from "../anticheat/score-suspicion";
@@ -387,6 +388,8 @@ export const sessionRouter = createRouter({
         .from(responses)
         .where(eq(responses.sessionId, sessionId));
 
+      const reponsesConverties = resps.map((r) => ({ ...r, score: toNumber(r.score) }));
+
       // Compté depuis la table append-only, jamais depuis le client.
       const events = await db
         .select({ id: cheatEventsTable.id })
@@ -397,12 +400,12 @@ export const sessionRouter = createRouter({
         sessionId: session.id,
         studentName: session.studentName,
         status: session.status,
-        totalScore: session.totalScore,
+        totalScore: toNumber(session.totalScore),
         maxScore: session.maxScore,
         normalizedScore: session.normalizedScore !== null ? parseFloat(session.normalizedScore) : null,
         timeSpent: session.timeSpent,
         cheatEventCount: events.length,
-        responses: resps,
+        responses: reponsesConverties,
       };
     }),
 
@@ -412,7 +415,14 @@ export const sessionRouter = createRouter({
    */
   getAllForTeacher: teacherQuery.query(async () => {
     const db = getDb();
-    return db.select().from(sessions).orderBy(sessions.startedAt);
+    const rows = await db.select().from(sessions).orderBy(sessions.startedAt);
+    // Conversion à la frontière : le pilote MySQL rend les DECIMAL en chaînes,
+    // et le client fait des moyennes avec ces valeurs.
+    return rows.map((s) => ({
+      ...s,
+      totalScore: toNumber(s.totalScore),
+      normalizedScore: toNumber(s.normalizedScore),
+    }));
   }),
 
   /**
@@ -452,10 +462,12 @@ export const sessionRouter = createRouter({
       return {
         session: {
           ...session,
-          normalizedScore: session.normalizedScore !== null ? parseFloat(session.normalizedScore) : null,
+          totalScore: toNumber(session.totalScore),
+          normalizedScore: toNumber(session.normalizedScore),
         },
         responses: resps.map((r) => ({
           ...r,
+          score: toNumber(r.score),
           question: qs.find((q) => q.id === r.questionId),
           options: safeParseJson<string[]>(qs.find((q) => q.id === r.questionId)?.options),
         })),
