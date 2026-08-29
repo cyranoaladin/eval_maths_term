@@ -14,7 +14,6 @@
  * et si une pénalité a été appliquée.
  */
 import type { GradingRubric, ComparisonMode } from "../../contracts/grading-rubric";
-import { compareExact } from "./compare-exact";
 import { compareNumeric } from "./compare-numeric";
 import { compareFraction, applyFractionPenalty } from "./compare-fraction";
 import { areSymbolicallyEqual } from "./compare-symbolic";
@@ -314,16 +313,13 @@ async function applyComparisonMode(
 ): Promise<GradingResult | null> {
   switch (mode.kind) {
     case "exact": {
-      const r = compareExact("", given);
-      return {
-        score: r.equal ? maxPoints : 0,
-        maxPoints,
-        isCorrect: r.equal,
-        feedback: r.reason,
-        gradingMode: "exact",
-        llmConfidence: null,
-        partialCreditApplied: false,
-      };
+      // Le mode « exact » ne transporte aucune valeur attendue : la seule
+      // référence possible est `acceptableForms`, déjà éprouvée en amont de
+      // cette fonction. Comparer à la chaîne vide, comme c'était fait ici, ne
+      // pouvait reconnaître aucune réponse — la question marquait tout le
+      // monde faux. La comparaison est déclarée inconclusive, et la suite
+      // — crédit partiel, LLM, ou constat d'échec explicite — prend le relais.
+      return null;
     }
 
     case "numeric": {

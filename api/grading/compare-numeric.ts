@@ -30,8 +30,11 @@ function parseNumericSafe(expr: string): number | null {
   // Constantes connues
   if (normalized === "pi") return Math.PI;
   if (normalized === "e") return Math.E;
-  if (normalized === "infinity" || normalized === "+infinity") return Infinity;
-  if (normalized === "-infinity") return -Infinity;
+  // La normalisation restitue `Infinity` avec sa majuscule — seule constante
+  // mathjs dans ce cas. La comparaison en minuscules ci-dessous ne matchait
+  // donc plus rien, et toute limite infinie repartait « non convertible ».
+  if (normalized === "Infinity" || normalized === "+Infinity") return Infinity;
+  if (normalized === "-Infinity") return -Infinity;
 
   // log(2) = ln(2)
   if (normalized === "log(2)") return Math.LN2;
@@ -81,10 +84,16 @@ export function compareNumeric(
     };
   }
 
-  if (!isFinite(parsed)) {
+  // Une limite peut légitimement valoir l'infini. Refuser toute valeur non
+  // finie rendait ces questions impossibles à réussir : c'est la concordance
+  // des deux côtés qui décide, pas la finitude.
+  if (!isFinite(expected.value) || !isFinite(parsed)) {
+    const identiques = Object.is(parsed, expected.value);
     return {
-      equal: false,
-      reason: `Valeur non finie obtenue : ${parsed}`,
+      equal: identiques,
+      reason: identiques
+        ? `Limite infinie correcte (${parsed})`
+        : `Valeur non finie inattendue : obtenu ${parsed}, attendu ${expected.value}`,
       parsedValue: parsed,
     };
   }

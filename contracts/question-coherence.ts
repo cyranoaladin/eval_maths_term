@@ -117,6 +117,14 @@ export function validateQuestionCoherence(draft: QuestionDraft): CoherenceResult
       if (draft.correctAnswer.trim().length === 0) {
         errors.push("La réponse attendue ne peut pas être vide.");
       }
+      // Le mode « exact » ne porte aucune valeur de référence : la comparaison
+      // ne peut se faire que sur les formes acceptées. Sans elles, la question
+      // marque tout le monde faux, silencieusement.
+      if (mode.kind === "exact" && !rubric.acceptableForms?.length) {
+        errors.push(
+          "Un barème « exact » n'indique aucune valeur de référence : renseignez au moins une forme acceptée, sinon aucune réponse ne peut être reconnue.",
+        );
+      }
       break;
     }
   }

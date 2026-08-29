@@ -126,10 +126,14 @@ async function main() {
 
   const incidents = await db.select().from(cheatEvents).where(eq(cheatEvents.sessionId, sessionId));
   check("la déconnexion est tracée comme incident",
-    incidents.some((e) => e.eventType === "idle_disconnect"),
-    incidents.map((e) => e.eventType).join(", ") || "aucun");
-  check("un score de suspicion est attribué",
-    finale.suspicionScore !== null, `${finale.suspicionScore}/100`);
+    incidents.some((e) => e.type === "idle_disconnect"),
+    incidents.map((e) => e.type).join(", ") || "aucun");
+  // L'incident doit peser sur le score : une copie abandonnée en pleine épreuve
+  // ne peut pas ressortir « propre » devant l'enseignant.
+  check("la déconnexion pèse sur le score de suspicion",
+    (finale.suspicionScore ?? 0) > 0, `${finale.suspicionScore}/100`);
+  check("le verdict n'est pas « propre »",
+    finale.suspicionVerdict !== "clean", `${finale.suspicionVerdict}`);
 
   console.log(
     echecs === 0

@@ -170,7 +170,21 @@ export async function autoSubmitSession(
       totalScore += result.score;
     }
 
-    // 5. Calculer le score de suspicion final
+    // 5. Enregistrer la déconnexion AVANT de calculer le score.
+    // L'ordre inverse rendait l'incident invisible au calcul : une copie
+    // abandonnée en pleine épreuve ressortait avec un score de suspicion nul
+    // et le verdict « Propre », alors que l'abandon est précisément ce que
+    // l'enseignant doit voir.
+    if (opts.reason === "idle_disconnect") {
+      await tx.insert(cheatEvents).values({
+        sessionId,
+        type: "idle_disconnect",
+        timestamp: new Date(),
+        metadata: { count: 1 },
+      });
+    }
+
+    // 6. Calculer le score de suspicion final, incidents compris
     const events = await tx
       .select()
       .from(cheatEvents)
@@ -182,16 +196,6 @@ export async function autoSubmitSession(
         count: (e.metadata as { count?: number })?.count ?? 1,
       })),
     );
-
-    // 6. Enregistrer idle_disconnect si applicable
-    if (opts.reason === "idle_disconnect") {
-      await tx.insert(cheatEvents).values({
-        sessionId,
-        type: "idle_disconnect",
-        timestamp: new Date(),
-        metadata: { count: 1 },
-      });
-    }
 
     // 7. Calcul du score normalisé /20 (arrondi au quart de point)
     const normalizedScore =
