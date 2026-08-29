@@ -246,7 +246,7 @@ déjà : grille par élève, progression, validation, score immédiat.
 | 5.7 | `README.md` réécrit : le parcours réel, le démarrage local vérifié, les points de conception | ✅ |
 | 5.8 | `DEPLOYMENT.md` : secrets, reverse proxy (délai 300 s pour la génération), image AMC dérivée, sauvegardes | ✅ |
 | 5.9 | `SECURITY.md` : six menaces traitées, données personnelles, limites connues | ✅ |
-| 5.10 | Pages RGPD `/legal` + `/privacy` + export données élève | ⬜ |
+| 5.10 | `/mentions-legales` et `/confidentialite` (mentions manquantes affichées comme telles, jamais inventées) ; export JSON complet et **anonymisation** par élève | ✅ |
 | 5.11 | Test de charge k6 (200 élèves concurrents, p95 < 500ms) | ⬜ |
 | 5.12 | Découpage par route + bibliothèques lourdes isolées : élève 1,75 Mo → ~1,0 Mo, enseignant → 756 Ko | ✅ |
 | 5.13 | Interface 100 % FR + `lang="fr"`, titre, description et icône d'onglet | ✅ |
@@ -277,6 +277,6 @@ déjà : grille par élève, progression, validation, score immédiat.
 - [ ] 18. Export CSV et PDF fonctionnel
 - [x] 19. Login + AuthLayout + NotFound en français FR-FR
 - [ ] 20. k6 : 200 élèves concurrents, p95 < 500ms, 0 erreur
-- [ ] 21. RGPD : mentions légales + confidentialité + export utilisateur
+- [x] 21. RGPD : mentions légales + confidentialité + export utilisateur
 - [x] 22. SECURITY.md à jour
 - [x] 23. README.md réécrit, quickstart fonctionnel sur machine vierge

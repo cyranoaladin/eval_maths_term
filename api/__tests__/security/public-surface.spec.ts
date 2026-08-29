@@ -85,9 +85,11 @@ describe("surface publique : inventaire des procédures", () => {
         "grading2.getResults",
         "grading2.gradeSession",
         "grading2.overrideGrade",
+        "paper.anonymizeStudent",
         "paper.createAndGenerate",
         "paper.createClass",
         "paper.entrySheet",
+        "paper.exportStudentData",
         "paper.importStudents",
         "paper.listClasses",
         "paper.listExams",
@@ -215,6 +217,13 @@ describe("surface publique : routes enseignant inaccessibles sans rôle", () => 
       c.paper.saveEntry({ paperExamId: 1, studentId: 1, answers: [] }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(c.paper.results({ paperExamId: 1 })).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+    // Données personnelles d'élèves : jamais accessibles sans rôle enseignant.
+    await expect(c.paper.exportStudentData({ studentId: 1 })).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+    await expect(c.paper.anonymizeStudent({ studentId: 1 })).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
   });

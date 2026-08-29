@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Download, FileText, Printer, Upload, Users, X } from "lucide-react";
+import { AlertTriangle, Download, FileText, Printer, ShieldCheck, Upload, UserX, Users, X } from "lucide-react";
 import { trpc } from "@/providers/trpc-client";
 
 interface Props {
@@ -40,6 +40,9 @@ export function PrintPanel({ evaluationId, onClose }: Props) {
   const [nouvelleClasse, setNouvelleClasse] = useState("");
   const [csv, setCsv] = useState("");
   const [importInfo, setImportInfo] = useState("");
+
+  const [rgptOuvert, setRgptOuvert] = useState(false);
+  const [messageRgpd, setMessageRgpd] = useState("");
 
   const { data: amc } = trpc.paper.status.useQuery();
   const { data: classesList } = trpc.paper.listClasses.useQuery();
@@ -78,6 +81,44 @@ export function PrintPanel({ evaluationId, onClose }: Props) {
   });
 
   const classeChoisie = classesList?.find((c) => c.id === classId);
+
+  const { data: eleves } = trpc.paper.listStudents.useQuery(
+    { classId: classId ?? 0 },
+    { enabled: rgptOuvert && classId !== null },
+  );
+
+  const utilsRgpd = trpc.useUtils();
+
+  const anonymiser = trpc.paper.anonymizeStudent.useMutation({
+    onSuccess: (r) => {
+      setMessageRgpd(
+        `Anonymisé sous « ${r.pseudonyme} » — ${r.copiesConservees} copie(s) et leurs notes conservées.`,
+      );
+      utilsRgpd.paper.listStudents.invalidate({ classId: classId ?? 0 });
+      utilsRgpd.paper.listClasses.invalidate();
+    },
+    onError: (e) => setMessageRgpd(e.message),
+  });
+
+  /** Télécharge l'export d'un élève sous forme de fichier JSON lisible. */
+  async function telechargerExport(studentId: number, nom: string) {
+    setMessageRgpd("");
+    try {
+      const donnees = await utilsRgpd.paper.exportStudentData.fetch({ studentId });
+      const blob = new Blob([JSON.stringify(donnees, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `donnees-${nom.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMessageRgpd(`Export produit pour ${nom}.`);
+    } catch (e) {
+      setMessageRgpd(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   return (
     <Card className="border-sky-200">
@@ -237,6 +278,70 @@ export function PrintPanel({ evaluationId, onClose }: Props) {
                 </Button>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* ── Données personnelles ── */}
+        {classId && (
+          <div className="rounded-lg border">
+            <button
+              type="button"
+              onClick={() => { setRgptOuvert((v) => !v); setMessageRgpd(""); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent/40 rounded-lg"
+            >
+              <ShieldCheck className="h-4 w-4 text-slate-500" />
+              <span>Données personnelles des élèves</span>
+              <span className="ml-auto text-xs text-muted-foreground">
+                {rgptOuvert ? "masquer" : "accès et effacement"}
+              </span>
+            </button>
+
+            {rgptOuvert && (
+              <div className="border-t px-3 py-2 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  L'effacement prend la forme d'une anonymisation : l'identité est
+                  retirée, les notes des évaluations rendues sont conservées.
+                  L'opération est irréversible.
+                </p>
+                {messageRgpd && (
+                  <p className="text-xs rounded border bg-slate-50 px-2 py-1.5">{messageRgpd}</p>
+                )}
+                <div className="max-h-56 overflow-y-auto space-y-0.5">
+                  {eleves?.map((e) => (
+                    <div key={e.id} className="flex items-center gap-2 text-sm py-0.5">
+                      <span className="truncate flex-1">
+                        {e.lastName} {e.firstName}
+                        {!e.active && (
+                          <span className="ml-1.5 text-xs text-muted-foreground">(anonymisé)</span>
+                        )}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs"
+                        onClick={() => telechargerExport(e.id, `${e.lastName} ${e.firstName}`)}
+                      >
+                        <Download className="h-3.5 w-3.5 mr-1" /> Exporter
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs text-destructive"
+                        disabled={!e.active || anonymiser.isPending}
+                        onClick={() => anonymiser.mutate({ studentId: e.id })}
+                      >
+                        <UserX className="h-3.5 w-3.5 mr-1" /> Anonymiser
+                      </Button>
+                    </div>
+                  ))}
+                  {eleves?.length === 0 && (
+                    <p className="text-xs text-muted-foreground py-2">
+                      Aucun élève dans cette classe.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

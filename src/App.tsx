@@ -22,6 +22,8 @@ const Preview = lazy(() => import("./pages/Preview"))
 const Evaluations = lazy(() => import("./pages/teacher/Evaluations"))
 const EvaluationEditor = lazy(() => import("./pages/teacher/EvaluationEditor"))
 const PaperEntry = lazy(() => import("./pages/teacher/PaperEntry"))
+const MentionsLegales = lazy(() => import("./pages/legal/MentionsLegales"))
+const Confidentialite = lazy(() => import("./pages/legal/Confidentialite"))
 
 function Chargement() {
   return (
@@ -45,6 +47,8 @@ export default function App() {
         <Route path="/teacher/evaluations" element={<AuthLayout><Evaluations /></AuthLayout>} />
         <Route path="/teacher/evaluations/:id" element={<AuthLayout><EvaluationEditor /></AuthLayout>} />
         <Route path="/teacher/saisie/:examId" element={<AuthLayout><PaperEntry /></AuthLayout>} />
+        <Route path="/mentions-legales" element={<MentionsLegales />} />
+        <Route path="/confidentialite" element={<Confidentialite />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>

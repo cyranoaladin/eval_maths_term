@@ -16,6 +16,7 @@ import { parseRoster } from "../paper/parse-roster";
 import { generatePaperExam, DOWNLOADABLE } from "../paper/paper-service";
 import { isAmcAvailable } from "../paper/amc-runner";
 import { answerToChoice, saveManualEntry } from "../paper/manual-entry";
+import { anonymizeStudent, exportStudentData } from "../paper/student-data";
 import { logger } from "../lib/logger";
 
 async function assertOwnedClass(classId: number, userId: number) {
@@ -156,6 +157,52 @@ export const paperRouter = createRouter({
         separator: parsed.separator,
         nameColumn: parsed.nameColumn,
       };
+    }),
+
+  // ─── Données personnelles (RGPD) ──────────────────────────────────────────
+
+  /** Droit d'accès : tout ce que l'application détient sur un élève. */
+  exportStudentData: teacherQuery
+    .input(z.object({ studentId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const db = getDb();
+      const [eleve] = await db
+        .select({ classId: students.classId })
+        .from(students)
+        .where(eq(students.id, input.studentId))
+        .limit(1);
+      if (!eleve) throw new TRPCError({ code: "NOT_FOUND", message: "Élève introuvable" });
+      await assertOwnedClass(eleve.classId, ctx.user.id);
+
+      logger.info("[rgpd] Export de données demandé", {
+        studentId: input.studentId,
+        by: ctx.user.email,
+      });
+      return exportStudentData(input.studentId);
+    }),
+
+  /**
+   * Droit à l'effacement, par anonymisation.
+   * Supprimer l'élève emporterait les notes d'évaluations déjà rendues, que
+   * l'établissement doit conserver. L'identité est retirée, les résultats non.
+   */
+  anonymizeStudent: teacherQuery
+    .input(z.object({ studentId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const db = getDb();
+      const [eleve] = await db
+        .select({ classId: students.classId })
+        .from(students)
+        .where(eq(students.id, input.studentId))
+        .limit(1);
+      if (!eleve) throw new TRPCError({ code: "NOT_FOUND", message: "Élève introuvable" });
+      await assertOwnedClass(eleve.classId, ctx.user.id);
+
+      logger.warn("[rgpd] Anonymisation demandée", {
+        studentId: input.studentId,
+        by: ctx.user.email,
+      });
+      return anonymizeStudent(input.studentId);
     }),
 
   // ─── Tirages ──────────────────────────────────────────────────────────────

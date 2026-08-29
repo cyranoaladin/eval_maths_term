@@ -194,8 +194,17 @@ export default function Home() {
         </div>
 
         {/* Footer */}
-        <div className="text-center text-sm text-slate-500">
-          <p>Application d'évaluation sécurisée — Anti-triche activé</p>
+        <div className="text-center text-sm text-slate-500 space-y-2">
+          <p>Application d'évaluation de l'établissement</p>
+          <p className="text-xs">
+            <Link to="/mentions-legales" className="hover:underline">
+              Mentions légales
+            </Link>
+            <span className="mx-2">·</span>
+            <Link to="/confidentialite" className="hover:underline">
+              Protection des données
+            </Link>
+          </p>
         </div>
       </div>
     </div>
