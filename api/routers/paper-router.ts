@@ -372,6 +372,8 @@ export const paperRouter = createRouter({
         openQuestions,
         copies: copies.map((c) => ({
           studentId: c.studentId,
+          // Nécessaire à l'écran de correction : c'est la copie corrigée.
+          sessionId: c.sessionId,
           name: `${c.lastName} ${c.firstName}`.trim(),
           copyNumber: c.copyNumber,
           entered: c.enteredAt !== null,

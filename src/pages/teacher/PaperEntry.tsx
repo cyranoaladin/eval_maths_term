@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Check, Download, Keyboard, Save, Users } from "lucide-react";
+import { ArrowLeft, Check, Download, Keyboard, PenLine, Save, Users } from "lucide-react";
 import { MathLatex } from "@/components/math/MathLatex";
 import { trpc } from "@/providers/trpc-client";
 
@@ -199,14 +199,16 @@ export default function PaperEntry() {
           <span className="text-muted-foreground">
             min {resultats.stats.min} · max {resultats.stats.max}
           </span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="ml-auto"
-            onClick={() => exporterCsv(resultats)}
-          >
-            <Download className="h-4 w-4 mr-1.5" /> Exporter les notes (CSV)
-          </Button>
+          <div className="ml-auto flex items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link to={`/teacher/correction/${paperExamId}`}>
+                <PenLine className="h-4 w-4 mr-1.5" /> Corriger les copies
+              </Link>
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => exporterCsv(resultats)}>
+              <Download className="h-4 w-4 mr-1.5" /> Exporter les notes (CSV)
+            </Button>
+          </div>
         </div>
       )}
 
