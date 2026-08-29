@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +22,7 @@ import { HeartbeatStatus } from "@/components/anticheat/HeartbeatStatus";
 import { AutoSaveIndicator } from "@/components/anticheat/AutoSaveIndicator";
 import { CheatBanner } from "@/components/anticheat/CheatBanner";
 import { DevToolsDetector } from "@/components/anticheat/DevToolsDetector";
+import { MathInput } from "@/components/math/MathInput";
 import type { CheatEvent } from "@contracts/types";
 
 export default function Evaluation() {
@@ -30,24 +31,30 @@ export default function Evaluation() {
   const evaluationId = parseInt(searchParams.get("eval") || "0");
 
   // Phase 3 : session token en mémoire React (pas localStorage)
-  const { setSession, sessionToken, sessionId } = useStudentSession();
+  const { setSession, clearSession, sessionToken, sessionId } = useStudentSession();
 
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [answers, setAnswers] = useState<Record<number, { answer: string; justification?: string }>>({});
+  /** Ce que l'élève a saisi depuis le chargement de la page. */
+  const [editions, setEditions] = useState<Record<number, { answer: string; justification?: string }>>({});
   const [cheatEventCount, setCheatEventCount] = useState(0);
   const [showWarning, setShowWarning] = useState(false);
   const [warningMessage, setWarningMessage] = useState("");
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [isStarted, setIsStarted] = useState(false);
+  // Une session déjà en cours (rechargement de page) reprend directement :
+  // réafficher l'écran de démarrage en ouvrirait une seconde et abandonnerait
+  // la copie commencée.
+  const [isStarted, setIsStarted] = useState(!!sessionToken);
+  /**
+   * Écrire une fraction ou une racine au clavier est pénible et source
+   * d'erreurs de syntaxe. Le champ mathématique est donc proposé par défaut,
+   * avec un repli clavier pour qui préfère taper « 1/2 ».
+   */
+  const [saisieClavier, setSaisieClavier] = useState<Record<number, boolean>>({});
 
-  const answersRef = useRef(answers);
+  const answersRef = useRef<Record<number, { answer: string; justification?: string }>>({});
   const handleSubmitRef = useRef<(isTimeout?: boolean) => Promise<void>>(async () => {});
   const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    answersRef.current = answers;
-  });
 
   // Phase 3 : fingerprint calculé avant le start (Web Crypto)
   const { fingerprintHash, components: fpComponents, ready: fpReady } = useFingerprint();
@@ -65,7 +72,7 @@ export default function Evaluation() {
   // Les énoncés sont servis par une route `studentQuery` : ils exigent le jeton
   // de session et sont mélangés selon la graine de la session. `correctAnswer`
   // n'y figure pas.
-  const { data: questions, isLoading: isLoadingQuestions } =
+  const { data: questions, isLoading: isLoadingQuestions, error: erreurQuestions } =
     studentTrpc.question.getForActiveSession.useQuery(undefined, {
       enabled: isStarted && !!sessionToken,
       staleTime: Infinity,
@@ -73,6 +80,41 @@ export default function Evaluation() {
     });
 
   const submitSession = studentTrpc.session.submit.useMutation();
+
+  /**
+   * Brouillons enregistrés côté serveur : ils reconstituent la copie après un
+   * rechargement. Sans eux, la session reprise s'afficherait vide alors que le
+   * serveur détient les réponses.
+   */
+  const { data: brouillons } = studentTrpc.answer.listDrafts.useQuery(undefined, {
+    enabled: isStarted && !!sessionToken,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+
+  /**
+   * La copie affichée est la fusion des brouillons du serveur et des saisies
+   * locales, calculée au rendu. Recopier les brouillons dans l'état par un
+   * effet provoquerait des rendus en cascade et ferait diverger les deux
+   * sources.
+   */
+  const answers = useMemo(() => {
+    const base: Record<number, { answer: string; justification?: string }> = {};
+    for (const d of brouillons ?? []) {
+      base[d.questionId] = {
+        answer: d.answer ?? "",
+        justification: d.justification ?? undefined,
+      };
+    }
+    // Ce que l'élève vient de taper prime toujours.
+    return { ...base, ...editions };
+  }, [brouillons, editions]);
+
+  // La soumission automatique (fin de minuteur, triche) lit la copie par cette
+  // ref : sans elle, elle capturerait l'état du premier rendu.
+  useEffect(() => {
+    answersRef.current = answers;
+  });
 
   const durationMinutes = publicInfo?.duration ?? 0;
 
@@ -162,12 +204,15 @@ export default function Evaluation() {
         timeSpent: getTimeSpent(),
         isTimeout,
       });
+      // La copie est scellée : le jeton n'a plus d'usage et ne doit pas
+      // permettre de rouvrir l'écran de composition au rechargement suivant.
+      clearSession();
       navigate(`/results?token=${encodeURIComponent(result.resultsToken)}`);
     } catch (err) {
       console.error("Échec de la soumission :", err);
       setIsSubmitted(false);
     }
-  }, [questions, sessionId, submitSession, getTimeSpent, navigate, cheatBuffer]);
+  }, [questions, sessionId, submitSession, getTimeSpent, navigate, cheatBuffer, clearSession]);
 
   useEffect(() => {
     handleSubmitRef.current = handleSubmit;
@@ -192,14 +237,20 @@ export default function Evaluation() {
   };
 
   const handleAnswer = (questionId: number, answer: string) => {
-    setAnswers((prev) => ({ ...prev, [questionId]: { ...prev[questionId], answer } }));
+    setEditions((prev) => ({
+      ...prev,
+      [questionId]: { ...(prev[questionId] ?? answers[questionId]), answer },
+    }));
     if (currentQ && isStarted && !isSubmitted) {
       saveDraft({ questionId, answer, justification: answers[questionId]?.justification });
     }
   };
 
   const handleJustification = (questionId: number, justification: string) => {
-    setAnswers((prev) => ({ ...prev, [questionId]: { ...prev[questionId], justification } }));
+    setEditions((prev) => ({
+      ...prev,
+      [questionId]: { ...(prev[questionId] ?? answers[questionId]), justification },
+    }));
     if (currentQ && isStarted && !isSubmitted) {
       saveDraft({ questionId, answer: answers[questionId]?.answer ?? "", justification });
     }
@@ -275,6 +326,36 @@ export default function Evaluation() {
   }
 
   // ── Session ouverte : les énoncés arrivent avec le jeton ──
+  // Un jeton repris d'un rechargement peut avoir expiré, ou désigner une
+  // session déjà close. Le serveur refuse alors les énoncés : on le dit, et on
+  // laisse l'élève repartir proprement plutôt que de le laisser devant un
+  // écran vide avec un jeton mort dans son onglet.
+  if (erreurQuestions) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <Card className="max-w-lg w-full">
+          <CardHeader className="text-center">
+            <CardTitle className="text-xl">Session interrompue</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-center">
+            <p className="text-sm text-slate-600">
+              Cette session d'évaluation n'est plus valable — elle a expiré ou a
+              déjà été remise. Prévenez votre enseignant avant de recommencer.
+            </p>
+            <Button
+              className="w-full"
+              onClick={() => {
+                clearSession();
+                setIsStarted(false);
+              }}
+            >
+              Revenir à l'écran d'accueil
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
   if (isLoadingQuestions) return spinner("Chargement des questions…");
   if (!questions || questions.length === 0) {
     return failure("Impossible de charger les questions de l'évaluation.");
@@ -425,14 +506,44 @@ export default function Evaluation() {
                 {/* Réponse courte */}
                 {currentQ.type === "short_answer" && (
                   <div className="space-y-2">
-                    <Label htmlFor={`answer-${currentQ.id}`}>Votre réponse :</Label>
-                    <Textarea
-                      id={`answer-${currentQ.id}`}
-                      placeholder="Entrez votre réponse ici..."
-                      value={answers[currentQ.id]?.answer || ""}
-                      onChange={(e) => handleAnswer(currentQ.id, e.target.value)}
-                      className="min-h-[100px]"
-                    />
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor={`answer-${currentQ.id}`}>Votre réponse :</Label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSaisieClavier((prev) => ({
+                            ...prev,
+                            [currentQ.id]: !prev[currentQ.id],
+                          }))
+                        }
+                        className="text-xs text-blue-700 hover:underline"
+                      >
+                        {saisieClavier[currentQ.id]
+                          ? "Saisie mathématique"
+                          : "Saisie au clavier"}
+                      </button>
+                    </div>
+
+                    {saisieClavier[currentQ.id] ? (
+                      <Textarea
+                        id={`answer-${currentQ.id}`}
+                        placeholder="Par exemple : 1/2 ou 2*exp(2x)-3"
+                        value={answers[currentQ.id]?.answer || ""}
+                        onChange={(e) => handleAnswer(currentQ.id, e.target.value)}
+                        className="min-h-[80px]"
+                      />
+                    ) : (
+                      <MathInput
+                        id={`answer-${currentQ.id}`}
+                        aria-label="Réponse mathématique"
+                        value={answers[currentQ.id]?.answer || ""}
+                        onChange={(latex) => handleAnswer(currentQ.id, latex)}
+                        placeholder="Écrivez votre réponse"
+                      />
+                    )}
+                    <p className="text-xs text-slate-500">
+                      Fractions, racines et exposants sont acceptés dans les deux modes.
+                    </p>
                   </div>
                 )}
 

@@ -1,9 +1,10 @@
 /**
  * src/providers/StudentSessionContext.tsx
  *
- * Fournit la session élève : le jeton reste en mémoire (jamais localStorage,
- * il ne doit pas survivre à la fermeture de l'onglet) et le client tRPC élève
- * l'injecte automatiquement dans le header `x-student-session-token`.
+ * Fournit la session élève : le jeton vit en mémoire et dans le `sessionStorage`
+ * de l'onglet — jamais `localStorage`, il ne doit pas survivre à la fermeture de
+ * l'onglet — et le client tRPC élève l'injecte automatiquement dans le header
+ * `x-student-session-token`.
  *
  * Ce fichier n'exporte qu'un composant — le contexte et le hook vivent dans
  * `student-session.ts`, le client dans `student-trpc.ts`.
@@ -16,7 +17,7 @@ import {
   StudentSessionContext,
   type StudentSessionContextValue,
 } from "./student-session";
-import { getStudentToken, setStudentToken, studentTrpc } from "./student-trpc";
+import { getStudentToken, restaurerSession, setStudentToken, studentTrpc } from "./student-trpc";
 
 /**
  * Client créé une seule fois au chargement du module : le lien lit le jeton
@@ -44,8 +45,11 @@ const trpcClient = studentTrpc.createClient({
 });
 
 export function StudentSessionProvider({ children }: { children: ReactNode }) {
-  const [sessionToken, setSessionToken] = useState("");
-  const [sessionId, setSessionId] = useState<number | null>(null);
+  // Reprise après rechargement : l'état initial vient du stockage de l'onglet,
+  // sans effet ni rendu supplémentaire.
+  const reprise = restaurerSession();
+  const [sessionToken, setSessionToken] = useState(reprise?.token ?? "");
+  const [sessionId, setSessionId] = useState<number | null>(reprise?.sessionId ?? null);
 
   /**
    * Le cache est vidé à chaque changement de session : les requêtes élève
@@ -56,7 +60,7 @@ export function StudentSessionProvider({ children }: { children: ReactNode }) {
    */
   const setSession = useCallback((token: string, id: number) => {
     queryClient.clear();
-    setStudentToken(token);
+    setStudentToken(token, id);
     setSessionToken(token);
     setSessionId(id);
   }, []);
