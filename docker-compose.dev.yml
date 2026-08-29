@@ -1,0 +1,32 @@
+# docker-compose.dev.yml — base de données de développement uniquement.
+#
+# L'application tourne hors conteneur (`npm run dev`) : seul MySQL est fourni
+# ici, pour que migrations, seed et tests d'intégration soient exécutables sur
+# une machine vierge. Le compose de production (app + MySQL + Redis) relève de
+# la Phase 5.
+#
+#   docker compose -f docker-compose.dev.yml up -d
+#   npm run db:migrate && npx tsx db/seed.ts
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: eval-maths-mysql-dev
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: dev_root
+      MYSQL_DATABASE: eval_maths
+      MYSQL_USER: eval
+      MYSQL_PASSWORD: dev_password
+    # Publié sur 3307 pour ne pas entrer en conflit avec un MySQL local.
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - eval_maths_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-pdev_root"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  eval_maths_mysql:

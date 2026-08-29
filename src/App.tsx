@@ -5,6 +5,9 @@ import Evaluation from "./pages/Evaluation"
 import Results from "./pages/Results"
 import Dashboard from "./pages/Dashboard"
 import Preview from "./pages/Preview"
+import Evaluations from "./pages/teacher/Evaluations"
+import EvaluationEditor from "./pages/teacher/EvaluationEditor"
+import PaperEntry from "./pages/teacher/PaperEntry"
 import Login from "./pages/Login"
 import AuthLayout from "./components/AuthLayout"
 import { StudentSessionProvider } from "./providers/StudentSessionContext"
@@ -18,6 +21,9 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/dashboard" element={<AuthLayout><Dashboard /></AuthLayout>} />
       <Route path="/preview" element={<AuthLayout><Preview /></AuthLayout>} />
+      <Route path="/teacher/evaluations" element={<AuthLayout><Evaluations /></AuthLayout>} />
+      <Route path="/teacher/evaluations/:id" element={<AuthLayout><EvaluationEditor /></AuthLayout>} />
+      <Route path="/teacher/saisie/:examId" element={<AuthLayout><PaperEntry /></AuthLayout>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   )

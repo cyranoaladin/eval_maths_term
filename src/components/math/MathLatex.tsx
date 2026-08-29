@@ -79,6 +79,13 @@ function parseLatexString(input: string): TextPart[] {
         i = end + 1;
         continue;
       }
+      // Délimiteur non apparié : on l'émet comme texte et on avance.
+      // Sans cette sortie, `indexOf("$", i)` ci-dessous renvoie `i` lui-même,
+      // la position n'avance jamais et la boucle est infinie — un énoncé
+      // tronqué au milieu d'une formule suffisait à figer la page.
+      parts.push({ kind: "text", content: "$" });
+      i += 1;
+      continue;
     }
     // Texte brut — accumuler jusqu'au prochain $
     const nextDollar = input.indexOf("$", i);

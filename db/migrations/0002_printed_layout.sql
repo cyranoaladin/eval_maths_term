@@ -1,0 +1,1 @@
+ALTER TABLE `paper_exams` ADD `printedQuestionIds` json;

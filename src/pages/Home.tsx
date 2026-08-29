@@ -6,49 +6,41 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertTriangle, Clock, ShieldCheck, BookOpen, Calculator, Eye } from "lucide-react";
 import { trpc } from "@/providers/trpc-client";
-import { EVALUATION_DURATION } from "@contracts/evaluation-data";
 
 export default function Home() {
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
 
-  const { data: evaluations, isLoading: isLoadingEvals } = trpc.evaluation.list.useQuery();
-  const createSession = trpc.evaluation.createSession.useMutation();
+  // Catalogue public : ni questions, ni corrections.
+  const { data: evaluations, isLoading: isLoadingEvals } =
+    trpc.evaluation.listPublic.useQuery();
 
-  const handleStart = async () => {
+  const evaluation = evaluations?.[0];
+
+  /**
+   * La session n'est plus créée ici : c'est `session.start`, appelé par la page
+   * d'évaluation une fois l'empreinte calculée, qui l'ouvre et délivre le jeton.
+   * Créer la session dès l'accueil en ouvrait une seconde, orpheline.
+   */
+  const handleStart = () => {
     if (!name.trim()) {
       setError("Veuillez entrer votre nom et prénom.");
       return;
     }
+    if (!evaluation) {
+      setError("Aucune évaluation disponible. Contactez votre enseignant.");
+      return;
+    }
 
     setError("");
-    setIsLoading(true);
-
-    try {
-      const evaluation = evaluations?.[0];
-
-      if (!evaluation) {
-        setError("Aucune évaluation disponible. Contactez votre enseignant.");
-        setIsLoading(false);
-        return;
-      }
-
-      const session = await createSession.mutateAsync({
-        evaluationId: evaluation.id,
-        studentName: name.trim(),
-        studentEmail: email.trim() || undefined,
-      });
-
-      navigate(`/evaluation?session=${session.sessionId}&eval=${evaluation.id}`);
-    } catch (err) {
-      setError("Une erreur est survenue. Veuillez réessayer.");
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
+    const params = new URLSearchParams({
+      eval: String(evaluation.id),
+      name: name.trim(),
+    });
+    if (email.trim()) params.set("email", email.trim());
+    navigate(`/evaluation?${params.toString()}`);
   };
 
   return (
@@ -85,7 +77,9 @@ export default function Home() {
                 <Clock className="w-5 h-5 text-blue-600" />
                 <div>
                   <p className="font-medium text-slate-900">Durée</p>
-                  <p className="text-sm text-slate-600">{EVALUATION_DURATION} minutes</p>
+                  <p className="text-sm text-slate-600">
+                    {evaluation ? `${evaluation.duration} minutes` : "—"}
+                  </p>
                 </div>
               </div>
 
@@ -93,7 +87,11 @@ export default function Home() {
                 <BookOpen className="w-5 h-5 text-green-600" />
                 <div>
                   <p className="font-medium text-slate-900">Contenu</p>
-                  <p className="text-sm text-slate-600">QCM, réponses courtes, vrai/faux</p>
+                  <p className="text-sm text-slate-600">
+                    {evaluation
+                      ? `${evaluation.questionCount} questions — QCM, réponses courtes, vrai/faux`
+                      : "QCM, réponses courtes, vrai/faux"}
+                  </p>
                 </div>
               </div>
 
@@ -179,11 +177,11 @@ export default function Home() {
 
               <Button
                 onClick={handleStart}
-                disabled={isLoading || isLoadingEvals}
+                disabled={isLoadingEvals}
                 className="w-full"
                 size="lg"
               >
-                {isLoading || isLoadingEvals ? "Chargement..." : "Démarrer l'évaluation"}
+                {isLoadingEvals ? "Chargement..." : "Démarrer l'évaluation"}
               </Button>
 
               <Link to="/dashboard" className="block text-center">

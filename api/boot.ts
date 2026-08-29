@@ -53,6 +53,65 @@ app.use("/api/trpc/*", async (c) => {
     });
   });
 });
+/**
+ * Téléchargement des documents d'un tirage.
+ *
+ * Hors tRPC : ce sont des PDF, et les faire transiter en JSON encodé serait
+ * absurde. Trois protections : rôle enseignant exigé, propriété de la classe
+ * vérifiée, et nom de fichier pris dans une liste fermée — aucun segment du
+ * chemin ne vient de l'URL, donc aucune traversée de répertoire possible.
+ */
+app.get("/api/paper/:examId/:file", async (c) => {
+  const { authenticateRequest } = await import("./kimi/auth");
+  const { DOWNLOADABLE, workdirFor } = await import("./paper/paper-service");
+
+  let user;
+  try {
+    user = await authenticateRequest(c.req.raw.headers);
+  } catch {
+    return c.json({ error: "Authentification requise" }, 401);
+  }
+  if (user.role !== "teacher" && user.role !== "admin") {
+    return c.json({ error: "Droits insuffisants" }, 403);
+  }
+
+  const file = c.req.param("file");
+  const descriptor = DOWNLOADABLE[file];
+  if (!descriptor) return c.json({ error: "Document inconnu" }, 404);
+
+  const examId = Number.parseInt(c.req.param("examId"), 10);
+  if (!Number.isInteger(examId) || examId <= 0) {
+    return c.json({ error: "Tirage invalide" }, 400);
+  }
+
+  // Vérification de propriété : un enseignant ne télécharge que ses corrigés.
+  const { getDb } = await import("./queries/connection");
+  const { paperExams, classes } = await import("@db/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const [row] = await getDb()
+    .select({ id: paperExams.id })
+    .from(paperExams)
+    .innerJoin(classes, eq(classes.id, paperExams.classId))
+    .where(and(eq(paperExams.id, examId), eq(classes.ownerId, user.id)))
+    .limit(1);
+
+  if (!row) return c.json({ error: "Tirage introuvable" }, 404);
+
+  const { readFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  try {
+    const contenu = await readFile(join(workdirFor(examId), file));
+    return c.body(contenu as unknown as ArrayBuffer, 200, {
+      "Content-Type": descriptor.type,
+      "Content-Disposition": `inline; filename="${file}"`,
+      "Cache-Control": "private, max-age=300",
+    });
+  } catch {
+    return c.json({ error: "Document non produit — relancez la génération." }, 404);
+  }
+});
+
 app.all("/api/*", (c) => c.json({ error: "Ressource introuvable" }, 404));
 
 export default app;

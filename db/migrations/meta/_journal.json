@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1788023387275,
+      "tag": "0000_breezy_ulik",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1788023774771,
+      "tag": "0001_workshop",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1788028901263,
+      "tag": "0002_printed_layout",
+      "breakpoints": true
+    }
+  ]
+}

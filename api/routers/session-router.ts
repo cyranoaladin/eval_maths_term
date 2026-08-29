@@ -10,14 +10,16 @@ import {
   responses,
   cheatEvents as cheatEventsTable,
 } from "@db/schema";
-import { eq } from "drizzle-orm";
-import { MAX_SCORE } from "@contracts/evaluation-data";
+import { and, eq } from "drizzle-orm";
+import { gradeSessionResponses } from "../grading/grade-session";
 import { signStudentToken, signResultsToken, verifyResultsToken } from "../anticheat/session-token";
 import { processHeartbeat } from "../anticheat/heartbeat";
 import { ingestEvents } from "../anticheat/event-aggregator";
 import { logger } from "../lib/logger";
 import { checkRateLimit, getClientIp, RateLimits } from "../lib/rate-limit";
 import { FingerprintComponentsSchema, computeFingerprintHash } from "../anticheat/fingerprint";
+import { computeSuspicionScore } from "../anticheat/score-suspicion";
+import type { CheatEventType } from "@db/schema";
 
 function safeParseJson<T>(value: unknown): T | null {
   if (value == null) return null;
@@ -242,109 +244,102 @@ export const sessionRouter = createRouter({
       const session = await assertSessionActive(sessionId);
       const db = getDb();
 
-      // Récupérer les questions avec correctAnswer (côté serveur uniquement)
+      // Seules les questions de l'évaluation de la session sont acceptées :
+      // un client malveillant ne peut pas injecter la réponse d'une autre copie.
       const qs = await db
-        .select()
+        .select({ id: questions.id })
         .from(questions)
         .where(eq(questions.evaluationId, session.evaluationId));
+      const allowedIds = new Set(qs.map((q) => q.id));
 
-      const questionMap = new Map(qs.map((q) => [q.id, q]));
-      let totalScore = 0;
-
+      // 1. Enregistrement brut des réponses — aucun score n'est calculé ici,
+      //    et surtout aucun score n'est accepté depuis le client.
       await db.transaction(async (tx) => {
         for (const ans of input.answers) {
-          const q = questionMap.get(ans.questionId);
-          if (!q) continue;
+          if (!allowedIds.has(ans.questionId)) continue;
 
-          let isCorrect = false;
-          let score = 0;
-          let llmFeedback: string | null = null;
+          const [existing] = await tx
+            .select({ id: responses.id })
+            .from(responses)
+            .where(
+              and(
+                eq(responses.sessionId, sessionId),
+                eq(responses.questionId, ans.questionId),
+              ),
+            )
+            .limit(1);
 
-          if (q.type === "qcm") {
-            const correctIndex = parseInt(q.correctAnswer);
-            const studentIndex = parseInt(ans.answer);
-            isCorrect = correctIndex === studentIndex;
-            score = isCorrect ? q.points : 0;
-          } else if (q.type === "true_false") {
-            isCorrect = q.correctAnswer === ans.answer;
-            if (q.justificationRequired && ans.justification) {
-              // Score partiel en attente d'évaluation LLM
-              score = isCorrect ? Math.round(q.points * 0.5) : 0;
-              llmFeedback = "Justification à évaluer par l'enseignant.";
-            } else {
-              score = isCorrect ? q.points : 0;
-            }
-          } else if (q.type === "short_answer") {
-            // Correction naïve — sera améliorée en Phase 2 (compare-symbolic)
-            const norm = (s: string) => s.toLowerCase().replace(/\s/g, "").replace(/,/g, ".");
-            isCorrect = norm(ans.answer) === norm(q.correctAnswer);
-            score = isCorrect ? q.points : 0;
-            if (!isCorrect) {
-              llmFeedback = "À évaluer par le moteur de correction mathématique.";
-            }
+          if (existing) {
+            await tx
+              .update(responses)
+              .set({
+                answer: ans.answer,
+                justification: ans.justification ?? null,
+              })
+              .where(eq(responses.id, existing.id));
+          } else {
+            await tx.insert(responses).values({
+              sessionId,
+              questionId: ans.questionId,
+              answer: ans.answer,
+              justification: ans.justification ?? null,
+              maxScore: 0,
+              partialCreditApplied: false,
+            });
           }
-
-          totalScore += score;
-
-          await tx.insert(responses).values({
-            sessionId,
-            questionId: ans.questionId,
-            answer: ans.answer,
-            justification: ans.justification ?? null,
-            isCorrect,
-            score,
-            maxScore: q.points,
-            llmFeedback,
-            gradedAt: new Date(),
-          });
         }
+      });
 
-        // III.5 : note sur 20 calculée serveur
-        const normalizedScore = Math.round((totalScore / MAX_SCORE) * 20 * 4) / 4;
+      // 2. Correction par le moteur Phase 2 (déterministe puis LLM).
+      const grading = await gradeSessionResponses(sessionId);
 
-        // Détermination du statut final (III.5 : tabSwitchCount calculé depuis cheat_events)
-        const cheatCount = await tx
-          .select({ id: cheatEventsTable.id })
-          .from(cheatEventsTable)
-          .where(eq(cheatEventsTable.sessionId, sessionId));
+      // 3. Score de suspicion et statut final — calculés serveur, jamais reçus.
+      const events = await db
+        .select()
+        .from(cheatEventsTable)
+        .where(eq(cheatEventsTable.sessionId, sessionId));
 
-        const finalStatus = input.isTimeout
-          ? "timed_out"
-          : cheatCount.length > 10
+      const suspicion = computeSuspicionScore(
+        events.map((e) => ({
+          type: e.type as CheatEventType,
+          count: (e.metadata as { count?: number })?.count ?? 1,
+        })),
+      );
+
+      const finalStatus = input.isTimeout
+        ? "timed_out"
+        : suspicion.verdict === "severe"
           ? "cheating_detected"
           : "completed";
 
-        // Token de résultats à durée courte (10 min) — émis uniquement ici
-        const resultsToken = await signResultsToken(sessionId);
+      const resultsToken = await signResultsToken(sessionId);
 
-        await tx
-          .update(sessions)
-          .set({
-            status: finalStatus,
-            totalScore,
-            maxScore: MAX_SCORE,
-            // III.5 : normalizedScore calculé serveur — DECIMAL(5,2) attend une string en Drizzle
-            normalizedScore: (Math.round(normalizedScore * 4) / 4).toFixed(2),
-            timeSpent: input.timeSpent ?? null,
-            endedAt: new Date(),
-            resultsToken,
-          })
-          .where(eq(sessions.id, sessionId));
+      await db
+        .update(sessions)
+        .set({
+          status: finalStatus,
+          timeSpent: input.timeSpent ?? null,
+          endedAt: new Date(),
+          resultsToken,
+          suspicionScore: suspicion.score,
+          suspicionVerdict: suspicion.verdict,
+        })
+        .where(eq(sessions.id, sessionId));
 
-        logger.info("[session] Session soumise", {
-          sessionId,
-          totalScore,
-          normalizedScore,
-          finalStatus,
-        });
+      logger.info("[session] Session soumise", {
+        sessionId,
+        totalScore: grading.totalScore,
+        normalizedScore: grading.normalizedScore,
+        finalStatus,
+        suspicionScore: suspicion.score,
       });
 
-      const resultsToken = await signResultsToken(sessionId);
       return {
         success: true,
-        totalScore,
-        maxScore: MAX_SCORE,
-        normalizedScore: Math.round((totalScore / MAX_SCORE) * 20 * 4) / 4,
+        totalScore: grading.totalScore,
+        maxScore: grading.maxScore,
+        normalizedScore: grading.normalizedScore,
+        needsManualReview: grading.needsManualReview,
         resultsToken,
       };
     }),
@@ -392,6 +387,12 @@ export const sessionRouter = createRouter({
         .from(responses)
         .where(eq(responses.sessionId, sessionId));
 
+      // Compté depuis la table append-only, jamais depuis le client.
+      const events = await db
+        .select({ id: cheatEventsTable.id })
+        .from(cheatEventsTable)
+        .where(eq(cheatEventsTable.sessionId, sessionId));
+
       return {
         sessionId: session.id,
         studentName: session.studentName,
@@ -400,6 +401,7 @@ export const sessionRouter = createRouter({
         maxScore: session.maxScore,
         normalizedScore: session.normalizedScore !== null ? parseFloat(session.normalizedScore) : null,
         timeSpent: session.timeSpent,
+        cheatEventCount: events.length,
         responses: resps,
       };
     }),

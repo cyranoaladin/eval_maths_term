@@ -27,6 +27,12 @@ const envSchema = z.object({
   LLM_MAX_TOKENS: z.coerce.number().default(1000),
   LLM_TIMEOUT_MS: z.coerce.number().default(30000),
 
+  // Recherche documentaire (lot D). Sans RAG_URL, le port reste débranché.
+  RAG_URL: z.string().optional(),
+  RAG_API_KEY: z.string().optional(),
+  RAG_COLLECTION: z.string().default("default"),
+  RAG_TIMEOUT_MS: z.coerce.number().default(10000),
+
   ALLOWED_ORIGINS: z.string().default("http://localhost:3000"),
 
   SENTRY_DSN: z.string().optional(),
@@ -68,6 +74,12 @@ export const env = {
     model: _env.LLM_MODEL,
     maxTokens: _env.LLM_MAX_TOKENS,
     timeoutMs: _env.LLM_TIMEOUT_MS,
+  },
+  rag: {
+    url: _env.RAG_URL,
+    apiKey: _env.RAG_API_KEY,
+    collection: _env.RAG_COLLECTION,
+    timeoutMs: _env.RAG_TIMEOUT_MS,
   },
   allowedOrigins: _env.ALLOWED_ORIGINS.split(",").map(o => o.trim()),
   sentryDsn: _env.SENTRY_DSN,

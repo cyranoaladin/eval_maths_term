@@ -3,10 +3,10 @@ import { createRouter, teacherQuery, studentQuery, publicQuery } from "../middle
 import { getDb } from "../queries/connection";
 import { questions, evaluations } from "@db/schema";
 import { eq } from "drizzle-orm";
-import { MAX_SCORE } from "@contracts/evaluation-data";
 import type { PublicQuestion, PublicEvaluationInfo } from "@contracts/public-types";
 import { logger } from "../lib/logger";
 import { shuffleDeterministic } from "../grading/shuffle";
+import { optionShuffleSeed } from "../grading/grade-session";
 
 export const questionRouter = createRouter({
   /**
@@ -44,9 +44,11 @@ export const questionRouter = createRouter({
           const parsed = typeof q.options === "string"
             ? (JSON.parse(q.options) as string[])
             : (q.options as string[]);
-          // Mélange des options QCM avec une graine dérivée (seed + questionId)
+          // Mélange des options QCM avec une graine dérivée (seed + questionId).
+          // `optionShuffleSeed` est partagée avec la correction : sans graine
+          // commune, l'index soumis serait relu dans un autre ordre.
           return q.type === "qcm"
-            ? shuffleDeterministic(parsed, `${shuffleSeed}-opt-${q.id}`)
+            ? shuffleDeterministic(parsed, optionShuffleSeed(shuffleSeed, q.id))
             : parsed;
         })(),
         justificationRequired: q.justificationRequired ?? false,
@@ -86,7 +88,9 @@ export const questionRouter = createRouter({
         description: evalRow.description ?? null,
         duration: evalRow.duration,
         questionCount: qs.length,
-        maxScore: MAX_SCORE,
+        // Calculé depuis les questions en base : MAX_SCORE ne vaut que pour
+        // l'évaluation de référence et deviendrait faux dès la deuxième.
+        maxScore: qs.reduce((sum, q) => sum + q.points, 0),
       };
     }),
 

@@ -7,9 +7,11 @@
  * - Le flush est aussi déclenché sur beforeunload (best-effort).
  * - sessionToken obligatoire pour envoyer.
  * - Idempotent sur refresh : le buffer est en mémoire (non persisté).
+ * - `cheat.reportBatch` est une route `studentQuery` : elle passe par
+ *   `studentTrpc`, seul client à porter le header `x-student-session-token`.
  */
 import { useCallback, useEffect, useRef } from "react";
-import { trpc } from "@/providers/trpc-client";
+import { studentTrpc } from "@/providers/student-trpc";
 import type { CheatEventType } from "@db/schema";
 
 const FLUSH_INTERVAL_MS = 5_000;
@@ -37,7 +39,14 @@ export function useCheatBuffer({
 }: UseCheatBufferOptions): UseCheatBufferResult {
   const bufferRef = useRef<Map<CheatEventType, BufferedEvent>>(new Map());
   const cancelRef = useRef(false);
-  const reportMutation = trpc.cheat.reportBatch.useMutation();
+  const reportMutation = studentTrpc.cheat.reportBatch.useMutation();
+
+  // La mutation tRPC change d'identité à chaque rendu : on la garde dans une
+  // ref pour que `flush` reste stable sans mentir sur ses dépendances.
+  const reportRef = useRef(reportMutation.mutateAsync);
+  useEffect(() => {
+    reportRef.current = reportMutation.mutateAsync;
+  });
 
   const flush = useCallback(async () => {
     if (!enabled || !sessionToken || cancelRef.current) return;
@@ -46,7 +55,7 @@ export function useCheatBuffer({
     bufferRef.current.clear();
 
     try {
-      await reportMutation.mutateAsync({ events });
+      await reportRef.current({ events });
     } catch {
       // Ré-ajouter en cas d'échec (best-effort merge)
       for (const ev of events) {

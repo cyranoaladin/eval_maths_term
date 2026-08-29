@@ -20,6 +20,7 @@ import {
   questions,
 } from "@db/schema";
 import { gradeResponse } from "../grading/grade-response";
+import { resolveSubmittedQcmIndex } from "../grading/grade-session";
 import { computeSuspicionScore } from "./score-suspicion";
 import { GradingRubricSchema } from "../../contracts/grading-rubric";
 import { logger } from "../lib/logger";
@@ -111,6 +112,19 @@ export async function autoSubmitSession(
             needsLLM: false,
           };
         } else {
+          // Sans reconversion, l'index soumis est lu dans l'ordre mélangé vu
+          // par l'élève et tous les QCM seraient comptés faux.
+          const resolvedQcmIndex =
+            q.type === "qcm"
+              ? resolveSubmittedQcmIndex({
+                  rawOptions: q.options,
+                  shuffleSeed: session.shuffleSeed,
+                  questionId: q.id,
+                  submittedAnswer: draft.answer ?? "",
+                  mode: session.mode,
+                })
+              : undefined;
+
           result = await gradeResponse({
             questionType: q.type,
             studentAnswer: draft.answer ?? "",
@@ -118,6 +132,7 @@ export async function autoSubmitSession(
             rubric: rubricParsed.data,
             questionText: q.question,
             maxPoints: q.points,
+            resolvedQcmIndex,
             skipLLM: true,
           });
         }

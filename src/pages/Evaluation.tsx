@@ -10,7 +10,8 @@ import { Progress } from "@/components/ui/progress";
 import { AlertTriangle, Clock, Eye, ChevronLeft, ChevronRight, Send, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/providers/trpc-client";
-import { useStudentSession } from "@/providers/StudentSessionContext";
+import { useStudentSession } from "@/providers/student-session";
+import { studentTrpc } from "@/providers/student-trpc";
 import { useAntiCheat } from "@/hooks/useAntiCheat";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { useAutoSave } from "@/hooks/useAutoSave";
@@ -22,7 +23,6 @@ import { AutoSaveIndicator } from "@/components/anticheat/AutoSaveIndicator";
 import { CheatBanner } from "@/components/anticheat/CheatBanner";
 import { DevToolsDetector } from "@/components/anticheat/DevToolsDetector";
 import type { CheatEvent } from "@contracts/types";
-import { EVALUATION_DURATION } from "@contracts/evaluation-data";
 
 export default function Evaluation() {
   const [searchParams] = useSearchParams();
@@ -52,23 +52,32 @@ export default function Evaluation() {
   // Phase 3 : fingerprint calculé avant le start (Web Crypto)
   const { fingerprintHash, components: fpComponents, ready: fpReady } = useFingerprint();
 
-  // Récupérer les questions (public — pas besoin de token)
-  const { data: questions, isLoading } = trpc.evaluation.getQuestions.useQuery(
-    { evaluationId },
-    { enabled: evaluationId > 0 }
-  );
+  // Avant démarrage : uniquement le titre, la durée et le nombre de questions.
+  // Aucun énoncé, aucune correction ne transite tant que la session n'est pas ouverte.
+  const { data: publicInfo, isLoading: isLoadingInfo } =
+    trpc.question.getPublicInfo.useQuery(
+      { evaluationId },
+      { enabled: evaluationId > 0 },
+    );
 
-  // Mutation publique pour démarrer la session
   const startSession = trpc.session.start.useMutation();
 
-  // Mutation legacy pour la soumission finale (toujours via session.submit)
-  const submitAnswers = trpc.evaluation.submitAnswers.useMutation();
-  const updateSession = trpc.evaluation.updateSession.useMutation();
+  // Les énoncés sont servis par une route `studentQuery` : ils exigent le jeton
+  // de session et sont mélangés selon la graine de la session. `correctAnswer`
+  // n'y figure pas.
+  const { data: questions, isLoading: isLoadingQuestions } =
+    studentTrpc.question.getForActiveSession.useQuery(undefined, {
+      enabled: isStarted && !!sessionToken,
+      staleTime: Infinity,
+      refetchOnWindowFocus: false,
+    });
 
-  const sessionIdVal = sessionId ?? 0;
+  const submitSession = studentTrpc.session.submit.useMutation();
+
+  const durationMinutes = publicInfo?.duration ?? 0;
 
   const { formattedTime, progress, isWarning, isCritical, getTimeSpent } = useTimer({
-    durationMinutes: EVALUATION_DURATION,
+    durationMinutes,
     onTimeUp: useCallback(() => {
       if (!isSubmitted) handleSubmitRef.current(true);
     }, [isSubmitted]),
@@ -128,13 +137,18 @@ export default function Evaluation() {
     }, []),
   });
 
-  // Soumettre les réponses
+  /**
+   * Soumission : une seule mutation `session.submit`.
+   * Le serveur corrige (moteur déterministe puis LLM), calcule la note sur 20,
+   * le score de suspicion et le statut final. Le client n'envoie aucun score et
+   * ne décide plus du statut — il reçoit un jeton de résultats à durée courte.
+   */
   const handleSubmit = useCallback(async (isTimeout = false) => {
-    if (!questions || !sessionIdVal) return;
+    if (!questions || !sessionId) return;
     setIsSubmitted(true);
 
-    // Flush immédiat du buffer cheat avant soumission
-    cheatBuffer.flush();
+    // Vider le tampon d'événements avant de sceller la session
+    await cheatBuffer.flush();
 
     const formattedAnswers = questions.map((q) => ({
       questionId: q.id,
@@ -143,17 +157,17 @@ export default function Evaluation() {
     }));
 
     try {
-      await submitAnswers.mutateAsync({ sessionId: sessionIdVal, answers: formattedAnswers });
-      await updateSession.mutateAsync({
-        sessionId: sessionIdVal,
-        status: isTimeout ? "timed_out" : cheatEventCount > 5 ? "cheating_detected" : "completed",
+      const result = await submitSession.mutateAsync({
+        answers: formattedAnswers,
         timeSpent: getTimeSpent(),
+        isTimeout,
       });
-      navigate(`/results?session=${sessionIdVal}`);
+      navigate(`/results?token=${encodeURIComponent(result.resultsToken)}`);
     } catch (err) {
-      console.error("Error submitting:", err);
+      console.error("Échec de la soumission :", err);
+      setIsSubmitted(false);
     }
-  }, [questions, sessionIdVal, submitAnswers, updateSession, getTimeSpent, navigate, cheatEventCount, cheatBuffer]);
+  }, [questions, sessionId, submitSession, getTimeSpent, navigate, cheatBuffer]);
 
   useEffect(() => {
     handleSubmitRef.current = handleSubmit;
@@ -198,38 +212,30 @@ export default function Evaluation() {
     if (currentQuestion > 0) setCurrentQuestion((p) => p - 1);
   };
 
-  // ── Spinner fingerprint ──
-  if (!fpReady) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-slate-600">
-        <Loader2 className="h-10 w-10 animate-spin text-blue-500" />
-        <p className="text-sm">Préparation de la session…</p>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
-      </div>
-    );
-  }
-
-  if (!questions || questions.length === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Card>
-          <CardContent className="p-6 text-center">
-            <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <p>Impossible de charger l'évaluation.</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   const answeredCount = Object.keys(answers).filter((k) => answers[parseInt(k)]?.answer !== "").length;
+
+  const spinner = (label: string) => (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-slate-600">
+      <Loader2 className="h-10 w-10 animate-spin text-blue-500" />
+      <p className="text-sm">{label}</p>
+    </div>
+  );
+
+  const failure = (label: string) => (
+    <div className="min-h-screen flex items-center justify-center">
+      <Card>
+        <CardContent className="p-6 text-center">
+          <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <p>{label}</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  // ── Avant démarrage : empreinte puis informations publiques ──
+  if (!fpReady) return spinner("Préparation de la session…");
+  if (isLoadingInfo) return spinner("Chargement de l'évaluation…");
+  if (!publicInfo) return failure("Impossible de charger l'évaluation.");
 
   // ── Écran de démarrage ──
   if (!isStarted) {
@@ -238,16 +244,19 @@ export default function Evaluation() {
         <Card className="max-w-lg w-full">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl">Prêt à commencer ?</CardTitle>
+            <p className="text-sm text-slate-500 mt-1">{publicInfo.title}</p>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-3">
               <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
                 <Clock className="w-5 h-5 text-blue-600" />
-                <p className="text-sm">Durée : {EVALUATION_DURATION} minutes</p>
+                <p className="text-sm">Durée : {publicInfo.duration} minutes</p>
               </div>
               <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
                 <Eye className="w-5 h-5 text-green-600" />
-                <p className="text-sm">{questions.length} questions à répondre</p>
+                <p className="text-sm">
+                  {publicInfo.questionCount} questions — {publicInfo.maxScore} points
+                </p>
               </div>
               <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg">
                 <AlertTriangle className="w-5 h-5 text-amber-600" />
@@ -265,6 +274,11 @@ export default function Evaluation() {
     );
   }
 
+  // ── Session ouverte : les énoncés arrivent avec le jeton ──
+  if (isLoadingQuestions) return spinner("Chargement des questions…");
+  if (!questions || questions.length === 0) {
+    return failure("Impossible de charger les questions de l'évaluation.");
+  }
   if (!currentQ) return null;
 
   // ── Session active ──

@@ -49,8 +49,23 @@ export const PartialCreditRuleSchema = z.object({
   target: z.unknown().optional(),
 });
 
+/**
+ * Longueur maximale d'un diagnostic de distracteur.
+ * Source unique : le générateur tronque à cette valeur, le schéma la fait
+ * respecter. Deux limites distinctes rendaient invalides les propositions
+ * tombant entre les deux.
+ */
+export const DIAGNOSTIC_MAX_LENGTH = 600;
+
 export const GradingRubricSchema = z.object({
   mode: ComparisonModeSchema,
+  /**
+   * QCM : diagnostic attaché à chaque proposition, aligné sur l'index des
+   * options. Une mauvaise réponse doit enseigner quelque chose — l'élève lit
+   * l'erreur type dans laquelle il est tombé plutôt qu'un « Réponse incorrecte ».
+   * Case vide ou absente : retour générique.
+   */
+  distractorDiagnostics: z.array(z.string().max(DIAGNOSTIC_MAX_LENGTH)).optional(),
   acceptableForms: z.array(z.string()).optional(),
   rejectedPatterns: z.array(z.string()).optional(), // sources regex sérialisées
   partialCredit: z.array(PartialCreditRuleSchema).optional(),

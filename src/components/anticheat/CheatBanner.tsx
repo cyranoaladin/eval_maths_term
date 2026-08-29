@@ -2,10 +2,12 @@
  * src/components/anticheat/CheatBanner.tsx
  *
  * Bandeau d'avertissement affiché après détection d'un événement de triche.
- * Se ferme automatiquement après `autoDismissMs` (défaut : 5 s).
+ * Composant entièrement contrôlé : la visibilité appartient au parent, et
+ * l'auto-fermeture après `autoDismissMs` passe par `onDismiss`. Aucun état
+ * interne, donc aucun rendu en cascade.
  * aria-live="assertive" pour les lecteurs d'écran.
  */
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { AlertTriangle, X } from "lucide-react";
 
 export interface CheatBannerProps {
@@ -21,19 +23,13 @@ export function CheatBanner({
   autoDismissMs = 5_000,
   onDismiss,
 }: CheatBannerProps) {
-  const [show, setShow] = useState(visible);
-
   useEffect(() => {
-    setShow(visible);
     if (!visible) return;
-    const timer = setTimeout(() => {
-      setShow(false);
-      onDismiss?.();
-    }, autoDismissMs);
+    const timer = setTimeout(() => onDismiss?.(), autoDismissMs);
     return () => clearTimeout(timer);
-  }, [visible, autoDismissMs, onDismiss]);
+  }, [visible, message, autoDismissMs, onDismiss]);
 
-  if (!show) return null;
+  if (!visible) return null;
 
   return (
     <div
@@ -45,7 +41,7 @@ export function CheatBanner({
       <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
       <p className="flex-1 text-sm font-medium">{message}</p>
       <button
-        onClick={() => { setShow(false); onDismiss?.(); }}
+        onClick={() => onDismiss?.()}
         className="shrink-0 rounded p-0.5 hover:bg-red-500"
         aria-label="Fermer l'avertissement"
       >

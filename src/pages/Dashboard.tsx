@@ -47,11 +47,11 @@ export default function Dashboard() {
   const [selectedSession, setSelectedSession] = useState<number | null>(null);
   const [liveOpen, setLiveOpen] = useState(true);
 
-  const { data: evaluationList } = trpc.evaluation.list.useQuery();
+  const { data: evaluationList } = trpc.evaluation.listForTeacher.useQuery();
   const activeEvaluationId = evaluationList?.[0]?.id ?? null;
 
-  const { data: sessions, isLoading } = trpc.evaluation.getAllSessions.useQuery();
-  const { data: sessionDetails } = trpc.evaluation.getSessionDetails.useQuery(
+  const { data: sessions, isLoading } = trpc.session.getAllForTeacher.useQuery();
+  const { data: sessionDetails } = trpc.session.getDetailsForTeacher.useQuery(
     { sessionId: selectedSession || 0 },
     { enabled: selectedSession !== null }
   );

@@ -89,11 +89,19 @@ function gradeQcm(args: GradeResponseArgs): GradingResult {
   }
 
   const correct = resolvedQcmIndex === rubric.mode.correctIndex;
+
+  // Retour ciblé si l'enseignant a documenté l'erreur type de ce distracteur.
+  const diagnostic = rubric.distractorDiagnostics?.[resolvedQcmIndex]?.trim();
+
   return {
     score: correct ? maxPoints : 0,
     maxPoints,
     isCorrect: correct,
-    feedback: correct ? "Bonne réponse." : "Réponse incorrecte.",
+    feedback: correct
+      ? "Bonne réponse."
+      : diagnostic && diagnostic.length > 0
+        ? diagnostic
+        : "Réponse incorrecte.",
     gradingMode: "qcm",
     llmConfidence: null,
     partialCreditApplied: false,

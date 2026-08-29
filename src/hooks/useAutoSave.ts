@@ -7,9 +7,12 @@
  * 3. Retry depuis IDB toutes les 5 s.
  *
  * Statuts : "idle" | "saving" | "saved" | "error" | "offline"
+ *
+ * `answer.saveDraft` est une route `studentQuery` : elle passe par
+ * `studentTrpc`, seul client à porter le header `x-student-session-token`.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { trpc } from "@/providers/trpc-client";
+import { studentTrpc } from "@/providers/student-trpc";
 import { enqueue, dequeueAll } from "@/lib/idb-queue";
 
 const DEBOUNCE_MS = 2_000;
@@ -42,14 +45,21 @@ export function useAutoSave({ enabled }: UseAutoSaveOptions): UseAutoSaveResult 
   const retryRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cancelRef = useRef(false);
 
-  const saveDraftMutation = trpc.answer.saveDraft.useMutation();
+  const saveDraftMutation = studentTrpc.answer.saveDraft.useMutation();
+
+  // La mutation tRPC change d'identité à chaque rendu : on la garde dans une
+  // ref pour que `doSave` reste stable sans mentir sur ses dépendances.
+  const saveRef = useRef(saveDraftMutation.mutateAsync);
+  useEffect(() => {
+    saveRef.current = saveDraftMutation.mutateAsync;
+  });
 
   const doSave = useCallback(
     async (payload: DraftPayload) => {
       if (!enabled || cancelRef.current) return;
       setStatus("saving");
       try {
-        await saveDraftMutation.mutateAsync(payload);
+        await saveRef.current(payload);
         if (!cancelRef.current) {
           setStatus("saved");
           setPendingCount((c) => Math.max(0, c - 1));
@@ -86,7 +96,7 @@ export function useAutoSave({ enabled }: UseAutoSaveOptions): UseAutoSaveResult 
       const queue = await dequeueAll<DraftPayload>();
       for (const payload of queue) {
         try {
-          await saveDraftMutation.mutateAsync(payload);
+          await saveRef.current(payload);
           if (!cancelRef.current) {
             setPendingCount((c) => Math.max(0, c - 1));
             setStatus("saved");

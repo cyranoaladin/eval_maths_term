@@ -21,14 +21,15 @@ import {
 } from "@/components/ui/sidebar";
 import { LOGIN_PATH } from "@/const";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { LayoutDashboard, LogOut, PanelLeft, BookOpen, Home } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, BookOpen, Home, FilePenLine } from "lucide-react";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { AuthLayoutSkeleton } from "./AuthLayoutSkeleton";
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
+  { icon: FilePenLine, label: "Mes évaluations", path: "/teacher/evaluations" },
+  { icon: LayoutDashboard, label: "Tableau de bord", path: "/dashboard" },
   { icon: BookOpen, label: "Aperçu", path: "/preview" },
   { icon: Home, label: "Accueil", path: "/" },
 ];
@@ -115,7 +116,9 @@ function AuthLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.path === location.pathname);
+  const activeMenuItem = menuItems.find(
+    item => item.path === location.pathname || (item.path !== "/" && location.pathname.startsWith(item.path)),
+  );
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -178,7 +181,9 @@ function AuthLayoutContent({
           <SidebarContent className="gap-0">
             <SidebarMenu className="px-2 py-1">
               {menuItems.map(item => {
-                const isActive = location.pathname === item.path;
+                const isActive =
+                  location.pathname === item.path ||
+                  (item.path !== "/" && location.pathname.startsWith(item.path));
                 return (
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
