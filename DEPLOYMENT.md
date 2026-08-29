@@ -37,7 +37,7 @@ jetons que n'importe qui peut forger.
 
 ```bash
 docker compose up -d --build
-docker compose exec app npx drizzle-kit migrate
+docker compose exec app node dist/migrate.js
 docker compose exec app npx tsx db/seed.ts   # évaluation de démonstration, facultatif
 ```
 
@@ -115,7 +115,7 @@ Restaurez toujours la base entière.
 ```bash
 git pull
 docker compose up -d --build
-docker compose exec app npx drizzle-kit migrate
+docker compose exec app node dist/migrate.js
 ```
 
 Les migrations sont additives et rejouables. Sauvegardez avant, malgré tout.

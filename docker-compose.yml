@@ -2,7 +2,7 @@
 #
 #   cp .env.example .env   puis renseigner les secrets
 #   docker compose up -d --build
-#   docker compose exec app npx drizzle-kit migrate
+#   docker compose exec app node dist/migrate.js
 #
 # Le développement utilise `docker-compose.dev.yml`, qui ne fournit que MySQL.
 services:

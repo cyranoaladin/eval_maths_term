@@ -24,6 +24,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 USER evalapp
 
-# Vérification à la construction : l'exécutable doit répondre, sinon l'image
-# est inutile et il vaut mieux le savoir maintenant.
-RUN auto-multiple-choice version | head -1
+# Vérification à la construction : la commande en ligne doit répondre, sinon
+# l'image est inutile et il vaut mieux le savoir maintenant. `version` lance
+# l'interface graphique et échoue sans écran — ce sont les sous-commandes de
+# préparation que l'application appelle.
+# `version` ouvre l'interface graphique et échoue sans écran. On vérifie ce que
+# l'application vérifie — l'exécutable est dans le PATH — et ce dont la
+# préparation a besoin : le répartiteur Perl et la classe LaTeX.
+RUN which auto-multiple-choice \
+ && test -f /usr/libexec/AMC/perl/AMC-prepare.pl \
+ && kpsewhich automultiplechoice.sty
