@@ -22,7 +22,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle>Welcome</CardTitle>
+          <CardTitle>Espace enseignant</CardTitle>
         </CardHeader>
         <CardContent>
           <Button
@@ -32,7 +32,7 @@ export default function Login() {
               window.location.href = getOAuthUrl();
             }}
           >
-            Sign in with Kimi
+            Se connecter avec Kimi
           </Button>
         </CardContent>
       </Card>

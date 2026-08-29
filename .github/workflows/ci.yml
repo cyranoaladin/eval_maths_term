@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "phase-*"]
+  pull_request:
+    branches: [main]
+
+# Une seule exécution par branche : une nouvelle poussée annule la précédente.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualite:
+    name: Types, style, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci --no-audit --no-fund
+
+      # Les variables sont validées au chargement d'`api/lib/env.ts` : sans
+      # elles, tests et build échouent avant même de commencer.
+      - name: Variables d'environnement de test
+        run: |
+          {
+            echo "NODE_ENV=test"
+            echo "APP_ID=ci"
+            echo "APP_SECRET=ci_secret_de_test_au_moins_32_caracteres"
+            echo "TEACHER_SESSION_SECRET=ci_teacher_secret_au_moins_32_caracteres"
+            echo "STUDENT_SESSION_SECRET=ci_student_secret_au_moins_32_caracteres"
+            echo "DATABASE_URL=mysql://ci:ci@127.0.0.1:3306/ci"
+            echo "KIMI_AUTH_URL=http://localhost:9999"
+            echo "KIMI_OPEN_URL=http://localhost:9998"
+            echo "ALLOWED_ORIGINS=http://localhost:3000"
+            echo "LOG_LEVEL=error"
+          } >> "$GITHUB_ENV"
+
+      - name: Vérification des types
+        run: npm run check
+
+      - name: Style
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  migrations:
+    name: Base créée depuis le dépôt
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # Garde-fou : les migrations ne contenaient que des ALTER sans journal, et
+    # aucune base ne pouvait être construite depuis le dépôt. Ce travail vérifie
+    # qu'une base vierge se monte et se peuple.
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: eval_maths
+          MYSQL_USER: eval
+          MYSQL_PASSWORD: eval
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -proot"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Appliquer les migrations puis semer
+        env:
+          DATABASE_URL: mysql://eval:eval@127.0.0.1:3306/eval_maths
+          APP_ID: ci
+          APP_SECRET: ci_secret_de_test_au_moins_32_caracteres
+          KIMI_AUTH_URL: http://localhost:9999
+          KIMI_OPEN_URL: http://localhost:9998
+          LOG_LEVEL: error
+        run: |
+          npx drizzle-kit migrate
+          npx tsx db/seed.ts
+
+  image:
+    name: Image de production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Construire l'image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

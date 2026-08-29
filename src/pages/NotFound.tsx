@@ -10,9 +10,9 @@ export default function NotFound() {
           <CardTitle className="text-4xl font-bold">404</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-muted-foreground">Page not found</p>
+          <p className="text-muted-foreground">Cette page n'existe pas.</p>
           <Button asChild className="w-full">
-            <Link to="/">Back to Home</Link>
+            <Link to="/">Retour à l'accueil</Link>
           </Button>
         </CardContent>
       </Card>

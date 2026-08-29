@@ -2,7 +2,7 @@
 
 > Auteur : Cascade (ingénieur senior full-stack)  
 > Superviseur : Alaeddine Ben Rhouma (Shark), prof. agrégé de mathématiques  
-> Dernière mise à jour : Phases 1 à 3.5 ✅ — Phase 4 ✅ (atelier QCM complet) — reste Phase 5 (DevOps, RGPD, go-live)
+> Dernière mise à jour : Phases 1 à 4 ✅ — Phase 5 en cours (reste RGPD, k6, Sentry, tag)
 
 ---
 
@@ -237,19 +237,19 @@ déjà : grille par élève, progression, validation, score immédiat.
 
 | # | Tâche | Statut |
 |---|---|---|
-| 5.1 | `Dockerfile` multi-stage (builder + runtime node:20-slim) | ⬜ |
-| 5.2 | `docker-compose.yml` (mysql 8 + redis 7 + app) | ⬜ |
-| 5.3 | `.github/workflows/ci.yml` (lint + typecheck + test + build + security) | ⬜ |
-| 5.4 | Route `GET /api/health` (DB check + uptime + version) | ⬜ |
+| 5.1 | `Dockerfile` multi-stage (node:22-slim), utilisateur non privilégié, healthcheck — image construite et exécutée | ✅ |
+| 5.2 | `docker-compose.yml` (MySQL 8.4 + app). Redis écarté : la limitation de débit est en mémoire, il ne servirait qu'en multi-instances — noté dans SECURITY.md | ✅ |
+| 5.3 | `.github/workflows/ci.yml` : types, style, tests, build ; **création de la base depuis le dépôt** ; construction de l'image | ✅ |
+| 5.4 | `GET /api/health` — existait déjà ; branché sur le healthcheck du conteneur | ✅ |
 | 5.5 | Logger Pino ou wrapper structuré JSON avec requestId | ⬜ |
 | 5.6 | Sentry optionnel (`SENTRY_DSN`) | ⬜ |
-| 5.7 | `README.md` réécrit (pitch + quickstart + scripts) | ⬜ |
-| 5.8 | `DEPLOYMENT.md` (pré-requis + procédure + reverse proxy + backup) | ⬜ |
-| 5.9 | `SECURITY.md` (modèle de menaces + mitigations + signalement) | ⬜ |
+| 5.7 | `README.md` réécrit : le parcours réel, le démarrage local vérifié, les points de conception | ✅ |
+| 5.8 | `DEPLOYMENT.md` : secrets, reverse proxy (délai 300 s pour la génération), image AMC dérivée, sauvegardes | ✅ |
+| 5.9 | `SECURITY.md` : six menaces traitées, données personnelles, limites connues | ✅ |
 | 5.10 | Pages RGPD `/legal` + `/privacy` + export données élève | ⬜ |
 | 5.11 | Test de charge k6 (200 élèves concurrents, p95 < 500ms) | ⬜ |
-| 5.12 | Bundle splitting Vite (chunk prof séparé) | ⬜ |
-| 5.13 | UI : traduction 100% FR (Login, AuthLayout, NotFound, sidebar) | ⬜ |
+| 5.12 | Découpage par route + bibliothèques lourdes isolées : élève 1,75 Mo → ~1,0 Mo, enseignant → 756 Ko | ✅ |
+| 5.13 | Interface 100 % FR + `lang="fr"`, titre, description et icône d'onglet | ✅ |
 | 5.14 | CHANGELOG.md Phase 5 | ⬜ |
 | 5.15 | Tag `v1.0.0-rc1` après revue de Shark | ⬜ |
 
@@ -275,8 +275,8 @@ déjà : grille par élève, progression, validation, score immédiat.
 - [ ] 16. 0 `any`, 0 `// @ts-ignore` non commenté
 - [ ] 17. Audit log : 100% des modifications de scores manuels
 - [ ] 18. Export CSV et PDF fonctionnel
-- [ ] 19. Login + AuthLayout + NotFound en français FR-FR
+- [x] 19. Login + AuthLayout + NotFound en français FR-FR
 - [ ] 20. k6 : 200 élèves concurrents, p95 < 500ms, 0 erreur
 - [ ] 21. RGPD : mentions légales + confidentialité + export utilisateur
-- [ ] 22. SECURITY.md à jour
-- [ ] 23. README.md réécrit, quickstart fonctionnel sur machine vierge
+- [x] 22. SECURITY.md à jour
+- [x] 23. README.md réécrit, quickstart fonctionnel sur machine vierge

@@ -25,5 +25,19 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        /**
+         * Bibliothèques lourdes isolées : elles changent rarement et restent
+         * donc en cache du navigateur entre deux déploiements, au lieu d'être
+         * retéléchargées avec le code applicatif.
+         */
+        manualChunks: {
+          "vendor-react": ["react", "react-dom", "react-router"],
+          "vendor-math": ["katex", "mathlive", "mathjs"],
+          "vendor-charts": ["recharts"],
+        },
+      },
+    },
   },
 });
