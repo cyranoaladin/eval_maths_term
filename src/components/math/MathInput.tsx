@@ -20,6 +20,7 @@
  */
 import React, {
   useRef,
+  useState,
   useEffect,
   useCallback,
   type HTMLAttributes,
@@ -62,20 +63,53 @@ interface MathInputProps {
 let mathliveLoadPromise: Promise<void> | null = null;
 function loadMathLive(): Promise<void> {
   if (!mathliveLoadPromise) {
-    mathliveLoadPromise = import("mathlive").then(() => {
-      // L'import suffit à enregistrer le web component <math-field>
-    }).catch((e) => {
-      console.error("[MathInput] Impossible de charger MathLive:", e);
-      mathliveLoadPromise = null;
-    });
+    mathliveLoadPromise = import("mathlive")
+      .then((mathlive) => {
+        // MathLive cherche ses polices à côté de son propre script, c'est-à-dire
+        // dans un répertoire que ni le serveur de développement ni le bundle de
+        // production ne servent : le champ tombait alors sur les polices
+        // système et rendait les formules de travers. Elles sont copiées dans
+        // `public/mathlive/fonts` et désignées explicitement.
+        mathlive.MathfieldElement.fontsDirectory = "/mathlive/fonts";
+        // Aucun retour sonore pendant une évaluation.
+        mathlive.MathfieldElement.soundsDirectory = null;
+      })
+      .catch((e) => {
+        console.error("[MathInput] Impossible de charger MathLive:", e);
+        mathliveLoadPromise = null;
+      });
   }
   return mathliveLoadPromise!;
+}
+
+/**
+ * Lecture et écriture de la formule.
+ *
+ * `el.value` n'est utilisable qu'une fois le custom element défini. Tant qu'il
+ * ne l'est pas, une affectation crée une propriété propre à l'instance qui
+ * masque définitivement l'accesseur du prototype : le champ affiche bien la
+ * saisie, mais `el.value` renvoie toujours la chaîne écrite avant l'upgrade —
+ * autrement dit la réponse de l'élève n'atteint jamais React. On ne touche donc
+ * au champ qu'une fois MathLive chargé, et on passe par `getValue`/`setValue`.
+ */
+function lireValeur(el: MathfieldElement): string {
+  return typeof el.getValue === "function" ? el.getValue() : (el.value ?? "");
+}
+
+function ecrireValeur(el: MathfieldElement, latex: string): void {
+  if (typeof el.setValue === "function") {
+    el.setValue(latex, { suppressChangeNotifications: true });
+  } else {
+    el.value = latex;
+  }
 }
 
 interface MathfieldElement extends HTMLElement {
   value: string;
   disabled: boolean;
   focus(): void;
+  getValue?(): string;
+  setValue?(latex: string, options?: { suppressChangeNotifications?: boolean }): void;
 }
 
 export function MathInput({
@@ -90,25 +124,31 @@ export function MathInput({
   "aria-describedby": ariaDescribedBy,
 }: MathInputProps) {
   const fieldRef = useRef<MathfieldElement | null>(null);
+  const [pret, setPret] = useState(false);
 
   // Charger MathLive au montage
   useEffect(() => {
-    loadMathLive();
+    let monte = true;
+    loadMathLive().then(() => {
+      if (monte) setPret(true);
+    });
+    return () => {
+      monte = false;
+    };
   }, []);
 
-  // Synchroniser la valeur externe → champ (évite la boucle infinie via ref guard)
+  // Synchroniser la valeur externe → champ, une fois le champ réellement défini.
   useEffect(() => {
     const el = fieldRef.current;
-    if (el && el.value !== value) {
-      el.value = value;
-    }
-  }, [value]);
+    if (!pret || !el) return;
+    if (lireValeur(el) !== value) ecrireValeur(el, value);
+  }, [value, pret]);
 
   // Écouter les changements du champ → appeler onChange
   const handleInput = useCallback(
     (e: Event) => {
       const el = e.target as MathfieldElement;
-      const newValue = el.value ?? "";
+      const newValue = lireValeur(el);
       if (newValue !== value) {
         onChange(newValue);
       }
@@ -118,25 +158,25 @@ export function MathInput({
 
   useEffect(() => {
     const el = fieldRef.current;
-    if (!el) return;
+    if (!pret || !el) return;
     el.addEventListener("input", handleInput);
     return () => {
       el.removeEventListener("input", handleInput);
     };
-  }, [handleInput]);
+  }, [handleInput, pret]);
 
   // disabled
   useEffect(() => {
     const el = fieldRef.current;
-    if (el) el.disabled = disabled;
-  }, [disabled]);
+    if (pret && el) el.disabled = disabled;
+  }, [disabled, pret]);
 
   // autoFocus
   useEffect(() => {
-    if (autoFocus && fieldRef.current) {
+    if (autoFocus && pret && fieldRef.current) {
       setTimeout(() => fieldRef.current?.focus(), 50);
     }
-  }, [autoFocus]);
+  }, [autoFocus, pret]);
 
   return (
     <div
@@ -147,7 +187,21 @@ export function MathInput({
         className,
       )}
     >
-      {/* @ts-expect-error — web component not typed in React by default */}
+      {/*
+        Le champ n'est monté qu'une fois MathLive chargé et configuré : c'est à
+        la connexion du premier <math-field> que la bibliothèque résout le
+        chemin de ses polices, et ce chemin doit déjà être le bon.
+      */}
+      {!pret ? (
+        <div
+          aria-hidden="true"
+          style={{ minHeight: "2.5rem", padding: "0.5rem 0.75rem" }}
+          className="text-sm text-muted-foreground"
+        >
+          {placeholder ?? ""}
+        </div>
+      ) : (
+      /* @ts-expect-error — web component not typed in React by default */
       <math-field
         ref={fieldRef}
         id={id}
@@ -165,6 +219,7 @@ export function MathInput({
           background: "transparent",
         }}
       />
+      )}
     </div>
   );
 }

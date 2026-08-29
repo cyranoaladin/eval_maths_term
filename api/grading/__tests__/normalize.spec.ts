@@ -197,3 +197,40 @@ describe("normalizeExpression — règles supplémentaires", () => {
     expect(normalizeExpression("  2  *  x  ")).toBe("2*x");
   });
 });
+
+describe("LaTeX produit par le champ de saisie mathématique", () => {
+  // MathLive n'émet pas le LaTeX qu'un élève taperait à la main : la
+  // multiplication devient `\cdot`, les parenthèses sont encadrées de
+  // `\left`/`\right`. Sans traduction, `2\cdot x` devenait `2\cdotx` et la
+  // réponse était comptée fausse alors qu'elle était juste.
+  it("traduit la multiplication", () => {
+    expect(normalizeExpression("2\\cdot x")).toBe("2*x");
+    expect(normalizeExpression("3\\times 4")).toBe("3*4");
+  });
+
+  it("retire les délimiteurs extensibles", () => {
+    expect(normalizeExpression("\\left(x+1\\right)")).toBe("(x+1)");
+  });
+
+  it("traduit la division", () => {
+    expect(normalizeExpression("6\\div 2")).toBe("6/2");
+  });
+
+  it("retire les espacements fins", () => {
+    expect(normalizeExpression("x\\,dx")).toBe("xdx");
+  });
+
+  it("combine avec les fractions", () => {
+    expect(normalizeExpression("\\frac{1}{2}\\cdot 4")).toBe("((1)/(2))*4");
+    expect(normalizeExpression("2\\cdot\\frac{1}{2}")).toBe("2*((1)/(2))");
+  });
+
+  it("préserve la casse d'Infinity, seule constante mathjs à majuscule", () => {
+    // Le passage final en minuscules produisait « infinity », que mathjs ne
+    // sait pas lire : toute limite infinie était comptée fausse.
+    expect(normalizeExpression("\\infty")).toBe("Infinity");
+    expect(normalizeExpression("∞")).toBe("Infinity");
+    expect(normalizeExpression("+\\infty")).toBe("Infinity");
+    expect(normalizeExpression("-\\infty")).toBe("-Infinity");
+  });
+});

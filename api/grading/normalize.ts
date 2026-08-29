@@ -35,6 +35,18 @@ export function normalizeExpression(s: string): string {
     .replace(/⁷/g, "^7")
     .replace(/⁸/g, "^8")
     .replace(/⁹/g, "^9")
+    // 6b. Opérateurs et délimiteurs produits par MathLive.
+    // Un élève qui compose dans le champ mathématique produit `\cdot`,
+    // `\times` et `\left(...\right)` : sans traduction, `2\cdot x` devenait
+    // `2\cdotx`, que mathjs ne sait pas lire — la réponse était comptée fausse
+    // alors qu'elle était juste.
+    .replace(/\\left\s*/g, "")
+    .replace(/\\right\s*/g, "")
+    .replace(/\\cdot\s*/g, "*")
+    .replace(/\\times\s*/g, "*")
+    .replace(/\\div\s*/g, "/")
+    .replace(/\\pm\s*/g, "+")           // approximation : on retient la branche positive
+    .replace(/\\!|\\,|\\;|\\:/g, "") // espacements fins LaTeX
     // 7. Racine carrée
     .replace(/√\(/g, "sqrt(")
     .replace(/√([a-zA-Z0-9])/g, "sqrt($1)")
@@ -83,7 +95,11 @@ export function normalizeExpression(s: string): string {
     .replace(/\blog(\d)/g, "log($1)")
     // 14. Lowercase final — mathjs est case-sensitive pour les constantes (pi, e)
     // mais on lowercase tout sauf les noms de fonctions déjà en minuscule
-    .toLowerCase();
+    .toLowerCase()
+    // 15. `Infinity` est la seule constante mathjs qui porte une majuscule :
+    // le passage en minuscules ci-dessus la rendait illisible, et toute réponse
+    // comportant une limite infinie était comptée fausse.
+    .replace(/\binfinity\b/g, "Infinity");
 }
 
 /**

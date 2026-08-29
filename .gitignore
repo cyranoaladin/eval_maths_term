@@ -40,3 +40,6 @@ build/
 coverage/
 .nyc_output/
 .paper-exams/
+# Rapports Playwright
+test-results/
+playwright-report/
