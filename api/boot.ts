@@ -213,6 +213,10 @@ if (env.nodeEnv !== "test") {
 export default app;
 
 if (env.isProduction) {
+  // Branchée avant le serveur : une erreur au démarrage doit partir elle aussi.
+  const { initialiserSupervision } = await import("./lib/supervision");
+  initialiserSupervision();
+
   const { serve } = await import("@hono/node-server");
   const { serveStaticFiles } = await import("./lib/vite");
   serveStaticFiles(app);

@@ -23,7 +23,7 @@ corrigés par le même moteur.
 Branche : `main`, taguée `v1.0.0-rc1`.
 
 **État.** Phases 1 à 5 terminées. `npm run check`, `npm run lint`,
-**890 tests**, `npm run test:coverage` et `npm run build` sont verts, ainsi que
+**899 tests**, `npm run test:coverage` et `npm run build` sont verts, ainsi que
 **39 scénarios navigateur** sur Chromium, Firefox et WebKit contre le build de
 production. **Les 23 critères de mise en service sont satisfaits.**
 
@@ -208,7 +208,7 @@ La génération **retourne des propositions**. L'enregistrement repasse par
 | Authentification | OAuth Kimi, session JWT (`jose`) |
 | Modèle de langage | API compatible OpenAI — OpenRouter par défaut |
 | Impression | `auto-multiple-choice` 1.6.0 piloté en ligne de commande |
-| Tests | Vitest (890 tests, dont un socle d'intégration sur base réelle), Playwright (39 scénarios, trois moteurs), neuf recettes de bout en bout, k6 |
+| Tests | Vitest (899 tests, dont un socle d'intégration sur base réelle), Playwright (39 scénarios, trois moteurs), neuf recettes de bout en bout, k6 |
 
 ### 5.2 Arborescence
 
@@ -663,7 +663,8 @@ une variable requise manque ou est trop courte.
 | `PAPER_OUTPUT_DIR` | — | `./.paper-exams` | Dossiers de tirage |
 | `OWNER_UNION_ID` | fortement conseillé | — | Le seul compte provisionné administrateur |
 | `PUBLIC_BASE_URL` | **oui en production** | — | Adresse publique ; seule source de la redirection OAuth |
-| `LOG_LEVEL`, `BRAND_NAME`, `SENTRY_DSN`, `REDIS_URL` | non | | |
+| `SENTRY_DSN` | non | — | Destination des erreurs ; sans elle, elles restent dans le journal du conteneur |
+| `LOG_LEVEL`, `BRAND_NAME`, `REDIS_URL` | non | | |
 | `VITE_ETABLISSEMENT`, `VITE_ETABLISSEMENT_ADRESSE`, `VITE_DIRECTEUR_PUBLICATION`, `VITE_CONTACT_DONNEES`, `VITE_HEBERGEUR` | non | — | Mentions légales |
 
 Aucun secret n'a de valeur par défaut : une valeur de repli écrite dans le
@@ -687,7 +688,7 @@ npm run check   # tsc -b
 npm run lint    # eslint (0 erreur, 3 avertissements react-hooks connus)
 # Les tests d'intégration parlent à une vraie base. `scripts/bootstrap-dev.sh`
 # a écrit TEST_DATABASE_URL dans `.env` ; la base est créée si elle manque.
-npm test        # 890 tests, 70 fichiers
+npm test        # 899 tests, 71 fichiers
 npm run build   # vite + esbuild
 ```
 

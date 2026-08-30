@@ -141,7 +141,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P16 | Vivacité et disponibilité distinctes et réelles | **PASS** | `/api/health` et `/api/ready` ; 4 vérifications HTTP dans `surface-http.integration.spec.ts` ; le conteneur interroge la disponibilité |
 | P17 | Arrêt gracieux | **PASS** | `scripts/smoke-arret-gracieux.ts` : SIGTERM pendant une remise en vol, copie entière, sortie 0 ; 4 tests unitaires sur l'ordre |
 | P18 | Contre-pression, remise idempotente | **PASS** | `remise-concurrente.integration.spec.ts` : une remise rejouée rend mot pour mot la même réponse ; audit des files en §5 |
-| P19 | Observabilité — 0 `console.*`, supervision d'erreurs | IN_PROGRESS | `journalisation.spec.ts` : 0 appel direct. Supervision non branchée |
+| P19 | Observabilité — 0 `console.*`, supervision d'erreurs | **PASS** | `journalisation.spec.ts` : 0 appel direct ; supervision branchée sur `logger.error`, 9 tests de nettoyage, `scripts/verifier-supervision.ts` |
 | P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | IN_PROGRESS | cinq jobs écrits, aucun `continue-on-error` ; reste à les voir passer sur GitHub |
 | P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | IN_PROGRESS | 857 tests, 39 parcours ; `fileParallelism: false` rétabli (l'option était ignorée depuis Vitest 4) |
 | P22 | Couverture : 100 % sur les domaines critiques, ≥ 95 % global serveur | IN_PROGRESS | seuils actuels : 100 % sur `api/grading`, 80 % global |
@@ -158,7 +158,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 21 / 34. IN_PROGRESS : 11. BLOCKED_EXTERNAL : 2.**
+**PASS : 22 / 34. IN_PROGRESS : 10. BLOCKED_EXTERNAL : 2.**
 
 ---
 

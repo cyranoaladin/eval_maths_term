@@ -145,6 +145,35 @@ bash scripts/relever-empreintes-images.sh   # montre l'écart, demande confirmat
 Après une montée volontaire : reconstruire, relancer la recette, refaire passer
 le scan. Ces trois-là vont ensemble.
 
+## Supervision des erreurs
+
+Renseignez `SENTRY_DSN` — n'importe quel collecteur parlant ce protocole
+convient, hébergé ou non. Sans elle, une erreur de production s'écrit sur la
+sortie standard du conteneur et ne va pas plus loin.
+
+```bash
+docker compose exec app node dist/boot.js --version   # rappel de la version
+npx tsx scripts/verifier-supervision.ts               # envoie une erreur de vérification
+```
+
+Le script produit un événement reconnaissable et dit quoi chercher dans la
+console du collecteur. **À lancer après chaque déploiement** : une supervision
+qu'on n'a jamais vue fonctionner n'est pas une supervision.
+
+**Ce qui ne part jamais.** Une copie d'élève est une donnée scolaire — nom,
+réponses, notes, incidents de surveillance —, et un jeton de session donnerait
+l'accès avec le rapport. Le corps des requêtes, les en-têtes, les cookies et
+l'utilisateur sont retirés avant l'envoi ; les jetons et les adresses de base
+avec identifiants sont effacés du texte lui-même, y compris au fond d'un message
+d'erreur. Reste l'erreur, sa pile, la route, la version, l'empreinte Git et
+l'identifiant de requête — celui qui permet de retrouver la ligne
+correspondante dans les journaux du serveur.
+
+**Le navigateur n'envoie rien.** Y ajouter un collecteur ferait télécharger son
+client à chaque élève, au démarrage de chaque épreuve, sur le réseau d'un
+établissement. `src/lib/journal.ts` est le point unique où un tel envoi se
+brancherait, le jour où ce coût se justifie.
+
 ## Chaîne d'approvisionnement
 
 ```bash

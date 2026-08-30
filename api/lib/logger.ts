@@ -1,5 +1,6 @@
 import { env } from "./env";
 import { currentRequestId } from "./request-id";
+import { signalerErreur } from "./supervision";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -48,10 +49,18 @@ export const logger = {
     }
   },
 
+  /**
+   * Une erreur va au journal, et à la supervision quand elle est branchée.
+   *
+   * L'identifiant de requête accompagne les deux : c'est ce qui permet de
+   * retrouver, dans les journaux du serveur, la ligne qui correspond au rapport.
+   */
   error(message: string, data?: Record<string, unknown>): void {
     if (shouldLog("error")) {
       console.error(formatEntry("error", message, data));
     }
+    const requestId = currentRequestId();
+    signalerErreur(message, requestId ? { ...data, requestId } : data);
   },
 
   /**

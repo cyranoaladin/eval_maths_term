@@ -17,6 +17,7 @@
 import { logger } from "./logger";
 import { arreterBalayageInactivite } from "../anticheat/idle-scheduler";
 import { fermerPool } from "../queries/connection";
+import { viderLaFileDeSupervision } from "./supervision";
 
 /**
  * Au-delà, on considère qu'une requête ne finira pas. Une remise de copie tient
@@ -74,8 +75,11 @@ export async function arreter(
     logger.info("Toutes les requêtes en cours sont terminées");
   }
 
-  // 3. Rendre les connexions à la base plutôt que les laisser couper.
+  // 3. Rendre les connexions à la base plutôt que les laisser couper, et
+  //    laisser partir ce qui attendait dans la file de supervision : une
+  //    erreur perdue à l'arrêt est précisément celle qu'on aurait voulu lire.
   await fermerPool();
+  await viderLaFileDeSupervision();
   logger.info("Arrêt terminé");
 }
 
