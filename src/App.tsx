@@ -23,6 +23,7 @@ const Evaluations = lazy(() => import("./pages/teacher/Evaluations"))
 const EvaluationEditor = lazy(() => import("./pages/teacher/EvaluationEditor"))
 const PaperEntry = lazy(() => import("./pages/teacher/PaperEntry"))
 const Correction = lazy(() => import("./pages/teacher/Correction"))
+const Comptes = lazy(() => import("./pages/admin/Comptes"))
 const MentionsLegales = lazy(() => import("./pages/legal/MentionsLegales"))
 const Confidentialite = lazy(() => import("./pages/legal/Confidentialite"))
 
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="/teacher/evaluations/:id" element={<AuthLayout><EvaluationEditor /></AuthLayout>} />
         <Route path="/teacher/saisie/:examId" element={<AuthLayout><PaperEntry /></AuthLayout>} />
         <Route path="/teacher/correction/:examId" element={<AuthLayout><Correction /></AuthLayout>} />
+        <Route path="/admin/comptes" element={<AuthLayout><Comptes /></AuthLayout>} />
         <Route path="/mentions-legales" element={<MentionsLegales />} />
         <Route path="/confidentialite" element={<Confidentialite />} />
         <Route path="*" element={<NotFound />} />

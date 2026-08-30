@@ -37,10 +37,10 @@ npm install
 scripts/bootstrap-dev.sh                           # .env, secrets tirés localement
 docker compose -f docker-compose.dev.yml up -d     # MySQL sur 127.0.0.1:3307
 npx tsx db/migrate.ts && npx tsx db/seed.ts
-npx tsx scripts/dev-session.ts                     # session enseignant locale
+npx tsx scripts/dev-session.ts                     # session enseignant locale (autorisée d'office)
 npx tsx scripts/fixtures-e2e.ts                    # classe, élèves et tirage de démonstration
 npm run dev                                        # http://localhost:3000
-npx tsx scripts/dev-session.ts                     # session enseignant locale
+npx tsx scripts/dev-session.ts                     # session enseignant locale (autorisée d'office)
 ```
 
 ---
@@ -635,7 +635,7 @@ une variable requise manque ou est trop courte.
 | `LLM_MAX_TOKENS`, `LLM_TIMEOUT_MS` | — | 1000, 60000 | Surchargés par appel |
 | `RAG_URL`, `RAG_API_KEY`, `RAG_COLLECTION`, `RAG_TIMEOUT_MS` | non | — / — / `default` / 10000 | Port débranché sans `RAG_URL` |
 | `PAPER_OUTPUT_DIR` | — | `./.paper-exams` | Dossiers de tirage |
-| `OWNER_UNION_ID` | non | — | Rôle admin à la première connexion |
+| `OWNER_UNION_ID` | fortement conseillé | — | Le seul compte provisionné administrateur |
 | `LOG_LEVEL`, `BRAND_NAME`, `SENTRY_DSN`, `REDIS_URL` | non | | |
 | `VITE_ETABLISSEMENT`, `VITE_ETABLISSEMENT_ADRESSE`, `VITE_DIRECTEUR_PUBLICATION`, `VITE_CONTACT_DONNEES`, `VITE_HEBERGEUR` | non | — | Mentions légales |
 

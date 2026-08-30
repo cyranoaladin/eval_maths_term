@@ -17,7 +17,11 @@ export const createRouter = t.router;
 export const publicQuery = t.procedure;
 
 /**
- * Middleware : vérifie que l'utilisateur est authentifié (cookie JWT prof).
+ * Middleware : vérifie qu'une session valide identifie un compte connu.
+ *
+ * Il n'accorde rien de plus. C'est volontaire : l'interface doit pouvoir dire
+ * « votre compte attend une autorisation » plutôt que « connexion requise »,
+ * ce qui suppose de savoir qui est là.
  */
 const requireAuth = t.middleware(async (opts) => {
   const { ctx, next } = opts;
@@ -33,15 +37,48 @@ const requireAuth = t.middleware(async (opts) => {
 });
 
 /**
- * Middleware : vérifie le rôle de l'utilisateur authentifié.
+ * Middleware : exige un compte autorisé.
+ *
+ * Être authentifié ne suffit pas. Un compte créé à la première connexion est
+ * `pending` : il existe, il porte un nom, et il n'ouvre rien tant qu'un
+ * administrateur ne l'a pas autorisé. `disabled` révoque de la même façon,
+ * sans effacer ce que la personne a produit.
  */
-function requireRole(role: "teacher" | "admin") {
+const requireActive = t.middleware(async (opts) => {
+  const { ctx, next } = opts;
+
+  if (!ctx.user || ctx.user.status !== "active") {
+    logger.warn("[middleware] Accès refusé : compte non autorisé", {
+      userId: ctx.user?.id,
+      statut: ctx.user?.status ?? "anonyme",
+    });
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message:
+        ctx.user?.status === "pending"
+          ? "Votre compte attend l'autorisation d'un administrateur."
+          : "Votre accès a été révoqué.",
+    });
+  }
+
+  return next({ ctx: { ...ctx, user: ctx.user } });
+});
+
+/**
+ * Middleware : vérifie le rôle de l'utilisateur authentifié.
+ *
+ * Les rôles acceptés sont énumérés, pas comparés à un seul : la comparaison
+ * stricte à « teacher » excluait les administrateurs de toutes les routes
+ * enseignant, c'est-à-dire de la quasi-totalité de l'application — le
+ * propriétaire déclaré par `OWNER_UNION_ID` se retrouvait enfermé dehors.
+ */
+function requireRole(...roles: Array<"teacher" | "admin">) {
   return t.middleware(async (opts) => {
     const { ctx, next } = opts;
 
-    if (!ctx.user || ctx.user.role !== role) {
+    if (!ctx.user || !roles.includes(ctx.user.role as "teacher" | "admin")) {
       logger.warn("[middleware] Accès refusé : rôle insuffisant", {
-        required: role,
+        required: roles.join(" ou "),
         actual: ctx.user?.role ?? "anonymous",
       });
       throw new TRPCError({
@@ -111,12 +148,18 @@ const requireStudentSessionToken = t.middleware(async (opts) => {
  * Procédure pour les routes enseignant — exige auth + rôle teacher.
  */
 export const authedQuery = t.procedure.use(requireAuth);
-export const teacherQuery = t.procedure.use(requireAuth).use(requireRole("teacher"));
+export const teacherQuery = t.procedure
+  .use(requireAuth)
+  .use(requireActive)
+  .use(requireRole("teacher", "admin"));
 
 /**
  * Procédure pour les routes admin — exige auth + rôle admin.
  */
-export const adminQuery = t.procedure.use(requireAuth).use(requireRole("admin"));
+export const adminQuery = t.procedure
+  .use(requireAuth)
+  .use(requireActive)
+  .use(requireRole("admin"));
 
 /**
  * Procédure pour les routes élève — exige un sessionToken élève valide.

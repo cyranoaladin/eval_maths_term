@@ -56,14 +56,26 @@ export function unique(prefixe: string): string {
   return `${prefixe}-${process.pid}-${compteur}`;
 }
 
-/** Crée un enseignant et le renvoie tel que le contexte l'attend. */
-export async function creerEnseignant(nom = "Enseignant"): Promise<User> {
+/**
+ * Crée un enseignant et le renvoie tel que le contexte l'attend.
+ *
+ * `status` est écrit explicitement : le défaut est « en attente », et un compte
+ * en attente n'ouvre rien. Un harnais qui ne le disait pas produirait des
+ * enseignants sans accès, ou — plus dangereux — masquerait le jour où ce défaut
+ * changerait.
+ */
+export async function creerEnseignant(
+  nom = "Enseignant",
+  role: User["role"] = "teacher",
+  status: User["status"] = "active",
+): Promise<User> {
   const unionId = unique("union");
   await db.insert(users).values({
     unionId,
     name: nom,
     email: `${unionId}@test.local`,
-    role: "teacher",
+    role,
+    status,
   });
   const [u] = await db.select().from(users).where(eq(users.unionId, unionId)).limit(1);
   return u;

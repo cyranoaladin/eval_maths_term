@@ -49,6 +49,22 @@ avant compilation**, avec le numéro de la question fautive. AMC est lancé par
 liste fermée. Aucun segment de chemin ne vient de l'URL. Le rôle enseignant et
 la propriété de la classe sont vérifiés avant toute lecture disque.
 
+### Un inconnu ouvre une session et devient enseignant
+
+Une authentification réussie ne donne aucun droit. Un compte créé à la première
+connexion est `student` / `pending` : il existe, un administrateur le voit, et
+il n'ouvre aucun écran. Le rôle et l'autorisation sont décidés par le serveur —
+jamais transmis par le client, jamais déduits du fournisseur OAuth.
+
+Seul le compte désigné par `OWNER_UNION_ID` est provisionné administrateur ;
+sans lui, une installation neuve n'aurait personne pour autoriser le premier
+enseignant. Une reconnexion ne restaure jamais un accès révoqué. Et l'on refuse
+de retirer le dernier accès administrateur actif : une installation sans
+administrateur ne peut plus autoriser personne.
+
+`disabled` révoque sans effacer : un enseignant qui quitte l'établissement
+laisse derrière lui des classes, des tirages et des notes dont il est l'auteur.
+
 ### Falsification d'une session enseignant
 
 Le cookie de session est un JWT signé avec `TEACHER_SESSION_SECRET`, distinct
@@ -99,6 +115,8 @@ décrivant une faille exploitable.
 - La limitation de débit est en mémoire : elle ne tient pas sur plusieurs
   instances. Un déploiement multi-instances demande Redis.
 - Pas de journal d'audit des modifications de notes (prévu, critère 17).
+- L'autorisation d'un compte n'envoie aucune notification : un administrateur
+  doit consulter l'écran « Comptes » pour voir les demandes en attente.
 
 ## Ce que la campagne de mise en service a corrigé
 

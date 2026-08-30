@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { LOGIN_PATH } from "@/const";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { LayoutDashboard, LogOut, PanelLeft, BookOpen, Home, FilePenLine } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, BookOpen, Home, FilePenLine, ShieldCheck } from "lucide-react";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { AuthLayoutSkeleton } from "./AuthLayoutSkeleton";
@@ -33,6 +33,9 @@ const menuItems = [
   { icon: BookOpen, label: "Aperçu", path: "/preview" },
   { icon: Home, label: "Accueil", path: "/" },
 ];
+
+/** Réservé aux administrateurs : c'est de là que partent les autorisations. */
+const menuAdmin = { icon: ShieldCheck, label: "Comptes", path: "/admin/comptes" };
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 280;
@@ -48,7 +51,7 @@ export default function AuthLayout({
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
-  const { isLoading, user } = useAuth();
+  const { isLoading, user, logout } = useAuth();
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
@@ -56,6 +59,35 @@ export default function AuthLayout({
 
   if (isLoading) {
     return <AuthLayoutSkeleton />;
+  }
+
+  /*
+    Être connecté ne suffit plus. Un compte inconnu qui vient de s'authentifier
+    existe mais n'ouvre rien : il faut le lui dire, plutôt que de lui présenter
+    à nouveau un bouton « Se connecter » qui ne changerait rien.
+  */
+  if (user && user.status !== "active") {
+    const enAttente = user.status === "pending";
+    return (
+      <div className="flex items-center justify-center min-h-screen p-8">
+        <div className="flex flex-col items-center gap-6 max-w-md text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {enAttente ? "Compte en attente d'autorisation" : "Accès révoqué"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {enAttente
+              ? "Votre connexion a bien été enregistrée. Un administrateur de l'établissement doit autoriser votre compte avant que vous puissiez accéder aux évaluations."
+              : "Votre accès à l'espace enseignant a été retiré. Adressez-vous à un administrateur de l'établissement."}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Connecté en tant que {user.name ?? user.email ?? "—"}.
+          </p>
+          <Button variant="outline" onClick={() => logout()}>
+            Se déconnecter
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   if (!user) {
@@ -116,7 +148,10 @@ function AuthLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(
+  // L'entrée « Comptes » n'apparaît que pour les administrateurs : c'est la
+  // seule porte par laquelle un compte en attente peut être autorisé.
+  const entrees = user?.role === "admin" ? [...menuItems, menuAdmin] : menuItems;
+  const activeMenuItem = entrees.find(
     item => item.path === location.pathname || (item.path !== "/" && location.pathname.startsWith(item.path)),
   );
   const isMobile = useIsMobile();
@@ -180,7 +215,7 @@ function AuthLayoutContent({
 
           <SidebarContent className="gap-0">
             <SidebarMenu className="px-2 py-1">
-              {menuItems.map(item => {
+              {entrees.map(item => {
                 const isActive =
                   location.pathname === item.path ||
                   (item.path !== "/" && location.pathname.startsWith(item.path));

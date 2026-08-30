@@ -23,7 +23,23 @@ export const users = mysqlTable("users", {
   name: varchar("name", { length: 255 }),
   email: varchar("email", { length: 320 }),
   avatar: text("avatar"),
-  role: mysqlEnum("role", ["student", "teacher", "admin"]).default("teacher").notNull(),
+  /**
+   * Le rôle ne vient jamais du client, et jamais du fournisseur OAuth : il est
+   * décidé ici. Le défaut était `teacher` — n'importe qui capable d'ouvrir une
+   * session Kimi devenait donc enseignant, sans que personne ne l'autorise.
+   */
+  role: mysqlEnum("role", ["student", "teacher", "admin"]).default("student").notNull(),
+  /**
+   * Autorisation d'accès, distincte du rôle.
+   *
+   * Un compte inconnu qui se connecte est créé `pending` : il existe, il est
+   * visible d'un administrateur, et il n'ouvre rien. `disabled` révoque sans
+   * effacer — un enseignant qui quitte l'établissement laisse derrière lui des
+   * classes, des tirages et des notes dont il est l'auteur.
+   */
+  status: mysqlEnum("status", ["pending", "active", "disabled"])
+    .default("pending")
+    .notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt")
     .defaultNow()

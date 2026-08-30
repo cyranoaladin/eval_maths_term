@@ -1,3 +1,4 @@
+import { accessRouter } from "./routers/access-router";
 import { authRouter } from "./auth-router";
 import { authoringRouter } from "./routers/authoring-router";
 import { evaluationRouter } from "./routers/evaluation-router";
@@ -20,6 +21,7 @@ import { createRouter, publicQuery } from "./middleware";
 export const appRouter = createRouter({
   ping: publicQuery.query(() => ({ ok: true, ts: Date.now() })),
   auth: authRouter,
+  access: accessRouter,
   evaluation: evaluationRouter,
   authoring: authoringRouter,
   grading2: gradingRouter2,

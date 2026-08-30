@@ -2,11 +2,37 @@ import { describe, it, expect } from "vitest";
 import { sessionRouter } from "../../routers/session-router";
 import { questionRouter } from "../../routers/question-router";
 import type { TrpcContext } from "../../context";
+import type { User } from "@db/schema";
 
 /**
- * III.2 — Tests de contrôle d'accès par rôle.
- * Vérifie que les routes prof sont inaccessibles aux élèves et anonymes.
+ * Qui entre, et à quelles conditions.
+ *
+ * Deux failles vivaient ici. `users.role` avait `teacher` pour valeur par
+ * défaut : toute personne capable d'ouvrir une session chez le fournisseur
+ * OAuth devenait enseignante à sa première connexion. Et le contrôle de rôle
+ * comparait à « teacher » exactement, ce qui excluait les administrateurs de
+ * toutes les routes enseignant — le propriétaire déclaré par `OWNER_UNION_ID`
+ * était enfermé dehors de sa propre installation.
  */
+
+function utilisateur(
+  role: User["role"],
+  status: User["status"] = "active",
+  id = 1,
+): User {
+  return {
+    id,
+    unionId: `union-${role}-${status}-${id}`,
+    name: "Compte de test",
+    email: null,
+    avatar: null,
+    role,
+    status,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    lastSignInAt: new Date(),
+  };
+}
 
 function makeCtx(overrides: Partial<TrpcContext> = {}): TrpcContext {
   return {
@@ -17,30 +43,47 @@ function makeCtx(overrides: Partial<TrpcContext> = {}): TrpcContext {
 }
 
 describe("role-access : routes enseignant", () => {
-  it("session.getAllForTeacher refuse un contexte sans utilisateur", async () => {
+  it("refuse un contexte sans utilisateur", async () => {
     const caller = sessionRouter.createCaller(makeCtx());
     await expect(caller.getAllForTeacher()).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
   });
 
-  it("session.getAllForTeacher refuse un utilisateur avec rôle student", async () => {
-    const caller = sessionRouter.createCaller(makeCtx({
-      user: {
-        id: 1,
-        unionId: "student-union-id",
-        name: "Élève Test",
-        email: null,
-        avatar: null,
-        role: "student" as const,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        lastSignInAt: new Date(),
-      },
-    }));
+  it("refuse un rôle student", async () => {
+    const caller = sessionRouter.createCaller(
+      makeCtx({ user: utilisateur("student") }),
+    );
     await expect(caller.getAllForTeacher()).rejects.toMatchObject({
       code: "FORBIDDEN",
     });
+  });
+
+  it("refuse un enseignant dont le compte attend son autorisation", async () => {
+    // C'est l'état d'un compte inconnu qui vient de se connecter.
+    const caller = sessionRouter.createCaller(
+      makeCtx({ user: utilisateur("teacher", "pending") }),
+    );
+    await expect(caller.getAllForTeacher()).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+  });
+
+  it("refuse un enseignant dont l'accès a été révoqué", async () => {
+    const caller = sessionRouter.createCaller(
+      makeCtx({ user: utilisateur("teacher", "disabled") }),
+    );
+    await expect(caller.getAllForTeacher()).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+  });
+
+  it("laisse passer un administrateur actif", async () => {
+    // Sans quoi le propriétaire de l'installation n'atteindrait aucun écran.
+    const caller = sessionRouter.createCaller(
+      makeCtx({ user: utilisateur("admin") }),
+    );
+    await expect(caller.getAllForTeacher()).resolves.toBeDefined();
   });
 
   it("question.getWithAnswersForTeacher refuse un contexte sans utilisateur", async () => {
@@ -51,19 +94,9 @@ describe("role-access : routes enseignant", () => {
   });
 
   it("question.getWithAnswersForTeacher refuse un rôle student", async () => {
-    const caller = questionRouter.createCaller(makeCtx({
-      user: {
-        id: 2,
-        unionId: "student-union-id",
-        name: "Élève Test",
-        email: null,
-        avatar: null,
-        role: "student" as const,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        lastSignInAt: new Date(),
-      },
-    }));
+    const caller = questionRouter.createCaller(
+      makeCtx({ user: utilisateur("student", "active", 2) }),
+    );
     await expect(
       caller.getWithAnswersForTeacher({ evaluationId: 1 }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -80,8 +113,13 @@ describe("role-access : routes élève protégées", () => {
 
   it("session.heartbeat refuse un contexte sans studentSession", async () => {
     const caller = sessionRouter.createCaller(makeCtx());
-    await expect(caller.heartbeat({ clientTime: Date.now(), focused: true, currentQuestionIndex: 0, fingerprintHash: "abc" })).rejects.toMatchObject({
-      code: "UNAUTHORIZED",
-    });
+    await expect(
+      caller.heartbeat({
+        clientTime: Date.now(),
+        focused: true,
+        currentQuestionIndex: 0,
+        fingerprintHash: "abc",
+      }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });

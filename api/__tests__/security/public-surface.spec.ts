@@ -60,6 +60,8 @@ describe("surface publique : inventaire des procédures", () => {
     const procedures = Object.keys(appRouter._def.procedures).sort();
     expect(procedures).toEqual(
       [
+        "access.listUsers",
+        "access.setAccess",
         "answer.getSaved",
         "authoring.createEvaluation",
         "authoring.createQuestion",

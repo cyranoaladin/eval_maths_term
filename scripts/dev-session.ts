@@ -37,11 +37,19 @@ async function main() {
 
   const [existing] = await db.select().from(users).where(eq(users.unionId, UNION_ID)).limit(1);
   if (!existing) {
-    await db.insert(users).values({ unionId: UNION_ID, name, email, role: "teacher" });
-    console.log(`Utilisateur « ${name} » créé (rôle enseignant).`);
+    // `status` est écrit explicitement : un compte créé sans le préciser arrive
+    // « en attente » et n'ouvre aucun écran. C'est le comportement voulu pour
+    // une connexion OAuth inconnue ; ce script, lui, autorise sciemment.
+    await db
+      .insert(users)
+      .values({ unionId: UNION_ID, name, email, role: "teacher", status: "active" });
+    console.log(`Utilisateur « ${name} » créé (rôle enseignant, accès autorisé).`);
   } else {
-    await db.update(users).set({ role: "teacher", name, email }).where(eq(users.id, existing.id));
-    console.log(`Utilisateur « ${name} » réutilisé (rôle enseignant).`);
+    await db
+      .update(users)
+      .set({ role: "teacher", status: "active", name, email })
+      .where(eq(users.id, existing.id));
+    console.log(`Utilisateur « ${name} » réutilisé (rôle enseignant, accès autorisé).`);
   }
 
   const token = await signSessionToken({ unionId: UNION_ID, clientId: env.appId });

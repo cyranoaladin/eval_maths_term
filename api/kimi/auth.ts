@@ -10,7 +10,7 @@ import { Session, OAuthState, Paths } from "@contracts/constants";
 import { Errors } from "@contracts/errors";
 import { signSessionToken, verifySessionToken } from "./session";
 import { users as kimiUsers } from "./platform";
-import { findUserByUnionId, upsertUser } from "../queries/users";
+import { enregistrerConnexion, findUserByUnionId } from "../queries/users";
 import type { TokenResponse } from "./types";
 
 async function exchangeAuthCode(
@@ -146,11 +146,13 @@ export function createOAuthCallbackHandler() {
         throw new Error("Impossible de récupérer le profil utilisateur Kimi Open");
       }
 
-      await upsertUser({
+      // Le rôle et l'autorisation d'accès ne sont pas déduits d'ici : un
+      // compte inconnu est créé sans droits, et un administrateur devra
+      // l'autoriser.
+      await enregistrerConnexion({
         unionId: userId,
         name: userProfile.name,
         avatar: userProfile.avatar_url,
-        lastSignInAt: new Date(),
       });
 
       const token = await signSessionToken({

@@ -29,6 +29,13 @@ Renseignez au minimum :
 | `KIMI_AUTH_URL`, `KIMI_OPEN_URL` | Serveurs OAuth |
 | `ALLOWED_ORIGINS` | Origines autorisées, séparées par des virgules |
 | `DATABASE_URL` | Imposée par le compose ; à renseigner hors conteneur |
+| `OWNER_UNION_ID` | Le seul compte provisionné administrateur — voir ci-dessous |
+
+**Renseignez `OWNER_UNION_ID`.** Une authentification réussie ne donne aucun
+droit : un compte inconnu qui se connecte arrive « en attente » et n'ouvre aucun
+écran. Le compte désigné par cette variable est le seul provisionné
+administrateur, et c'est depuis l'écran « Comptes » qu'il autorise les
+enseignants. Sans elle, personne ne pourra autoriser personne.
 
 Les trois secrets doivent faire **au moins 32 caractères** et être distincts les
 uns des autres. Générez-les :
