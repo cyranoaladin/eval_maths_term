@@ -17,15 +17,14 @@ import {
   focaliserMath,
   formulesAffichees,
   test,
+  ouvrir,
 } from "./fixtures";
 
 const EVALUATION_ID = 1;
 
 /** Ouvre une session neuve et attend l'affichage de la première question. */
 async function demarrer(page: Page, nom: string) {
-  await page.goto(
-    `/evaluation?eval=${EVALUATION_ID}&name=${encodeURIComponent(nom)}`,
-  );
+  await ouvrir(page, `/evaluation?eval=${EVALUATION_ID}&name=${encodeURIComponent(nom)}`);
   // `session.start` est limité à 5 ouvertures par minute et par IP. Les trois
   // moteurs s'exécutent en série et n'atteignent pas ce quota ; si un 429
   // survenait, il doit faire échouer le test bruyamment plutôt qu'être absorbé

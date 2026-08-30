@@ -21,7 +21,7 @@
  * le corps de page qui ne doit pas déborder.
  */
 import { expect, type Page } from "@playwright/test";
-import { collecterErreurs, cookieEnseignant, focaliserMath, test } from "./fixtures";
+import { collecterErreurs, cookieEnseignant, focaliserMath, test, ouvrir } from "./fixtures";
 
 /** Surfaces réellement rencontrées, du téléphone à la tablette. */
 const SURFACES = [
@@ -74,7 +74,7 @@ for (const surface of SURFACES) {
     test("l'accueil et les pages légales tiennent dans l'écran", async ({ page }) => {
       const erreurs = collecterErreurs(page);
       for (const chemin of ["/", "/mentions-legales", "/confidentialite"]) {
-        await page.goto(chemin);
+        await ouvrir(page, chemin);
         await expect(page.locator("body")).toBeVisible();
         expect(await debordement(page), `${chemin} : ${await coupable(page)}`).toBeLessThanOrEqual(1);
       }
@@ -83,7 +83,7 @@ for (const surface of SURFACES) {
 
     test("l'élève peut composer : formules lisibles, champ utilisable", async ({ page }) => {
       const erreurs = collecterErreurs(page);
-      await page.goto(`/evaluation?eval=1&name=${encodeURIComponent(`Mobile ${surface.nom}`)}`);
+      await ouvrir(page, `/evaluation?eval=1&name=${encodeURIComponent(`Mobile ${surface.nom}`)}`);
 
       const demarrer = page.getByRole("button", { name: /Démarrer l'évaluation/ });
       await expect(demarrer).toBeVisible();
@@ -151,13 +151,13 @@ test.describe("écrans enseignant sur tablette", () => {
     const erreurs = collecterErreurs(page);
 
     for (const chemin of ["/dashboard", "/teacher/evaluations", "/preview"]) {
-      await page.goto(chemin);
+      await ouvrir(page, chemin);
       await expect(page.locator("main").first()).toBeVisible();
       expect(await debordement(page), `${chemin} : ${await coupable(page)}`).toBeLessThanOrEqual(1);
     }
 
     // La navigation latérale doit rester ouvrable — sinon on ne circule plus.
-    await page.goto("/dashboard");
+    await ouvrir(page, "/dashboard");
     const bascule = page.getByRole("button", { name: /Afficher ou masquer la navigation/ });
     await expect(bascule).toBeVisible();
 
@@ -171,7 +171,7 @@ test.describe("écrans enseignant sur tablette", () => {
     if (await lienCorriger.count()) {
       await lienCorriger.click();
     } else {
-      await page.goto("/teacher/correction/1");
+      await ouvrir(page, "/teacher/correction/1");
     }
     await expect(page.locator("main").first()).toBeVisible();
     await page.waitForTimeout(600);
@@ -181,7 +181,7 @@ test.describe("écrans enseignant sur tablette", () => {
     ).toBeLessThanOrEqual(1);
 
     // La saisie papier aussi : c'est l'autre écran tenu en main.
-    await page.goto("/teacher/saisie/1");
+    await ouvrir(page, "/teacher/saisie/1");
     await expect(page.locator("main").first()).toBeVisible();
     await page.waitForTimeout(600);
     expect(

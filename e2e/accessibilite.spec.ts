@@ -15,7 +15,7 @@
  */
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page } from "@playwright/test";
-import { cookieEnseignant, test } from "./fixtures";
+import { cookieEnseignant, test, ouvrir } from "./fixtures";
 
 const BLOQUANTS = ["critical", "serious"] as const;
 
@@ -84,14 +84,14 @@ test.describe("accessibilité — élève", () => {
       ["/mentions-legales", "mentions légales"],
       ["/confidentialite", "confidentialité"],
     ] as const) {
-      await page.goto(chemin);
+      await ouvrir(page, chemin);
       await expect(page.locator("main, body").first()).toBeVisible();
       await auditer(page, nom);
     }
   });
 
   test("l'écran de démarrage puis la composition", async ({ page }) => {
-    await page.goto(`/evaluation?eval=1&name=${encodeURIComponent("A11y Élève")}`);
+    await ouvrir(page, `/evaluation?eval=1&name=${encodeURIComponent("A11y Élève")}`);
     await expect(page.getByRole("button", { name: /Démarrer l'évaluation/ })).toBeVisible();
     await auditer(page, "démarrage d'une épreuve");
 
@@ -122,7 +122,7 @@ test.describe("accessibilité — élève", () => {
       répondre et naviguer. La tabulation doit atteindre chaque commande, et le
       focus doit rester visible — sinon on ne sait plus où l'on est.
     */
-    await page.goto(`/evaluation?eval=1&name=${encodeURIComponent("A11y Clavier")}`);
+    await ouvrir(page, `/evaluation?eval=1&name=${encodeURIComponent("A11y Clavier")}`);
 
     const demarrer = page.getByRole("button", { name: /Démarrer l'évaluation/ });
     await expect(demarrer).toBeVisible();
@@ -198,7 +198,7 @@ test.describe("accessibilité — enseignant", () => {
       ["/teacher/saisie/1", "saisie papier"],
       ["/teacher/correction/1", "correction"],
     ] as const) {
-      await page.goto(chemin);
+      await ouvrir(page, chemin);
       await expect(page.locator("main").first()).toBeVisible();
       await auditer(page, nom);
     }
@@ -220,7 +220,7 @@ test.describe("accessibilité — enseignant", () => {
       },
     ]);
     const page = await ctx.newPage();
-    await page.goto("/dashboard");
+    await ouvrir(page, "/dashboard");
     // Le tableau de bord charge ses données avant de rendre sa navigation.
     await expect(page.locator("main").first()).toBeVisible();
 

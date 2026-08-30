@@ -6,13 +6,13 @@
  * trois moteurs.
  */
 import { expect } from "@playwright/test";
-import { collecterErreurs, test } from "./fixtures";
+import { collecterErreurs, test, ouvrir } from "./fixtures";
 
 test.describe("rendu LaTeX", () => {
   test("l'éditeur affiche toutes les familles de formules sans erreur", async ({ enseignant: page }) => {
     const erreurs = collecterErreurs(page);
 
-    await page.goto("/teacher/evaluations/1");
+    await ouvrir(page, "/teacher/evaluations/1");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await page.waitForTimeout(1500);
 
@@ -44,7 +44,7 @@ test.describe("rendu LaTeX", () => {
   test("une formule malformée ne fige pas la page", async ({ enseignant: page }) => {
     // Régression : un `$` non apparié faisait boucler le parseur à l'infini.
     const erreurs = collecterErreurs(page);
-    await page.goto("/teacher/evaluations/1");
+    await ouvrir(page, "/teacher/evaluations/1");
     await page.getByRole("button", { name: /Ajouter une question/ }).click();
 
     const enonce = page.locator("textarea").first();
@@ -57,7 +57,7 @@ test.describe("rendu LaTeX", () => {
   });
 
   test("l'aperçu se met à jour à la frappe", async ({ enseignant: page }) => {
-    await page.goto("/teacher/evaluations/1");
+    await ouvrir(page, "/teacher/evaluations/1");
     await page.getByRole("button", { name: /Ajouter une question/ }).click();
     await page.locator("textarea").first().fill("Calculer $\\dfrac{3}{4} + \\dfrac{1}{4}$.");
     await page.waitForTimeout(900);
@@ -73,10 +73,10 @@ test.describe("navigation", () => {
   test("les écrans enseignant s'enchaînent", async ({ enseignant: page }) => {
     const erreurs = collecterErreurs(page);
 
-    await page.goto("/dashboard");
+    await ouvrir(page, "/dashboard");
     await expect(page.getByRole("heading", { name: "Tableau de bord" })).toBeVisible();
 
-    await page.goto("/teacher/evaluations");
+    await ouvrir(page, "/teacher/evaluations");
     await expect(page.getByRole("heading", { name: "Mes évaluations" })).toBeVisible();
 
     await page.getByRole("link", { name: "Ouvrir" }).first().click();
@@ -92,10 +92,10 @@ test.describe("navigation", () => {
 
   test("les pages légales sont accessibles depuis l'accueil", async ({ page }) => {
     const erreurs = collecterErreurs(page);
-    await page.goto("/");
+    await ouvrir(page, "/");
     await page.getByRole("link", { name: "Mentions légales" }).click();
     await expect(page.getByRole("heading", { name: "Mentions légales" })).toBeVisible();
-    await page.goto("/confidentialite");
+    await ouvrir(page, "/confidentialite");
     await expect(page.getByRole("heading", { name: /Protection des données/ })).toBeVisible();
     expect(erreurs, erreurs.join(" | ")).toEqual([]);
   });

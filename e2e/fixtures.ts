@@ -195,3 +195,17 @@ export async function formulesAffichees(page: Page): Promise<string[]> {
   }
   return trouvees;
 }
+
+/**
+ * Ouvre une page de l'application.
+ *
+ * On n'attend pas l'événement `load`, mais le document. L'application est une
+ * page unique : `load` n'arrive qu'une fois tous les morceaux chargés à la
+ * demande, les polices mathématiques comprises, et sous Gecko il lui arrive de
+ * ne jamais arriver — la navigation expirait alors au bout de quatre-vingt-dix
+ * secondes sur un test qui, lui, n'attendait qu'un bouton. Ce que chaque test
+ * attend vraiment, il l'affirme juste après.
+ */
+export async function ouvrir(page: Page, chemin: string): Promise<void> {
+  await page.goto(chemin, { waitUntil: "domcontentloaded" });
+}
