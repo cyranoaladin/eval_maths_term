@@ -19,6 +19,22 @@ procédures montées et vérifie qu'aucune route élève ou enseignant n'aboutit
 sans authentification. Toute route ajoutée fait échouer ce test tant qu'elle
 n'a pas été inscrite volontairement.
 
+### Une question note sur une autre réponse que celle qu'elle affiche
+
+Une question porte deux descriptions de sa bonne réponse : `correctAnswer`,
+lisible par un humain et montrée à l'enseignant dans l'aperçu, l'éditeur et
+l'écran de correction ; et `gradingRubric.mode`, seule consultée par le moteur.
+Le contrôle structurel les liait pour les QCM et les vrai/faux, où la
+correspondance est littérale. Pour une réponse courte, il exigeait seulement que
+la fiche ne soit pas vide : on pouvait afficher « x = 2 » à côté d'un barème
+n'acceptant que « 2 », et le découvrir après l'épreuve, sur les copies de toute
+la classe.
+
+Toute écriture soumet désormais la réponse annoncée au moteur de correction,
+comme une copie d'élève : sans les points, l'écriture est refusée.
+`scripts/audit-coherence-questions.ts` passe la même épreuve à une base
+existante, sans rien y modifier.
+
 ### Un élève tente de forger son score
 
 Le client n'envoie que des réponses. Le score, la note sur 20, le statut final

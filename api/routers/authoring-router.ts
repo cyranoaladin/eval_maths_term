@@ -21,6 +21,7 @@ import { getDb } from "../queries/connection";
 import { evaluations, questions, sessions } from "@db/schema";
 import { GradingRubricSchema } from "@contracts/grading-rubric";
 import { validateQuestionCoherence } from "@contracts/question-coherence";
+import { assertBaremeCoherent } from "../authoring/coherence-bareme";
 import { generateQuestions } from "../authoring/generate-questions";
 import { currentModel, isLlmConfigured } from "../llm/chat";
 import { getRagProvider, searchContext } from "../rag/rag-provider";
@@ -46,8 +47,16 @@ const QuestionInputSchema = z.object({
   imageUrl: z.string().max(500).nullable().optional(),
 });
 
-/** Refuse l'écriture d'une question incohérente, avec le détail des motifs. */
-function assertCoherent(input: z.infer<typeof QuestionInputSchema>) {
+/**
+ * Refuse l'écriture d'une question incohérente, avec le détail des motifs.
+ *
+ * Deux contrôles, de nature différente. Le premier est structurel : type,
+ * barème, propositions, points. Le second soumet la réponse annoncée au moteur
+ * de correction, comme une copie d'élève — c'est le seul qui puisse dire si
+ * l'écriture affichée à l'enseignant et la règle qui notera les copies parlent
+ * de la même chose.
+ */
+async function assertCoherent(input: z.infer<typeof QuestionInputSchema>) {
   const verdict = validateQuestionCoherence({
     type: input.type,
     question: input.question,
@@ -64,6 +73,14 @@ function assertCoherent(input: z.infer<typeof QuestionInputSchema>) {
       cause: verdict.errors,
     });
   }
+
+  await assertBaremeCoherent({
+    type: input.type,
+    question: input.question,
+    correctAnswer: input.correctAnswer,
+    points: input.points,
+    gradingRubric: input.gradingRubric,
+  });
 }
 
 /** Charge une évaluation en vérifiant que l'enseignant a le droit d'y toucher. */
@@ -383,7 +400,7 @@ export const authoringRouter = createRouter({
     )
     .mutation(async ({ input, ctx }) => {
       await assertEvaluationAccessible(input.evaluationId, ctx.user.id);
-      assertCoherent(input.question);
+      await assertCoherent(input.question);
       const db = getDb();
 
       const [{ maxOrder }] = await db
@@ -419,7 +436,7 @@ export const authoringRouter = createRouter({
     )
     .mutation(async ({ input, ctx }) => {
       await assertQuestionAccessible(input.id, ctx.user.id);
-      assertCoherent(input.question);
+      await assertCoherent(input.question);
 
       const db = getDb();
 
