@@ -103,8 +103,6 @@ async function main() {
     console.log("\n3. Le second enseignant est refusé partout");
     await refuse("session.getDetailsForTeacher", () =>
       api.b.session.getDetailsForTeacher.query({ sessionId: copie.id }));
-    await refuse("grading2.getResults", () =>
-      api.b.grading2.getResults.query({ sessionId: copie.id }));
     await refuse("grading2.auditTrail", () =>
       api.b.grading2.auditTrail.query({ sessionId: copie.id }));
     await refuse("grading2.gradeSession", () =>
@@ -120,17 +118,32 @@ async function main() {
         }));
     }
 
-    console.log("\n4. Le second enseignant ne voit pas la copie dans sa liste");
-    const listeB = await api.b.session.getAllForTeacher.query();
-    ok("la copie n'apparaît pas chez l'autre enseignant",
-      !listeB.some((s) => s.id === copie.id), `${listeB.length} copie(s) visibles`);
+    console.log("\n4. Le suivi en direct est cloisonné lui aussi");
+    // Cette route ne vérifiait rien : n'importe quel enseignant obtenait, pour
+    // n'importe quelle évaluation, les noms, courriels, scores de suspicion et
+    // incidents de tous les élèves.
+    await refuse("teacherLive.snapshot", () =>
+      api.b.teacherLive.snapshot.query({ evaluationId: copie.evaluationId }));
 
-    console.log("\n5. Le propriétaire, lui, accède normalement");
+    console.log("\n5. L'impression papier l'est aussi");
+    // Sans contrôle, un enseignant imprimait le sujet ET le corrigé d'une
+    // évaluation qui ne lui appartient pas.
+    const classeB = await api.b.paper.createClass.mutate({
+      name: `Classe intruse ${Date.now()}`,
+    });
+    await refuse("paper.createAndGenerate", () =>
+      api.b.paper.createAndGenerate.mutate({
+        evaluationId: copie.evaluationId,
+        classId: classeB.id,
+      }));
+
+    console.log("\n6. Le propriétaire, lui, accède normalement");
     const detail = await api.a.session.getDetailsForTeacher.query({ sessionId: copie.id });
     ok("le propriétaire lit sa copie", detail.session.id === copie.id);
-    const listeA = await api.a.session.getAllForTeacher.query();
-    ok("le propriétaire voit sa copie dans sa liste",
-      listeA.some((s) => s.id === copie.id), `${listeA.length} copie(s) visibles`);
+    const suivi = await api.a.teacherLive.snapshot.query({ evaluationId: copie.evaluationId });
+    ok("le propriétaire suit son évaluation en direct",
+      suivi.sessions.some((s) => s.sessionId === copie.id),
+      `${suivi.sessions.length} copie(s) suivies`);
     const journal = await api.a.grading2.auditTrail.query({ sessionId: copie.id });
     ok("le propriétaire lit le journal", Array.isArray(journal));
   } finally {

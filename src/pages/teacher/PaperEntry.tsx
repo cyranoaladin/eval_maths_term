@@ -193,10 +193,10 @@ export default function PaperEntry() {
         </div>
       )}
 
-      {resultats && resultats.stats.entered > 0 && (
+      {resultats && resultats.stats.saisies > 0 && (
         <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-slate-50 px-4 py-2.5 text-sm">
           <span>
-            Moyenne <strong>{resultats.stats.average}/20</strong>
+            Moyenne <strong>{resultats.stats.moyenne}/20</strong>
           </span>
           <span className="text-muted-foreground">
             min {resultats.stats.min} · max {resultats.stats.max}

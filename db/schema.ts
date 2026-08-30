@@ -123,10 +123,6 @@ export const sessions = mysqlTable("sessions", {
   userAgent: text("userAgent"),
   fingerprintHash: varchar("fingerprintHash", { length: 64 }),
   status: mysqlEnum("status", ["in_progress", "completed", "timed_out", "cheating_detected", "auto_submitted_idle"]).default("in_progress").notNull(),
-  // Note: tabSwitchCount est maintenant calculé depuis cheat_events — conservé pour compatibilité
-  tabSwitchCount: int("tabSwitchCount").default(0).notNull(),
-  // DEPRECATED: cheatEvents JSON — ne plus écrire, utiliser la table cheat_events. Drop prévu en v0.4.0.
-  cheatEvents: json("cheatEvents").$type<Array<{type: string, timestamp: string}>>(),
   /** Somme des points obtenus — décimale pour la même raison que `responses.score`. */
   totalScore: decimal("totalScore", { precision: 7, scale: 2 }),
   maxScore: int("maxScore"),

@@ -9,7 +9,7 @@ import { paperRouter } from "./routers/paper-router";
 import { cheatRouter } from "./routers/cheat-router";
 import { answerRouter } from "./routers/answer-router";
 import { teacherLiveRouter } from "./routers/teacher-live-router";
-import { createRouter, publicQuery } from "./middleware";
+import { createRouter } from "./middleware";
 
 /**
  * Les routeurs `evaluation` et `grading` d'origine ont été supprimés en
@@ -19,7 +19,6 @@ import { createRouter, publicQuery } from "./middleware";
  * (correction enseignant).
  */
 export const appRouter = createRouter({
-  ping: publicQuery.query(() => ({ ok: true, ts: Date.now() })),
   auth: authRouter,
   access: accessRouter,
   evaluation: evaluationRouter,

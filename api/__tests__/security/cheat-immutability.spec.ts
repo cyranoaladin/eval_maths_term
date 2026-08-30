@@ -49,7 +49,7 @@ describe("cheat-immutability : validation des inputs", () => {
     const caller = cheatRouter.createCaller(makeCtxWithSession(1));
     const tooManyEvents = Array.from({ length: 51 }, (_, i) => ({
       type: "tab_switch" as const,
-      timestamp: new Date(Date.now() + i * 1000).toISOString(),
+      timestamp: Date.now() + i * 1000,
     }));
     await expect(
       caller.report({ events: tooManyEvents }),
@@ -76,7 +76,7 @@ describe("cheat-immutability : validation des inputs", () => {
     });
     await expect(
       caller.report({
-        events: [{ type: "tab_switch", timestamp: new Date().toISOString() }],
+        events: [{ type: "tab_switch", timestamp: Date.now() }],
       }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
@@ -89,7 +89,7 @@ describe("cheat-immutability : validation des inputs", () => {
         events: [
           {
             type: "copy",
-            timestamp: new Date().toISOString(),
+            timestamp: Date.now(),
             count: 101,
           },
         ],
@@ -107,8 +107,8 @@ describe("cheat-immutability : absence de routes de modification", () => {
     expect(keys).not.toContain("reset");
   });
 
-  it("cheat-router n'a que les routes d'ingestion (report + reportBatch)", () => {
+  it("cheat-router n'a qu'une route, et c'est une écriture", () => {
     const keys = Object.keys(cheatRouter._def.record);
-    expect(keys).toEqual(["report", "reportBatch"]);
+    expect(keys).toEqual(["report"]);
   });
 });

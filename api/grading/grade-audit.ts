@@ -14,7 +14,7 @@ import { currentRequestId } from "../lib/request-id";
 import { toDecimal } from "../lib/decimal";
 import { logger } from "../lib/logger";
 
-export type AuditAction = "manual_override" | "manual_paper" | "regrade";
+type AuditAction = "manual_override" | "manual_paper" | "regrade";
 
 export interface AuditEntry {
   sessionId: number;

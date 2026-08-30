@@ -92,11 +92,11 @@ async function main() {
   const sessionId = saisie.sessionId;
 
   console.log("\n2. Ouverture de la copie");
-  const copie = await api.grading2.getResults.query({ sessionId });
-  ok("détail question par question", copie.details.length > 0, `${copie.details.length} réponses`);
-  ok("mode de correction visible", copie.details.every((d) => d.gradingMode !== null));
-  const cible = copie.details.find((d) => d.questionType === "qcm")!;
-  ok("réponse et barème exposés à l'enseignant", cible.maxScore > 0,
+  const copie = await api.session.getDetailsForTeacher.query({ sessionId });
+  ok("détail question par question", copie.responses.length > 0, `${copie.responses.length} réponses`);
+  ok("mode de correction visible", copie.responses.every((r) => r.gradingMode !== null));
+  const cible = copie.responses.find((r) => r.question?.type === "qcm")!;
+  ok("réponse et barème exposés à l'enseignant", (cible.maxScore ?? 0) > 0,
      `question ${cible.questionId}, ${cible.score}/${cible.maxScore}`);
 
   // L'identifiant de réponse est nécessaire pour l'override.
@@ -154,8 +154,8 @@ async function main() {
   ok("LA NOTE MANUELLE A SURVÉCU", regrade.totalScore === 0.5,
      `attendu 0.5, obtenu ${regrade.totalScore}`);
 
-  const copieApres = await api.grading2.getResults.query({ sessionId });
-  const cibleApres = copieApres.details.find((d) => d.questionId === cible.questionId)!;
+  const copieApres = await api.session.getDetailsForTeacher.query({ sessionId });
+  const cibleApres = copieApres.responses.find((r) => r.questionId === cible.questionId)!;
   ok("mode manual_override conservé", cibleApres.gradingMode === "manual_override",
      String(cibleApres.gradingMode));
   ok("points conservés", cibleApres.score === 0.5, `${cibleApres.score}`);

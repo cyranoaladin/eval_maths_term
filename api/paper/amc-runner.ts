@@ -46,7 +46,7 @@ export interface AmcResult {
   log: string;
 }
 
-export class AmcUnavailableError extends Error {
+class AmcUnavailableError extends Error {
   constructor() {
     super(
       "auto-multiple-choice est introuvable sur ce serveur. Installez le paquet « auto-multiple-choice » pour produire les documents imprimables.",
@@ -55,7 +55,7 @@ export class AmcUnavailableError extends Error {
   }
 }
 
-export class AmcFailedError extends Error {
+class AmcFailedError extends Error {
   readonly step: string;
   readonly output: string;
   constructor(step: string, output: string) {

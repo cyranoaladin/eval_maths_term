@@ -41,19 +41,26 @@ async function effacer(sessionId: number) {
   await db.delete(sessions).where(eq(sessions.id, sessionId));
 }
 
-describe("écriture d'une réponse", () => {
-  it("enregistre une réponse et la relit", async () => {
+describe("écriture d'un brouillon", () => {
+  it("enregistre un brouillon et le relit", async () => {
     const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève"));
     const eleve = appelEleve(jeton);
-    await eleve.answer.save({ questionId: questionIds[2], answer: "2*x" });
+    await eleve.answer.saveDraft({ questionId: questionIds[2], answer: "2*x" });
 
-    const enregistrees = await eleve.answer.getSaved();
-    expect(enregistrees).toHaveLength(1);
-    expect(enregistrees[0].answer).toBe("2*x");
+    const brouillons = await eleve.answer.listDrafts();
+    expect(brouillons).toHaveLength(1);
+    expect(brouillons[0].answer).toBe("2*x");
 
     // Réécrire remplace, sans dupliquer.
-    await eleve.answer.save({ questionId: questionIds[2], answer: "2x" });
-    expect(await eleve.answer.getSaved()).toHaveLength(1);
+    await eleve.answer.saveDraft({ questionId: questionIds[2], answer: "2x" });
+    const apres = await eleve.answer.listDrafts();
+    expect(apres).toHaveLength(1);
+    expect(apres[0].answer).toBe("2x");
+
+    // Un brouillon n'est pas une réponse rendue : rien n'entre dans `responses`
+    // avant la remise.
+    const rendues = await db.select().from(responses).where(eq(responses.sessionId, sessionId));
+    expect(rendues).toHaveLength(0);
 
     await effacer(sessionId);
   });
@@ -61,12 +68,8 @@ describe("écriture d'une réponse", () => {
   it("refuse une question qui n'est pas dans l'évaluation de la session", async () => {
     // Sinon un élève pourrait écrire dans une évaluation qu'il ne compose pas.
     const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève"));
-    const eleve = appelEleve(jeton);
     await expect(
-      eleve.answer.save({ questionId: autreQuestionIds[0], answer: "0" }),
-    ).rejects.toThrow();
-    await expect(
-      eleve.answer.saveDraft({ questionId: autreQuestionIds[0], answer: "0" }),
+      appelEleve(jeton).answer.saveDraft({ questionId: autreQuestionIds[0], answer: "0" }),
     ).rejects.toThrow();
     await effacer(sessionId);
   });
@@ -74,27 +77,32 @@ describe("écriture d'une réponse", () => {
   it("refuse d'écrire dans une copie déjà remise", async () => {
     const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève"));
     await db.update(sessions).set({ status: "completed" }).where(eq(sessions.id, sessionId));
-    const eleve = appelEleve(jeton);
 
-    await expect(eleve.answer.save({ questionId: questionIds[0], answer: "0" }))
-      .rejects.toThrow(/terminée/i);
-    await expect(eleve.answer.saveDraft({ questionId: questionIds[0], answer: "0" }))
-      .rejects.toThrow(/terminée/i);
+    await expect(
+      appelEleve(jeton).answer.saveDraft({ questionId: questionIds[0], answer: "0" }),
+    ).rejects.toThrow(/terminée/i);
     await effacer(sessionId);
   });
 
-  it("refuse d'écrire dans une copie dont le temps est écoulé", async () => {
+  it("refuse d'écrire dans une copie dont le temps est écoulé, et la scelle", async () => {
     const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève"));
     await db
       .update(sessions)
       .set({ expiresAt: new Date(Date.now() - 60_000) })
       .where(eq(sessions.id, sessionId));
-    const eleve = appelEleve(jeton);
 
-    await expect(eleve.answer.save({ questionId: questionIds[0], answer: "0" }))
-      .rejects.toThrow(/expirée/i);
-    await expect(eleve.answer.saveDraft({ questionId: questionIds[0], answer: "0" }))
-      .rejects.toThrow(/expirée/i);
+    await expect(
+      appelEleve(jeton).answer.saveDraft({ questionId: questionIds[0], answer: "0" }),
+    ).rejects.toThrow(/expirée/i);
+
+    // Le refus ne suffit pas : la copie doit passer en « temps dépassé », sans
+    // quoi elle resterait « en cours » aux yeux de l'enseignant. Le brouillon
+    // et la remise partageaient cette règle avec deux comportements différents.
+    const [apres] = await db
+      .select({ status: sessions.status })
+      .from(sessions)
+      .where(eq(sessions.id, sessionId));
+    expect(apres.status).toBe("timed_out");
     await effacer(sessionId);
   });
 
@@ -102,19 +110,19 @@ describe("écriture d'une réponse", () => {
     const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève"));
     await effacer(sessionId);
     await expect(
-      appelEleve(jeton).answer.save({ questionId: questionIds[0], answer: "0" }),
+      appelEleve(jeton).answer.saveDraft({ questionId: questionIds[0], answer: "0" }),
     ).rejects.toThrow(/introuvable/i);
   });
 
-  it("accepte une justification à côté de la réponse", async () => {
+  it("accepte une justification à côté du brouillon", async () => {
     const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève"));
     const eleve = appelEleve(jeton);
-    await eleve.answer.save({
+    await eleve.answer.saveDraft({
       questionId: questionIds[1],
       answer: "false",
       justification: "la fonction décroît sur les négatifs",
     });
-    const [r] = await eleve.answer.getSaved();
+    const [r] = await eleve.answer.listDrafts();
     expect(r.justification).toMatch(/décroît/);
     await effacer(sessionId);
   });
@@ -129,7 +137,16 @@ describe("remise d'une copie déjà commencée", () => {
     const qs = await eleve.question.getForActiveSession();
     const qcm = qs.find((q) => q.type === "qcm")!;
 
-    await eleve.answer.save({ questionId: qcm.id, answer: "0" });
+    // Une copie peut déjà porter des réponses en base — écrites par la saisie
+    // papier, ou par une correction antérieure. La remise doit les corriger,
+    // pas les dupliquer.
+    await db.insert(responses).values({
+      sessionId,
+      questionId: qcm.id,
+      answer: "0",
+      maxScore: 0,
+      partialCreditApplied: false,
+    });
     await eleve.session.submit({
       answers: [{ questionId: qcm.id, answer: String(qcm.options!.indexOf("$4$")) }],
       timeSpent: 60,
@@ -163,7 +180,13 @@ describe("remise d'une copie déjà commencée", () => {
     // d'écriture : c'est ce qui évite de saturer la base en fin d'épreuve.
     const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève"));
     const eleve = appelEleve(jeton);
-    await eleve.answer.save({ questionId: questionIds[0], answer: "1" });
+    await db.insert(responses).values({
+      sessionId,
+      questionId: questionIds[0],
+      answer: "1",
+      maxScore: 0,
+      partialCreditApplied: false,
+    });
     const [avant] = await db.select().from(responses).where(eq(responses.sessionId, sessionId));
 
     await eleve.session.submit({
@@ -210,10 +233,8 @@ describe("remise d'une copie déjà commencée", () => {
 describe("signalements d'incidents", () => {
   it("enregistre un incident isolé", async () => {
     const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève"));
-    // `report` attend une date ISO ; `reportBatch`, un instant en
-    // millisecondes. Les deux formes coexistent et doivent rester acceptées.
     await appelEleve(jeton).cheat.report({
-      events: [{ type: "tab_switch", timestamp: new Date().toISOString() }],
+      events: [{ type: "tab_switch", timestamp: Date.now() }],
     });
     const evts = await db.select().from(cheatEvents).where(eq(cheatEvents.sessionId, sessionId));
     expect(evts.length).toBeGreaterThanOrEqual(1);
@@ -226,7 +247,7 @@ describe("signalements d'incidents", () => {
     const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève"));
     const eleve = appelEleve(jeton);
     const t = Date.now();
-    await eleve.cheat.reportBatch({
+    await eleve.cheat.report({
       events: [
         { type: "blur", timestamp: t },
         { type: "blur", timestamp: t + 50 },
@@ -242,7 +263,7 @@ describe("signalements d'incidents", () => {
     // Le contrat exige au moins un incident : un lot vide est un appel inutile,
     // et l'accepter ouvrirait une voie de sollicitation gratuite du serveur.
     const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève"));
-    await expect(appelEleve(jeton).cheat.reportBatch({ events: [] })).rejects.toThrow();
+    await expect(appelEleve(jeton).cheat.report({ events: [] })).rejects.toThrow();
     const evts = await db.select().from(cheatEvents).where(eq(cheatEvents.sessionId, sessionId));
     expect(evts).toHaveLength(0);
     await effacer(sessionId);
@@ -254,7 +275,7 @@ describe("signalements d'incidents", () => {
     const trop = Array.from({ length: 51 }, (_, i) => ({
       type: "blur" as const, timestamp: t + i * 1000,
     }));
-    await expect(appelEleve(jeton).cheat.reportBatch({ events: trop })).rejects.toThrow();
+    await expect(appelEleve(jeton).cheat.report({ events: trop })).rejects.toThrow();
     await effacer(sessionId);
   });
 });

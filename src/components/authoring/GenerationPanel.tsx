@@ -301,5 +301,3 @@ export function GenerationPanel({ evaluationId, onAccept, onEdit, onClose, accep
     </Card>
   );
 }
-
-export default GenerationPanel;

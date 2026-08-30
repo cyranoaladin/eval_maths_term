@@ -10,18 +10,18 @@ import {
   responses,
   cheatEvents as cheatEventsTable,
 } from "@db/schema";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { assertSessionAccessible } from "../queries/ownership";
 import { gradeSessionResponses } from "../grading/grade-session";
 import { signStudentToken, signResultsToken, verifyResultsToken } from "../anticheat/session-token";
 import { processHeartbeat } from "../anticheat/heartbeat";
 import { ingestEvents } from "../anticheat/event-aggregator";
 import { logger } from "../lib/logger";
+import { assertSessionActive } from "../queries/session-access";
 import { toNumber } from "../lib/decimal";
 import { checkRateLimit, getClientIp, RateLimits } from "../lib/rate-limit";
 import { FingerprintComponentsSchema, computeFingerprintHash } from "../anticheat/fingerprint";
-import { computeSuspicionScore } from "../anticheat/score-suspicion";
-import type { CheatEventType } from "@db/schema";
+import { suspicionDeLaSession } from "../anticheat/score-suspicion";
 
 function safeParseJson<T>(value: unknown): T | null {
   if (value == null) return null;
@@ -29,47 +29,6 @@ function safeParseJson<T>(value: unknown): T | null {
     try { return JSON.parse(value) as T; } catch { return null; }
   }
   return value as T;
-}
-
-/**
- * Vérifie que la session est en cours et non expirée.
- * Lève une TRPCError si la session n'est pas valide.
- * III.4 : timer serveur-autoritatif.
- */
-async function assertSessionActive(sessionId: number) {
-  const db = getDb();
-  const [session] = await db
-    .select()
-    .from(sessions)
-    .where(eq(sessions.id, sessionId))
-    .limit(1);
-
-  if (!session) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Session introuvable" });
-  }
-
-  if (session.status !== "in_progress") {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Cette session est déjà terminée",
-    });
-  }
-
-  // III.4 : vérification de l'expiration côté serveur
-  if (session.expiresAt && Date.now() > session.expiresAt.getTime()) {
-    // Sceller automatiquement la session expirée
-    await db
-      .update(sessions)
-      .set({ status: "timed_out", endedAt: new Date() })
-      .where(eq(sessions.id, sessionId));
-
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Session expirée : le temps imparti est écoulé",
-    });
-  }
-
-  return session;
 }
 
 export const sessionRouter = createRouter({
@@ -143,7 +102,6 @@ export const sessionRouter = createRouter({
         studentName: input.studentName,
         studentEmail: input.studentEmail ?? null,
         status: "in_progress",
-        tabSwitchCount: 0,
         expiresAt,
         shuffleSeed,
         ipAddress: ip,
@@ -369,17 +327,7 @@ export const sessionRouter = createRouter({
         const grading = await gradeSessionResponses(sessionId);
 
         // 3. Score de suspicion et statut final — calculés serveur, jamais reçus.
-        const events = await db
-          .select()
-          .from(cheatEventsTable)
-          .where(eq(cheatEventsTable.sessionId, sessionId));
-
-        const suspicion = computeSuspicionScore(
-          events.map((e) => ({
-            type: e.type as CheatEventType,
-            count: (e.metadata as { count?: number })?.count ?? 1,
-          })),
-        );
+        const suspicion = await suspicionDeLaSession(sessionId, db);
 
         const finalStatus = input.isTimeout
           ? "timed_out"
@@ -489,31 +437,6 @@ export const sessionRouter = createRouter({
         responses: reponsesConverties,
       };
     }),
-
-  /**
-   * Récupère toutes les sessions pour le dashboard prof.
-   * III.2 : exige le rôle teacher.
-   */
-  getAllForTeacher: teacherQuery.query(async ({ ctx }) => {
-    const db = getDb();
-    // Un enseignant ne voit que les copies de ses propres évaluations. Les
-    // évaluations sans propriétaire restent partagées — voir
-    // `api/queries/ownership.ts`.
-    const rows = await db
-      .select()
-      .from(sessions)
-      .innerJoin(evaluations, eq(evaluations.id, sessions.evaluationId))
-      .where(or(eq(evaluations.ownerId, ctx.user.id), isNull(evaluations.ownerId)))
-      .orderBy(sessions.startedAt)
-      .then((lignes) => lignes.map((l) => l.sessions));
-    // Conversion à la frontière : le pilote MySQL rend les DECIMAL en chaînes,
-    // et le client fait des moyennes avec ces valeurs.
-    return rows.map((s) => ({
-      ...s,
-      totalScore: toNumber(s.totalScore),
-      normalizedScore: toNumber(s.normalizedScore),
-    }));
-  }),
 
   /**
    * Récupère les détails complets d'une session (prof seulement).

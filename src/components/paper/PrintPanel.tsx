@@ -380,5 +380,3 @@ export function PrintPanel({ evaluationId, onClose }: Props) {
     </Card>
   );
 }
-
-export default PrintPanel;

@@ -57,20 +57,18 @@ describe("lecture des copies par l'enseignant", () => {
     expect(JSON.stringify(detail.responses)).toContain("question");
   });
 
-  it("liste les copies de ses évaluations", async () => {
+  it("rend les résultats détaillés d'une copie", async () => {
     const { sessionId } = await copieRemise();
-    const liste = await appelEnseignant(prof).session.getAllForTeacher();
-    expect(liste.some((s) => s.id === sessionId)).toBe(true);
-    // Et pas celles des autres.
-    const autre = await appelEnseignant(intrus).session.getAllForTeacher();
-    expect(autre.some((s) => s.id === sessionId)).toBe(false);
+    const detail = await appelEnseignant(prof).session.getDetailsForTeacher({ sessionId });
+    expect(detail.responses).toHaveLength(3);
+    expect(detail.responses.every((r) => r.gradingMode !== null)).toBe(true);
   });
 
-  it("rend les résultats détaillés", async () => {
+  it("ne rend rien de la copie d'un autre enseignant", async () => {
     const { sessionId } = await copieRemise();
-    const res = await appelEnseignant(prof).grading2.getResults({ sessionId });
-    expect(res.details).toHaveLength(3);
-    expect(res.details.every((d) => d.gradingMode !== null)).toBe(true);
+    await expect(
+      appelEnseignant(intrus).session.getDetailsForTeacher({ sessionId }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
 
@@ -178,7 +176,7 @@ describe("intervention manuelle", () => {
     ).rejects.toThrow();
     await expect(autre.grading2.auditTrail({ sessionId })).rejects.toThrow();
     await expect(autre.grading2.gradeSession({ sessionId })).rejects.toThrow();
-    await expect(autre.grading2.getResults({ sessionId })).rejects.toThrow();
+    await expect(autre.session.getDetailsForTeacher({ sessionId })).rejects.toThrow();
 
     await expect(
       appelAnonyme().grading2.overrideGrade({ responseId: cible.id, score: 0, reason: "Anonyme" }),
@@ -342,7 +340,7 @@ describe("surveillance en direct", () => {
 describe("signalements d'anti-triche", () => {
   it("enregistre un lot d'incidents et les compte côté enseignant", async () => {
     const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Distrait"));
-    await appelEleve(jeton).cheat.reportBatch({
+    await appelEleve(jeton).cheat.report({
       events: [
         { type: "tab_switch", timestamp: Date.now() },
         { type: "blur", timestamp: Date.now() },
@@ -358,7 +356,7 @@ describe("signalements d'anti-triche", () => {
 
   it("refuse un signalement sans session", async () => {
     await expect(
-      appelAnonyme().cheat.reportBatch({ events: [{ type: "blur", timestamp: Date.now() }] }),
+      appelAnonyme().cheat.report({ events: [{ type: "blur", timestamp: Date.now() }] }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });

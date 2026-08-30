@@ -19,7 +19,7 @@ import { logger } from "../lib/logger";
 import { env } from "../lib/env";
 
 /** Racine des dossiers de tirage. Hors du dépôt, configurable. */
-export function paperRoot(): string {
+function paperRoot(): string {
   return resolve(env.paperOutputDir);
 }
 

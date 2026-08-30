@@ -121,8 +121,8 @@ export default function Correction() {
     );
   }
 
-  const notesParEleve = new Map(
-    (resultats?.rows ?? []).map((r) => [r.name, r.normalizedScore]),
+  const notesParEleve = new Map<string, number | null>(
+    (resultats?.lignes ?? []).map((l) => [l.nom, l.note20]),
   );
 
   return (

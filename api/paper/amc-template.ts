@@ -35,7 +35,7 @@ export interface TemplateQuestion {
   gradingRubric: GradingRubric | null;
 }
 
-export interface TemplateStudent {
+interface TemplateStudent {
   lastName: string;
   firstName: string;
 }

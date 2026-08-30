@@ -49,7 +49,7 @@ async function avecEcheance<T>(promesse: Promise<T>, ms: number): Promise<T> {
 
 export type AutoSaveStatus = "idle" | "saving" | "saved" | "error" | "offline";
 
-export interface DraftPayload {
+interface DraftPayload {
   questionId: number;
   answer: string;
   justification?: string;

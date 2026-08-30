@@ -107,3 +107,14 @@ export function getDb() {
   }
   return instance;
 }
+
+/**
+ * Ce qui exécute une requête : la base, ou une transaction en cours.
+ *
+ * Sans ce type, une fonction partagée entre un appel ordinaire et un appel
+ * transactionnel devait décrire sa dépendance à la main — et la décrire de
+ * travers, ce que le vérificateur ne pouvait pas rattraper.
+ */
+export type BaseDeDonnees = ReturnType<typeof getDb>;
+export type Transaction = Parameters<Parameters<BaseDeDonnees["transaction"]>[0]>[0];
+export type Executeur = BaseDeDonnees | Transaction;

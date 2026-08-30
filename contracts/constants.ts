@@ -18,9 +18,12 @@ export const ErrorMessages = {
   insufficientRole: "Droits insuffisants",
 } as const;
 
+/**
+ * Chemins connus des deux côtés. « /login » était défini trois fois — ici,
+ * dans `LOGIN_PATH` juste en dessous, et dans `src/const.ts` — pour une seule
+ * page.
+ */
 export const Paths = {
   login: "/login",
   oauthCallback: "/api/oauth/callback",
 } as const;
-
-export const LOGIN_PATH = "/login";

@@ -17,7 +17,101 @@
 import { TRPCError } from "@trpc/server";
 import { and, eq, isNull, or } from "drizzle-orm";
 import { getDb } from "./connection";
-import { evaluations, responses, sessions } from "@db/schema";
+import { classes, evaluations, questions, sessions, students } from "@db/schema";
+import type { Evaluation } from "@db/schema";
+
+/**
+ * Vérifie qu'un enseignant peut agir sur une évaluation.
+ *
+ * Cette règle vivait dans `authoring-router`, où seul l'atelier de rédaction la
+ * connaissait. Deux routes hors de l'atelier acceptaient donc un identifiant
+ * d'évaluation sans rien vérifier : le suivi en direct, qui rendait les noms,
+ * courriels, scores de suspicion et incidents des élèves de n'importe quelle
+ * évaluation ; et la génération de sujets papier, qui imprimait — corrigé
+ * compris — l'évaluation d'un autre enseignant. Une règle de cloisonnement n'a
+ * qu'un seul endroit où vivre.
+ */
+export async function assertEvaluationAccessible(
+  evaluationId: number,
+  userId: number,
+): Promise<Evaluation> {
+  const db = getDb();
+  const [ligne] = await db
+    .select()
+    .from(evaluations)
+    .where(
+      and(
+        eq(evaluations.id, evaluationId),
+        or(eq(evaluations.ownerId, userId), isNull(evaluations.ownerId)),
+      ),
+    )
+    .limit(1);
+
+  if (!ligne) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "Évaluation introuvable ou appartenant à un autre enseignant",
+    });
+  }
+  return ligne;
+}
+
+/** Une classe appartient à l'enseignant qui l'a créée. Pas de partage. */
+export async function assertOwnedClass(classId: number, userId: number) {
+  const db = getDb();
+  const [ligne] = await db
+    .select()
+    .from(classes)
+    .where(and(eq(classes.id, classId), eq(classes.ownerId, userId)))
+    .limit(1);
+  if (!ligne) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Classe introuvable" });
+  }
+  return ligne;
+}
+
+/**
+ * Un élève appartient à l'enseignant propriétaire de sa classe.
+ *
+ * Les deux routes qui exercent les droits d'une personne sur ses données —
+ * accès et effacement — refaisaient chacune la même vérification en deux temps.
+ * Ce sont précisément les deux endroits où se tromper de destinataire coûte le
+ * plus cher.
+ */
+export async function assertOwnedStudent(studentId: number, userId: number) {
+  const db = getDb();
+  const [eleve] = await db
+    .select({ id: students.id, classId: students.classId })
+    .from(students)
+    .where(eq(students.id, studentId))
+    .limit(1);
+  if (!eleve) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Élève introuvable" });
+  }
+  await assertOwnedClass(eleve.classId, userId);
+  return eleve;
+}
+
+/**
+ * Vérifie qu'un enseignant peut agir sur une question, par son évaluation.
+ * `updateQuestion` et `deleteQuestion` refaisaient le même détour.
+ */
+export async function assertQuestionAccessible(
+  questionId: number,
+  userId: number,
+): Promise<{ questionId: number; evaluationId: number }> {
+  const db = getDb();
+  const [ligne] = await db
+    .select({ evaluationId: questions.evaluationId })
+    .from(questions)
+    .where(eq(questions.id, questionId))
+    .limit(1);
+  if (!ligne) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Question introuvable" });
+  }
+  await assertEvaluationAccessible(ligne.evaluationId, userId);
+  return { questionId, evaluationId: ligne.evaluationId };
+}
 
 export interface SessionAccessible {
   sessionId: number;
@@ -50,26 +144,4 @@ export async function assertSessionAccessible(
     throw new TRPCError({ code: "NOT_FOUND", message: "Session introuvable" });
   }
   return { sessionId: ligne.id, evaluationId: ligne.evaluationId };
-}
-
-/**
- * Même contrôle à partir d'une réponse : c'est l'identifiant manipulé par
- * l'écran de correction.
- */
-export async function assertResponseAccessible(
-  responseId: number,
-  userId: number,
-): Promise<{ responseId: number; sessionId: number; evaluationId: number }> {
-  const db = getDb();
-  const [ligne] = await db
-    .select({ id: responses.id, sessionId: responses.sessionId })
-    .from(responses)
-    .where(eq(responses.id, responseId))
-    .limit(1);
-
-  if (!ligne) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Réponse introuvable" });
-  }
-  const acces = await assertSessionAccessible(ligne.sessionId, userId);
-  return { responseId: ligne.id, ...acces };
 }

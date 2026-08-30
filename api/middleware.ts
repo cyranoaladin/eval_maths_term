@@ -12,7 +12,8 @@ const t = initTRPC.context<TrpcContext>().create({
 export const createRouter = t.router;
 
 /**
- * Route publique — uniquement pour /ping et routes anonymes non sensibles.
+ * Route publique — le catalogue des évaluations, l'ouverture d'une session et
+ * la consultation d'un résultat par jeton. Rien d'autre.
  */
 export const publicQuery = t.procedure;
 

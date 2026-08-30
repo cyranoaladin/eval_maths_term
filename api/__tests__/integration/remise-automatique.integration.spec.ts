@@ -168,7 +168,7 @@ describe("données personnelles d'un élève", () => {
     // nom qui disparaît, pas le résultat.
     const { eleve, paperExamId } = await eleveAvecCopie();
     const avant = await appelEnseignant(prof).paper.results({ paperExamId });
-    const moyenneAvant = avant.stats.average;
+    const moyenneAvant = avant.stats.moyenne;
 
     await anonymizeStudent(eleve.id);
 
@@ -176,7 +176,7 @@ describe("données personnelles d'un élève", () => {
     expect(`${apres.firstName} ${apres.lastName}`).not.toMatch(/Léa/);
 
     const resultats = await appelEnseignant(prof).paper.results({ paperExamId });
-    expect(resultats.stats.average).toBe(moyenneAvant);
+    expect(resultats.stats.moyenne).toBe(moyenneAvant);
   });
 
   it("rassemble aussi les sessions en ligne rapprochées par le nom", async () => {

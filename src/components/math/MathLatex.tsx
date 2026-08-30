@@ -175,5 +175,3 @@ export function MathLatex({ tex, display = false, auto = false, className }: Mat
     />
   );
 }
-
-export default MathLatex;

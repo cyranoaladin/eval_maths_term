@@ -223,6 +223,43 @@ describe("rédaction", () => {
     await expect(autre.authoring.deleteEvaluation({ id: aMoi.evaluationId })).rejects.toThrow();
   });
 
+  it("ne suit pas en direct l'évaluation d'un collègue", async () => {
+    /*
+      `teacherLive.snapshot` ne vérifiait rien d'autre que le rôle. N'importe
+      quel enseignant connecté obtenait, pour n'importe quelle évaluation, les
+      noms et courriels des élèves qui la composaient, leur avancement, leur
+      score de suspicion et le détail de leurs incidents de surveillance.
+    */
+    const aMoi = await creerEvaluation(prof, "Suivie en direct");
+    evaluationsCreees.push(aMoi.evaluationId);
+
+    await expect(
+      appelEnseignant(intrus).teacherLive.snapshot({ evaluationId: aMoi.evaluationId }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+    // Le propriétaire, lui, la suit.
+    const suivi = await appelEnseignant(prof).teacherLive.snapshot({
+      evaluationId: aMoi.evaluationId,
+    });
+    expect(suivi.evaluationId).toBe(aMoi.evaluationId);
+  });
+
+  it("n'imprime pas l'évaluation d'un collègue", async () => {
+    /*
+      La génération papier vérifiait la propriété de la classe, jamais celle de
+      l'évaluation : un enseignant imprimait le sujet — et le corrigé — d'un
+      collègue, pour sa propre classe.
+    */
+    const aMoi = await creerEvaluation(prof, "À imprimer");
+    evaluationsCreees.push(aMoi.evaluationId);
+    const autre = appelEnseignant(intrus);
+    const { id: classId } = await autre.paper.createClass({ name: unique("Classe intruse") });
+
+    await expect(
+      autre.paper.createAndGenerate({ evaluationId: aMoi.evaluationId, classId }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
   it("annonce si la rédaction assistée est disponible", async () => {
     const r = await appelEnseignant(prof).authoring.llmStatus();
     expect(typeof r.configured).toBe("boolean");
@@ -438,8 +475,8 @@ describe("saisie des copies papier", () => {
     expect(faux.normalizedScore).toBe(0);
 
     const res = await api.paper.results({ paperExamId: t.paperExamId });
-    expect(res.stats.entered).toBe(2);
-    expect(res.stats.average).toBe(10);
+    expect(res.stats.saisies).toBe(2);
+    expect(res.stats.moyenne).toBe(10);
     expect(grille.copies).toHaveLength(2);
   });
 
@@ -455,8 +492,8 @@ describe("saisie des copies papier", () => {
       ],
     });
     const res = await api.paper.results({ paperExamId: t.paperExamId });
-    expect(res.stats.entered).toBe(1);
-    expect(res.rows.filter((r) => !r.entered)).toHaveLength(1);
+    expect(res.stats.saisies).toBe(1);
+    expect(res.lignes.filter((l) => !l.saisie)).toHaveLength(1);
   });
 
   it("accepte les points d'une question rédigée saisis à la main", async () => {
@@ -525,9 +562,9 @@ describe("saisie des copies papier", () => {
   it("rend des résultats vides plutôt qu'une erreur quand rien n'est saisi", async () => {
     const t = await tirage();
     const res = await appelEnseignant(prof).paper.results({ paperExamId: t.paperExamId });
-    expect(res.stats.entered).toBe(0);
-    expect(res.stats.average).toBeNull();
-    expect(res.rows.every((r) => !r.entered)).toBe(true);
+    expect(res.stats.saisies).toBe(0);
+    expect(res.stats.moyenne).toBeNull();
+    expect(res.lignes.every((l) => !l.saisie)).toBe(true);
   });
 
   it("ne liste aucun tirage pour une évaluation qui n'en a pas", async () => {

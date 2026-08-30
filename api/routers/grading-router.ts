@@ -8,7 +8,11 @@
  *
  * Routes :
  *   - gradeSession (teacherQuery) : corrige toutes les réponses d'une session
- *   - getResults (teacherQuery) : résultats d'une session avec détail par question
+ *
+ * `getResults` vivait ici : une seconde lecture des résultats d'une copie, pour
+ * le même public que `session.getDetailsForTeacher`, que l'interface utilise.
+ * Deux façons de répondre à la même question, c'est deux mises en forme à
+ * garder cohérentes sans que rien ne l'impose.
  *   - overrideGrade (teacherQuery) : correction manuelle par l'enseignant
  *
  * Sécurité :
@@ -23,7 +27,7 @@ import { assertSessionAccessible } from "../queries/ownership";
 import { responses, sessions, questions } from "@db/schema";
 import { eq } from "drizzle-orm";
 import { gradeSessionResponses } from "../grading/grade-session";
-import { toDecimal, toNumber, toNumberOr } from "../lib/decimal";
+import { toDecimal, toNumber } from "../lib/decimal";
 import { readResponseState, recordGradeAudit } from "../grading/grade-audit";
 import { gradeAudit } from "@db/schema";
 import { desc } from "drizzle-orm";
@@ -67,82 +71,6 @@ export const gradingRouter2 = createRouter({
       });
 
       return { success: true, sessionId: input.sessionId, ...result };
-    }),
-
-  /**
-   * Résultats détaillés d'une session (prof uniquement).
-   */
-  getResults: teacherQuery
-    .input(z.object({ sessionId: z.number().int().positive() }))
-    .query(async ({ input, ctx }) => {
-      await assertSessionAccessible(input.sessionId, ctx.user.id);
-      const db = getDb();
-
-      const [session] = await db
-        .select()
-        .from(sessions)
-        .where(eq(sessions.id, input.sessionId))
-        .limit(1);
-
-      if (!session) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Session introuvable" });
-      }
-
-      const resps = await db
-        .select()
-        .from(responses)
-        .where(eq(responses.sessionId, input.sessionId));
-
-      const qs = await db
-        .select({
-          id: questions.id,
-          type: questions.type,
-          question: questions.question,
-          points: questions.points,
-          order: questions.order,
-          // correctAnswer et gradingRubric uniquement côté serveur
-          correctAnswer: questions.correctAnswer,
-        })
-        .from(questions)
-        .where(eq(questions.evaluationId, session.evaluationId))
-        .orderBy(questions.order);
-
-      const questionMap = new Map(qs.map((q) => [q.id, q]));
-
-      const details = resps.map((r) => {
-        const q = questionMap.get(r.questionId);
-        return {
-          questionId: r.questionId,
-          questionText: q?.question ?? "(inconnue)",
-          questionType: q?.type ?? "short_answer",
-          order: q?.order ?? 0,
-          answer: r.answer,
-          justification: r.justification,
-          score: toNumberOr(r.score, 0),
-          maxScore: q?.points ?? 0,
-          isCorrect: r.isCorrect ?? false,
-          feedback: r.llmFeedback ?? null,
-          gradingMode: r.gradingMode ?? null,
-          llmConfidence: r.llmConfidence ? parseFloat(r.llmConfidence) : null,
-          partialCreditApplied: r.partialCreditApplied,
-          gradedAt: r.gradedAt,
-        };
-      }).sort((a, b) => a.order - b.order);
-
-      return {
-        sessionId: input.sessionId,
-        studentName: session.studentName,
-        studentEmail: session.studentEmail,
-        status: session.status,
-        startedAt: session.startedAt,
-        endedAt: session.endedAt,
-        totalScore: toNumberOr(session.totalScore, 0),
-        maxScore: session.maxScore ?? 0,
-        normalizedScore: session.normalizedScore
-          ? parseFloat(session.normalizedScore)
-          : null,
-        details,
-      };
     }),
 
   /**

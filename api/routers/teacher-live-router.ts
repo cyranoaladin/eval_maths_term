@@ -11,7 +11,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createRouter, teacherQuery } from "../middleware";
 import { getDb } from "../queries/connection";
-import { assertSessionAccessible } from "../queries/ownership";
+import { assertEvaluationAccessible, assertSessionAccessible } from "../queries/ownership";
 import { sessions, cheatEvents, answerDrafts } from "@db/schema";
 import { eq } from "drizzle-orm";
 import { runIdleSweep } from "../anticheat/idle-sweeper";
@@ -19,7 +19,7 @@ import { autoSubmitSession } from "../anticheat/auto-submit";
 import { logger } from "../lib/logger";
 import type { CheatEventType } from "@db/schema";
 
-export interface SessionSnapshot {
+interface SessionSnapshot {
   sessionId: number;
   studentName: string;
   studentEmail: string | null;
@@ -42,7 +42,11 @@ export const teacherLiveRouter = createRouter({
    */
   snapshot: teacherQuery
     .input(z.object({ evaluationId: z.number().int().positive() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      // Sans ce contrôle, n'importe quel enseignant connecté obtenait, pour
+      // n'importe quelle évaluation, les noms, courriels, scores de suspicion
+      // et incidents de tous les élèves qui la composaient.
+      await assertEvaluationAccessible(input.evaluationId, ctx.user.id);
       const db = getDb();
       const now = Date.now();
 

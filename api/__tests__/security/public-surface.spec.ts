@@ -33,7 +33,6 @@ describe("surface publique : inventaire des procédures", () => {
    * doit être ajoutée ici volontairement, après revue.
    */
   const EXPECTED_ANONYMOUS = [
-    "ping",
     "auth.me",
     "auth.logout",
     "evaluation.listPublic",
@@ -62,7 +61,10 @@ describe("surface publique : inventaire des procédures", () => {
       [
         "access.listUsers",
         "access.setAccess",
-        "answer.getSaved",
+        "answer.listDrafts",
+        "answer.saveDraft",
+        "auth.logout",
+        "auth.me",
         "authoring.createEvaluation",
         "authoring.createQuestion",
         "authoring.deleteEvaluation",
@@ -75,18 +77,9 @@ describe("surface publique : inventaire des procédures", () => {
         "authoring.reorderQuestions",
         "authoring.updateEvaluation",
         "authoring.updateQuestion",
-        "answer.listDrafts",
-        "answer.save",
-        "answer.saveDraft",
-        "auth.logout",
-        "auth.me",
         "cheat.report",
-        "cheat.reportBatch",
-        "evaluation.listForTeacher",
         "evaluation.listPublic",
-        "evaluation.seed",
         "grading2.auditTrail",
-        "grading2.getResults",
         "grading2.gradeSession",
         "grading2.overrideGrade",
         "paper.anonymizeStudent",
@@ -102,11 +95,8 @@ describe("surface publique : inventaire des procédures", () => {
         "paper.results",
         "paper.saveEntry",
         "paper.status",
-        "ping",
         "question.getForActiveSession",
         "question.getPublicInfo",
-        "question.getWithAnswersForTeacher",
-        "session.getAllForTeacher",
         "session.getDetailsForTeacher",
         "session.getResults",
         "session.heartbeat",
@@ -120,7 +110,7 @@ describe("surface publique : inventaire des procédures", () => {
 
   it("l'allowlist anonyme reste minimale", () => {
     // Garde-fou : si cette liste grossit, c'est une décision, pas un accident.
-    expect(EXPECTED_ANONYMOUS).toHaveLength(7);
+    expect(EXPECTED_ANONYMOUS).toHaveLength(6);
   });
 });
 
@@ -154,9 +144,9 @@ describe("surface publique : routes élève inaccessibles sans jeton", () => {
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
-  it("cheat.reportBatch refuse un lot anonyme", async () => {
+  it("cheat.report refuse un lot anonyme", async () => {
     await expect(
-      caller().cheat.reportBatch({
+      caller().cheat.report({
         events: [{ type: "tab_switch", timestamp: Date.now(), count: 1 }],
       }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
@@ -164,15 +154,16 @@ describe("surface publique : routes élève inaccessibles sans jeton", () => {
 });
 
 describe("surface publique : routes enseignant inaccessibles sans rôle", () => {
-  it("session.getAllForTeacher refuse un anonyme", async () => {
-    await expect(caller().session.getAllForTeacher()).rejects.toMatchObject({
+  it("authoring.listEvaluations refuse un anonyme", async () => {
+    await expect(caller().authoring.listEvaluations()).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
   });
 
-  it("question.getWithAnswersForTeacher ne sert jamais correctAnswer à un anonyme", async () => {
+  it("session.getDetailsForTeacher refuse un anonyme", async () => {
+    // C'est la copie corrigée : énoncés, réponses, notes et incidents.
     await expect(
-      caller().question.getWithAnswersForTeacher({ evaluationId: 1 }),
+      caller().session.getDetailsForTeacher({ sessionId: 1 }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
@@ -187,12 +178,6 @@ describe("surface publique : routes enseignant inaccessibles sans rôle", () => 
     await expect(
       caller().grading2.overrideGrade({ responseId: 1, score: 20, reason: "test" }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
-  });
-
-  it("evaluation.seed refuse un anonyme", async () => {
-    await expect(caller().evaluation.seed()).rejects.toMatchObject({
-      code: "UNAUTHORIZED",
-    });
   });
 
   it("teacherLive.snapshot refuse un anonyme", async () => {

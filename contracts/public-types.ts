@@ -32,14 +32,3 @@ export interface PublicEvaluationInfo {
   questionCount: number;
   maxScore: number;
 }
-
-/**
- * Résultat de soumission renvoyé à l'élève (sans correctAnswer).
- */
-export interface PublicSubmitResult {
-  sessionId: number;
-  totalScore: number;
-  maxScore: number;
-  normalizedScore: number;
-  resultsToken: string;
-}

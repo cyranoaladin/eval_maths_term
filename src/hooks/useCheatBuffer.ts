@@ -7,7 +7,7 @@
  * - Le flush est aussi déclenché sur beforeunload (best-effort).
  * - sessionToken obligatoire pour envoyer.
  * - Idempotent sur refresh : le buffer est en mémoire (non persisté).
- * - `cheat.reportBatch` est une route `studentQuery` : elle passe par
+ * - `cheat.report` est une route `studentQuery` : elle passe par
  *   `studentTrpc`, seul client à porter le header `x-student-session-token`.
  */
 import { useCallback, useEffect, useRef } from "react";
@@ -39,7 +39,7 @@ export function useCheatBuffer({
 }: UseCheatBufferOptions): UseCheatBufferResult {
   const bufferRef = useRef<Map<CheatEventType, BufferedEvent>>(new Map());
   const cancelRef = useRef(false);
-  const reportMutation = studentTrpc.cheat.reportBatch.useMutation();
+  const reportMutation = studentTrpc.cheat.report.useMutation();
 
   // La mutation tRPC change d'identité à chaque rendu : on la garde dans une
   // ref pour que `flush` reste stable sans mentir sur ses dépendances.

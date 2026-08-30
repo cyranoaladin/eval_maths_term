@@ -11,12 +11,13 @@
  * proprement à l'utilisateur devenait indiscernable d'un défaut.
  *
  * Les messages passent donc par ici. En développement, ils vont à la console,
- * là où on les lit. En production, ils sont remis au collecteur d'erreurs quand
- * il est branché, et restent silencieux sinon : couvrir un écran d'élève de
- * messages techniques pendant une épreuve n'aide personne.
+ * là où on les lit. En production, ils restent silencieux : couvrir l'écran
+ * d'un élève de messages techniques pendant une épreuve n'aide personne, et il
+ * n'y a pas encore de collecteur pour les recevoir. C'est ce point unique qui
+ * en accueillera un — sans qu'aucun appelant ne change.
  */
 
-export type NiveauJournal = "warn" | "error";
+type NiveauJournal = "warn" | "error";
 
 export interface EvenementJournal {
   niveau: NiveauJournal;
@@ -24,32 +25,7 @@ export interface EvenementJournal {
   cause?: unknown;
 }
 
-type Collecteur = (evenement: EvenementJournal) => void;
-
-let collecteur: Collecteur | null = null;
-
-/**
- * Branche un collecteur — supervision d'erreurs, ou un double dans les tests.
- * Renvoie de quoi le débrancher.
- */
-export function brancherCollecteur(nouveau: Collecteur): () => void {
-  const precedent = collecteur;
-  collecteur = nouveau;
-  return () => {
-    collecteur = precedent;
-  };
-}
-
 function emettre(evenement: EvenementJournal): void {
-  if (collecteur) {
-    try {
-      collecteur(evenement);
-    } catch {
-      // Un collecteur défaillant ne doit pas emporter l'application avec lui.
-    }
-    return;
-  }
-
   if (import.meta.env.DEV) {
     const ligne = `[${evenement.niveau}] ${evenement.message}`;
     if (evenement.niveau === "error") console.error(ligne, evenement.cause ?? "");

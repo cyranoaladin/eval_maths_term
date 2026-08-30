@@ -15,7 +15,7 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
+import { asc, eq, isNull, or, sql } from "drizzle-orm";
 import { createRouter, teacherQuery } from "../middleware";
 import { getDb } from "../queries/connection";
 import { evaluations, questions, sessions } from "@db/schema";
@@ -26,6 +26,10 @@ import { currentModel, isLlmConfigured } from "../llm/chat";
 import { getRagProvider, searchContext } from "../rag/rag-provider";
 import { checkRateLimit } from "../lib/rate-limit";
 import { logger } from "../lib/logger";
+import {
+  assertEvaluationAccessible,
+  assertQuestionAccessible,
+} from "../queries/ownership";
 
 const QuestionTypeSchema = z.enum(["qcm", "short_answer", "true_false"]);
 
@@ -63,28 +67,6 @@ function assertCoherent(input: z.infer<typeof QuestionInputSchema>) {
 }
 
 /** Charge une évaluation en vérifiant que l'enseignant a le droit d'y toucher. */
-async function assertOwnedEvaluation(evaluationId: number, userId: number) {
-  const db = getDb();
-  const [row] = await db
-    .select()
-    .from(evaluations)
-    .where(
-      and(
-        eq(evaluations.id, evaluationId),
-        or(eq(evaluations.ownerId, userId), isNull(evaluations.ownerId)),
-      ),
-    )
-    .limit(1);
-
-  if (!row) {
-    throw new TRPCError({
-      code: "NOT_FOUND",
-      message: "Évaluation introuvable ou appartenant à un autre enseignant",
-    });
-  }
-  return row;
-}
-
 export const authoringRouter = createRouter({
   // ─── Évaluations ──────────────────────────────────────────────────────────
 
@@ -133,7 +115,7 @@ export const authoringRouter = createRouter({
   getEvaluation: teacherQuery
     .input(z.object({ id: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
-      const evaluation = await assertOwnedEvaluation(input.id, ctx.user.id);
+      const evaluation = await assertEvaluationAccessible(input.id, ctx.user.id);
       const db = getDb();
 
       const qs = await db
@@ -200,7 +182,7 @@ export const authoringRouter = createRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      await assertOwnedEvaluation(input.id, ctx.user.id);
+      await assertEvaluationAccessible(input.id, ctx.user.id);
       const db = getDb();
       const { id, ...fields } = input;
 
@@ -225,7 +207,7 @@ export const authoringRouter = createRouter({
   deleteEvaluation: teacherQuery
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input, ctx }) => {
-      await assertOwnedEvaluation(input.id, ctx.user.id);
+      await assertEvaluationAccessible(input.id, ctx.user.id);
       const db = getDb();
 
       // La clé étrangère est en RESTRICT : on donne un motif lisible plutôt
@@ -257,7 +239,7 @@ export const authoringRouter = createRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const source = await assertOwnedEvaluation(input.id, ctx.user.id);
+      const source = await assertEvaluationAccessible(input.id, ctx.user.id);
       const db = getDb();
 
       const qs = await db
@@ -346,7 +328,7 @@ export const authoringRouter = createRouter({
         });
       }
 
-      const evaluation = await assertOwnedEvaluation(input.evaluationId, ctx.user.id);
+      const evaluation = await assertEvaluationAccessible(input.evaluationId, ctx.user.id);
       const db = getDb();
 
       // Les énoncés déjà présents servent à éviter les redites.
@@ -400,7 +382,7 @@ export const authoringRouter = createRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      await assertOwnedEvaluation(input.evaluationId, ctx.user.id);
+      await assertEvaluationAccessible(input.evaluationId, ctx.user.id);
       assertCoherent(input.question);
       const db = getDb();
 
@@ -436,18 +418,10 @@ export const authoringRouter = createRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const db = getDb();
-      const [existing] = await db
-        .select({ evaluationId: questions.evaluationId })
-        .from(questions)
-        .where(eq(questions.id, input.id))
-        .limit(1);
-
-      if (!existing) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Question introuvable" });
-      }
-      await assertOwnedEvaluation(existing.evaluationId, ctx.user.id);
+      await assertQuestionAccessible(input.id, ctx.user.id);
       assertCoherent(input.question);
+
+      const db = getDb();
 
       const q = input.question;
       await db
@@ -472,17 +446,8 @@ export const authoringRouter = createRouter({
   deleteQuestion: teacherQuery
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input, ctx }) => {
+      await assertQuestionAccessible(input.id, ctx.user.id);
       const db = getDb();
-      const [existing] = await db
-        .select({ evaluationId: questions.evaluationId })
-        .from(questions)
-        .where(eq(questions.id, input.id))
-        .limit(1);
-
-      if (!existing) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Question introuvable" });
-      }
-      await assertOwnedEvaluation(existing.evaluationId, ctx.user.id);
 
       // `responses` référence `questions` en RESTRICT : une question déjà
       // corrigée ne peut pas disparaître sans emporter l'historique.
@@ -507,7 +472,7 @@ export const authoringRouter = createRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      await assertOwnedEvaluation(input.evaluationId, ctx.user.id);
+      await assertEvaluationAccessible(input.evaluationId, ctx.user.id);
       const db = getDb();
 
       const existing = await db

@@ -13,7 +13,7 @@
  * test qui laisse des lignes derrière lui fait échouer le suivant sans que
  * personne comprenne pourquoi.
  */
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { appRouter } from "../../router";
 import type { TrpcContext } from "../../context";
 import { getDb } from "../../queries/connection";
@@ -27,7 +27,7 @@ import { signStudentToken } from "../../anticheat/session-token";
 export const db = getDb();
 
 /** Contexte anonyme : ni enseignant, ni session élève. */
-export function contexteAnonyme(entetes: Record<string, string> = {}): TrpcContext {
+function contexteAnonyme(entetes: Record<string, string> = {}): TrpcContext {
   return {
     req: new Request("http://localhost/api/trpc", { headers: entetes }),
     resHeaders: new Headers(),
@@ -36,12 +36,12 @@ export function contexteAnonyme(entetes: Record<string, string> = {}): TrpcConte
 }
 
 /** Contexte enseignant : l'utilisateur est déjà résolu, comme après OAuth. */
-export function contexteEnseignant(user: User): TrpcContext {
+function contexteEnseignant(user: User): TrpcContext {
   return { ...contexteAnonyme(), user };
 }
 
 /** Contexte élève : le jeton est présenté comme le fait le client. */
-export function contexteEleve(jeton: string): TrpcContext {
+function contexteEleve(jeton: string): TrpcContext {
   return contexteAnonyme({ "x-student-session-token": jeton });
 }
 
@@ -208,15 +208,5 @@ export async function nettoyer(evaluationIds: number[], userIds: number[] = []) 
       await db.delete(classes).where(inArray(classes.id, cls.map((c) => c.id)));
     }
     await db.delete(users).where(inArray(users.id, userIds));
-  }
-}
-
-/** Vrai si la base d'intégration répond. */
-export async function baseDisponible(): Promise<boolean> {
-  try {
-    await db.execute(sql`SELECT 1`);
-    return true;
-  } catch {
-    return false;
   }
 }

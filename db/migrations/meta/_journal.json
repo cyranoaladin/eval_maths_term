@@ -50,6 +50,13 @@
       "when": 1788093543403,
       "tag": "0006_acces_enseignant",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1788096923925,
+      "tag": "0007_retrait_dette_anticheat",
+      "breakpoints": true
     }
   ]
 }

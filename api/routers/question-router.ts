@@ -1,10 +1,9 @@
 import { z } from "zod";
-import { createRouter, teacherQuery, studentQuery, publicQuery } from "../middleware";
+import { createRouter, studentQuery, publicQuery } from "../middleware";
 import { getDb } from "../queries/connection";
 import { questions, evaluations } from "@db/schema";
 import { eq } from "drizzle-orm";
 import type { PublicQuestion, PublicEvaluationInfo } from "@contracts/public-types";
-import { logger } from "../lib/logger";
 import { shuffleDeterministic } from "../grading/shuffle";
 import { optionShuffleSeed } from "../grading/grade-session";
 import { modeSaisie } from "../grading/input-mode";
@@ -100,23 +99,5 @@ export const questionRouter = createRouter({
         // l'évaluation de référence et deviendrait faux dès la deuxième.
         maxScore: qs.reduce((sum, q) => sum + q.points, 0),
       };
-    }),
-
-  /**
-   * Route protégée prof : renvoie les questions AVEC correctAnswer (pour dashboard/correction).
-   */
-  getWithAnswersForTeacher: teacherQuery
-    .input(z.object({ evaluationId: z.number() }))
-    .query(async ({ input }) => {
-      const db = getDb();
-      logger.info("[question] Récupération des questions avec réponses (prof)", {
-        evaluationId: input.evaluationId,
-      });
-
-      return db
-        .select()
-        .from(questions)
-        .where(eq(questions.evaluationId, input.evaluationId))
-        .orderBy(questions.order);
     }),
 });

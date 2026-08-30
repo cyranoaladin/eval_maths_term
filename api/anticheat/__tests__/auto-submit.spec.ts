@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../../queries/connection", () => ({ getDb: vi.fn() }));
 vi.mock("../score-suspicion", () => ({
-  computeSuspicionScore: vi.fn().mockReturnValue({
+  suspicionDeLaSession: vi.fn().mockResolvedValue({
     score: 0, verdict: "clean", reasons: [],
   }),
 }));
@@ -12,7 +12,7 @@ vi.mock("../../lib/logger", () => ({
 
 import { autoSubmitSession } from "../auto-submit";
 import { getDb } from "../../queries/connection";
-import { computeSuspicionScore } from "../score-suspicion";
+import { suspicionDeLaSession } from "../score-suspicion";
 
 const BASE_SESSION = {
   id: 1,
@@ -160,7 +160,9 @@ describe("autoSubmitSession", () => {
     expect(insertCalls.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("appelle computeSuspicionScore avec les événements cheat", async () => {
+  it("calcule la suspicion dans la transaction de la remise", async () => {
+    // Le score doit être lu dans la même transaction que l'écriture des
+    // réponses : calculé après coup, il pourrait décrire une autre copie.
     const mockEvent = { type: "tab_switch", metadata: { count: 3 } };
     const tx = makeTransaction(BASE_SESSION, [], [BASE_QUESTION], [mockEvent]);
     (getDb as ReturnType<typeof vi.fn>).mockReturnValue({
@@ -169,10 +171,6 @@ describe("autoSubmitSession", () => {
 
     await autoSubmitSession(1, { reason: "manual_force" });
 
-    expect(computeSuspicionScore).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({ type: "tab_switch", count: 3 }),
-      ]),
-    );
+    expect(suspicionDeLaSession).toHaveBeenCalledWith(1, tx);
   });
 });

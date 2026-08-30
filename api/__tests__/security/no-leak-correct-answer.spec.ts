@@ -26,11 +26,6 @@ describe("no-leak-correct-answer : vérification de la structure du routeur", ()
     expect(keys).toContain("getPublicInfo");
   });
 
-  it("question.getWithAnswersForTeacher est défini (réservé prof)", () => {
-    const keys = Object.keys(questionRouter._def.record);
-    expect(keys).toContain("getWithAnswersForTeacher");
-  });
-
   it("session.start est défini (démarrage de session élève)", () => {
     const keys = Object.keys(sessionRouter._def.record);
     expect(keys).toContain("start");
@@ -41,9 +36,9 @@ describe("no-leak-correct-answer : vérification de la structure du routeur", ()
     expect(keys).toContain("submit");
   });
 
-  it("session.getAllForTeacher est défini (dashboard prof)", () => {
+  it("session.getDetailsForTeacher est défini (copie corrigée, réservé prof)", () => {
     const keys = Object.keys(sessionRouter._def.record);
-    expect(keys).toContain("getAllForTeacher");
+    expect(keys).toContain("getDetailsForTeacher");
   });
 
   it("cheat.report est défini (append-only)", () => {

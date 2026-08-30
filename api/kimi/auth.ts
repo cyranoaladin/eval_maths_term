@@ -210,4 +210,3 @@ export function createOAuthCallbackHandler() {
   };
 }
 
-export { exchangeAuthCode, verifyAccessToken };

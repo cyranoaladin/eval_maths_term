@@ -18,12 +18,6 @@ export interface EvaluationQuestion {
   difficulty?: 1 | 2 | 3; // 1=facile, 2=moyen, 3=difficile
 }
 
-export interface StudentAnswer {
-  questionId: number;
-  answer: string;
-  justification?: string;
-}
-
 export interface CheatEvent {
   type:
     | "tab_switch" | "blur" | "context_menu" | "copy" | "paste"
@@ -31,15 +25,4 @@ export interface CheatEvent {
     | "fingerprint_mismatch" | "multi_device" | "prolonged_blur"
     | "idle_disconnect" | "window_size_anomaly";
   timestamp: string;
-}
-
-export interface SessionData {
-  id: number;
-  studentName: string;
-  startedAt: Date;
-  status: string;
-  tabSwitchCount: number;
-  totalScore?: number;
-  maxScore?: number;
-  timeSpent?: number;
 }

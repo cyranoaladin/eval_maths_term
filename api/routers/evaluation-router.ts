@@ -8,18 +8,26 @@
  *
  * Découpage :
  *   - listPublic (publicQuery)   : catalogue élève, champs publics uniquement
- *   - listForTeacher (teacher)   : lignes complètes pour le dashboard
- *   - seed (teacher)             : upsert idempotent de l'évaluation de référence
+ *
+ * Il y avait ici deux autres routes, sans appelant :
+ *
+ * `listForTeacher` renvoyait *toutes* les évaluations à *tout* enseignant, sans
+ * filtre de propriété — le contraire de la règle de cloisonnement que le reste
+ * du code applique. L'atelier de rédaction utilise `authoring.listEvaluations`,
+ * qui ne rend que les siennes.
+ *
+ * `seed` écrivait l'évaluation de démonstration dans la base depuis un compte
+ * enseignant. Sur une installation de production, c'était un bouton pour
+ * ajouter des données de test aux vraies. Le peuplement reste possible en
+ * ligne de commande, où il relève d'une décision d'exploitation.
  *
  * Le passage d'une évaluation se fait par `session.start` puis
  * `question.getForActiveSession` — jamais par ce routeur.
  */
-import { createRouter, publicQuery, teacherQuery } from "../middleware";
+import { createRouter, publicQuery } from "../middleware";
 import { getDb } from "../queries/connection";
 import { evaluations, questions } from "@db/schema";
 import { eq } from "drizzle-orm";
-import { seedEvaluation } from "@db/seed-evaluation";
-import { logger } from "../lib/logger";
 
 export interface PublicEvaluationSummary {
   id: number;
@@ -62,26 +70,5 @@ export const evaluationRouter = createRouter({
         };
       }),
     );
-  }),
-
-  /** Liste complète pour le dashboard enseignant. */
-  listForTeacher: teacherQuery.query(async () => {
-    const db = getDb();
-    return db.select().from(evaluations);
-  }),
-
-  /**
-   * Upsert de l'évaluation de référence et de ses questions.
-   * Remplace l'ancien `init`, qui supprimait puis réinsérait les questions
-   * sans leur `gradingRubric` — le moteur de correction ne pouvait alors
-   * plus corriger une seule réponse.
-   */
-  seed: teacherQuery.mutation(async ({ ctx }) => {
-    const result = await seedEvaluation();
-    logger.info("[evaluation] Seed exécuté", {
-      by: ctx.user.email,
-      ...result,
-    });
-    return { success: true, ...result };
   }),
 });

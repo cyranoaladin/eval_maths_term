@@ -21,13 +21,12 @@ import {
 } from "@db/schema";
 import { gradeResponse } from "../grading/grade-response";
 import { resolveSubmittedQcmIndex } from "../grading/grade-session";
-import { computeSuspicionScore } from "./score-suspicion";
+import { suspicionDeLaSession } from "./score-suspicion";
 import { GradingRubricSchema } from "../../contracts/grading-rubric";
 import { logger } from "../lib/logger";
 import { toDecimal } from "../lib/decimal";
-import type { CheatEventType } from "@db/schema";
 
-export type AutoSubmitReason =
+type AutoSubmitReason =
   | "idle_disconnect"
   | "manual_force"
   | "time_expired";
@@ -185,17 +184,7 @@ export async function autoSubmitSession(
     }
 
     // 6. Calculer le score de suspicion final, incidents compris
-    const events = await tx
-      .select()
-      .from(cheatEvents)
-      .where(eq(cheatEvents.sessionId, sessionId));
-
-    const suspicion = computeSuspicionScore(
-      events.map((e) => ({
-        type: e.type as CheatEventType,
-        count: (e.metadata as { count?: number })?.count ?? 1,
-      })),
-    );
+    const suspicion = await suspicionDeLaSession(sessionId, tx);
 
     // 7. Calcul du score normalisé /20 (arrondi au quart de point)
     const normalizedScore =

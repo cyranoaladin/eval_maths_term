@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeSuspicionScore } from "../score-suspicion";
+import { computeSuspicionScore, suspicionDeLaSession } from "../score-suspicion";
 
 describe("computeSuspicionScore", () => {
   it("score 0 et verdict clean pour aucun événement", () => {
@@ -124,5 +124,43 @@ describe("computeSuspicionScore", () => {
     const r = computeSuspicionScore(events);
     expect(r.score).toBe(8);
     expect(r.reasons).toHaveLength(1);
+  });
+});
+
+describe("suspicionDeLaSession", () => {
+  /**
+   * La remise volontaire et la remise automatique lisaient chacune la table des
+   * incidents et refaisaient la même agrégation. La partie qui pouvait diverger
+   * est celle-ci : un incident groupé porte son nombre d'occurrences dans
+   * `metadata.count`, et l'oublier divise le score par le nombre de fois où
+   * l'élève a réellement basculé d'onglet.
+   */
+  function executeurAvec(incidents: Array<{ type: string; metadata: unknown }>) {
+    return {
+      select: () => ({ from: () => ({ where: async () => incidents }) }),
+    } as unknown as Parameters<typeof suspicionDeLaSession>[1];
+  }
+
+  it("compte les occurrences groupées dans metadata.count", async () => {
+    const r = await suspicionDeLaSession(
+      1,
+      executeurAvec([{ type: "tab_switch", metadata: { count: 3 } }]),
+    );
+    // 3 × 8 = 24, sous le plafond de 30.
+    expect(r.score).toBe(24);
+  });
+
+  it("compte un incident isolé pour un, metadata absente", async () => {
+    const r = await suspicionDeLaSession(
+      1,
+      executeurAvec([{ type: "tab_switch", metadata: null }]),
+    );
+    expect(r.score).toBe(8);
+  });
+
+  it("rend un verdict propre sans incident", async () => {
+    const r = await suspicionDeLaSession(1, executeurAvec([]));
+    expect(r.score).toBe(0);
+    expect(r.verdict).toBe("clean");
   });
 });

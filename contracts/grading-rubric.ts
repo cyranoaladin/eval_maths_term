@@ -7,7 +7,7 @@
  */
 import { z } from "zod";
 
-export const ComparisonModeSchema = z.discriminatedUnion("kind", [
+const ComparisonModeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("exact") }),
   z.object({
     kind: z.literal("qcm"),
@@ -41,7 +41,7 @@ export const ComparisonModeSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-export const PartialCreditRuleSchema = z.object({
+const PartialCreditRuleSchema = z.object({
   rule: z.string(),
   score: z.number().nonnegative(),
   matcherKind: z.enum(["regex", "fractionEquivalent", "numericApprox"]),
@@ -76,23 +76,3 @@ export const GradingRubricSchema = z.object({
 
 export type ComparisonMode = z.infer<typeof ComparisonModeSchema>;
 export type GradingRubric = z.infer<typeof GradingRubricSchema>;
-export type PartialCreditRule = z.infer<typeof PartialCreditRuleSchema>;
-
-/**
- * Question enrichie côté serveur (avec rubric).
- * Jamais transmise au client.
- */
-export interface ServerQuestion {
-  id: number;
-  type: "qcm" | "short_answer" | "true_false";
-  question: string;
-  options: string[] | null;
-  correctAnswer: string;
-  justificationRequired: boolean;
-  points: number;
-  order: number;
-  imageUrl: string | null;
-  tags: string[] | null;
-  difficulty: number | null;
-  gradingRubric: GradingRubric | null;
-}

@@ -629,5 +629,3 @@ function parseTags(raw: string): string[] {
     .map((t) => t.trim())
     .filter(Boolean);
 }
-
-export default QuestionForm;

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createRouter, studentQuery } from "../middleware";
 import { getDb } from "../queries/connection";
-import { cheatEvents, sessions } from "@db/schema";
+import { sessions } from "@db/schema";
 import { eq } from "drizzle-orm";
 import { checkRateLimit, RateLimits } from "../lib/rate-limit";
 import { logger } from "../lib/logger";
@@ -31,83 +31,24 @@ const cheatEventTypeSchema = z.enum(CHEAT_EVENT_TYPES);
  * Le client ne peut PAS modifier ou supprimer les événements existants.
  * Les événements sont insérés en batch pour limiter les requêtes.
  */
+/**
+ * Ingestion des incidents de surveillance — en ajout seul.
+ *
+ * Le client ne peut ni modifier ni supprimer ce qui est déjà consigné : ce
+ * journal peut fonder une décision de l'établissement sur une copie.
+ *
+ * Il y avait deux routes ici. `report` acceptait des horodatages ISO, sans
+ * déduplication ; `reportBatch` l'avait remplacée côté client — plus légère, et
+ * dédupliquant les rafales à l'entrée. `report` n'avait plus aucun appelant, et
+ * deux chemins d'écriture pour un même journal, c'est deux comportements à
+ * garder cohérents pour rien. Il n'en reste qu'un.
+ */
 export const cheatRouter = createRouter({
-  report: studentQuery
-    .input(
-      z.object({
-        events: z
-          .array(
-            z.object({
-              type: cheatEventTypeSchema,
-              timestamp: z.string().datetime(),
-              metadata: z.record(z.string(), z.unknown()).optional(),
-              count: z.number().min(1).max(100).default(1),
-            }),
-          )
-          .min(1)
-          .max(50),
-      }),
-    )
-    .mutation(async ({ input, ctx }) => {
-      const { sessionId } = ctx.studentSession;
-
-      // III.9 : rate limit cheat.report
-      if (
-        !checkRateLimit(
-          `cheat-report:${sessionId}`,
-          RateLimits.cheatReport.max,
-          RateLimits.cheatReport.windowMs,
-        )
-      ) {
-        throw new TRPCError({
-          code: "TOO_MANY_REQUESTS",
-          message: "Trop de signalements d'événements",
-        });
-      }
-
-      const db = getDb();
-
-      // Vérifier que la session est toujours en cours
-      const [session] = await db
-        .select({ status: sessions.status, expiresAt: sessions.expiresAt })
-        .from(sessions)
-        .where(eq(sessions.id, sessionId))
-        .limit(1);
-
-      if (!session || session.status !== "in_progress") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Session non active",
-        });
-      }
-
-      // Insertion en batch des événements (append-only)
-      const rows = input.events.map((event) => ({
-        sessionId,
-        type: event.type,
-        timestamp: new Date(event.timestamp),
-        metadata: event.count > 1
-          ? { ...event.metadata, count: event.count }
-          : (event.metadata ?? null),
-      }));
-
-      await db.insert(cheatEvents).values(rows);
-
-      logger.info("[cheat] Événements de triche enregistrés", {
-        sessionId,
-        count: rows.length,
-        types: rows.map((r) => r.type),
-      });
-
-      return { recorded: rows.length };
-    }),
-
   /**
-   * Phase 3 — reportBatch : remplace report sur le client Phase 3.
-   * Utilise event-aggregator (déduplication fenêtre 500ms) côté serveur.
-   * Accepte count + timestamp epoch (ms) — plus léger que timestamp ISO.
+   * Les rafales sont dédupliquées côté serveur (fenêtre de 500 ms) : un élève
+   * qui bascule d'onglet dix fois en une seconde produit un incident, pas dix.
    */
-  reportBatch: studentQuery
+  report: studentQuery
     .input(
       z.object({
         events: z
@@ -152,7 +93,7 @@ export const cheatRouter = createRouter({
 
       const result = await ingestEvents(sessionId, input.events);
 
-      logger.info("[cheat] reportBatch", {
+      logger.info("[cheat] Incidents consignés", {
         sessionId,
         accepted: result.accepted,
         deduplicated: result.deduplicated,

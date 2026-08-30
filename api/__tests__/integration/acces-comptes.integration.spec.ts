@@ -40,7 +40,7 @@ describe("première connexion d'un compte inconnu", () => {
 
   it("n'ouvre aucune route enseignant", async () => {
     const u = await connecter(unique("inconnu"));
-    await expect(appelEnseignant(u!).session.getAllForTeacher()).rejects.toMatchObject({
+    await expect(appelEnseignant(u!).authoring.listEvaluations()).rejects.toMatchObject({
       code: "FORBIDDEN",
     });
   });
@@ -143,7 +143,7 @@ describe("autorisation par un administrateur", () => {
     const apres = await findUserByUnionId(unionId);
     expect(apres!.role).toBe("teacher");
     expect(apres!.status).toBe("active");
-    await expect(appelEnseignant(apres!).session.getAllForTeacher()).resolves.toBeDefined();
+    await expect(appelEnseignant(apres!).authoring.listEvaluations()).resolves.toBeDefined();
   });
 
   it("est refusée à un enseignant : le rôle ne se distribue pas entre pairs", async () => {

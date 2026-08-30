@@ -19,17 +19,11 @@ import { answerToChoice, saveManualEntry } from "../paper/manual-entry";
 import { anonymizeStudent, exportStudentData } from "../paper/student-data";
 import { logger } from "../lib/logger";
 import { toNumber } from "../lib/decimal";
-
-async function assertOwnedClass(classId: number, userId: number) {
-  const db = getDb();
-  const [row] = await db
-    .select()
-    .from(classes)
-    .where(and(eq(classes.id, classId), eq(classes.ownerId, userId)))
-    .limit(1);
-  if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Classe introuvable" });
-  return row;
-}
+import {
+  assertEvaluationAccessible,
+  assertOwnedClass,
+  assertOwnedStudent,
+} from "../queries/ownership";
 
 export const paperRouter = createRouter({
   /** Disponibilité d'AMC : permet à l'IHM d'expliquer plutôt que d'échouer. */
@@ -166,14 +160,7 @@ export const paperRouter = createRouter({
   exportStudentData: teacherQuery
     .input(z.object({ studentId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
-      const db = getDb();
-      const [eleve] = await db
-        .select({ classId: students.classId })
-        .from(students)
-        .where(eq(students.id, input.studentId))
-        .limit(1);
-      if (!eleve) throw new TRPCError({ code: "NOT_FOUND", message: "Élève introuvable" });
-      await assertOwnedClass(eleve.classId, ctx.user.id);
+      await assertOwnedStudent(input.studentId, ctx.user.id);
 
       logger.info("[rgpd] Export de données demandé", {
         studentId: input.studentId,
@@ -190,14 +177,7 @@ export const paperRouter = createRouter({
   anonymizeStudent: teacherQuery
     .input(z.object({ studentId: z.number().int().positive() }))
     .mutation(async ({ input, ctx }) => {
-      const db = getDb();
-      const [eleve] = await db
-        .select({ classId: students.classId })
-        .from(students)
-        .where(eq(students.id, input.studentId))
-        .limit(1);
-      if (!eleve) throw new TRPCError({ code: "NOT_FOUND", message: "Élève introuvable" });
-      await assertOwnedClass(eleve.classId, ctx.user.id);
+      await assertOwnedStudent(input.studentId, ctx.user.id);
 
       logger.warn("[rgpd] Anonymisation demandée", {
         studentId: input.studentId,
@@ -527,57 +507,21 @@ export const paperRouter = createRouter({
       }
     }),
 
-  /** Notes du tirage, prêtes à exporter. */
+  /**
+   * Notes du tirage.
+   *
+   * Le même relevé que le PDF et le CSV, produit par la même fonction. Il y
+   * avait ici un second calcul : mêmes jointures, mêmes moyennes, d'autres noms
+   * de champs — et une différence, l'écran ignorait les reprises manuelles que
+   * le document imprimé signalait. Deux calculs d'une même note peuvent
+   * diverger ; celui-ci a divergé.
+   */
   results: teacherQuery
     .input(z.object({ paperExamId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
-      const { exam, className, evaluationTitle } = await loadOwnedExam(
-        input.paperExamId,
-        ctx.user.id,
-      );
-      const db = getDb();
-
-      const rows = await db
-        .select({
-          lastName: students.lastName,
-          firstName: students.firstName,
-          copyNumber: paperCopies.copyNumber,
-          enteredAt: paperCopies.enteredAt,
-          totalScore: sessions.totalScore,
-          maxScore: sessions.maxScore,
-          normalizedScore: sessions.normalizedScore,
-        })
-        .from(paperCopies)
-        .innerJoin(students, eq(students.id, paperCopies.studentId))
-        .leftJoin(sessions, eq(sessions.id, paperCopies.sessionId))
-        .where(eq(paperCopies.paperExamId, input.paperExamId))
-        .orderBy(asc(students.lastName), asc(students.firstName));
-
-      const notes = rows
-        .map((r) => (r.normalizedScore !== null ? parseFloat(r.normalizedScore) : null))
-        .filter((n): n is number => n !== null);
-
-      return {
-        exam: { id: exam.id, label: exam.label, className, evaluationTitle },
-        rows: rows.map((r) => ({
-          name: `${r.lastName} ${r.firstName}`.trim(),
-          copyNumber: r.copyNumber,
-          entered: r.enteredAt !== null,
-          totalScore: toNumber(r.totalScore),
-          maxScore: r.maxScore,
-          normalizedScore: r.normalizedScore !== null ? parseFloat(r.normalizedScore) : null,
-        })),
-        stats: {
-          entered: rows.filter((r) => r.enteredAt !== null).length,
-          total: rows.length,
-          average:
-            notes.length > 0
-              ? Math.round((notes.reduce((a, b) => a + b, 0) / notes.length) * 100) / 100
-              : null,
-          min: notes.length ? Math.min(...notes) : null,
-          max: notes.length ? Math.max(...notes) : null,
-        },
-      };
+      await loadOwnedExam(input.paperExamId, ctx.user.id);
+      const { buildReleve } = await import("../paper/results-pdf");
+      return buildReleve(input.paperExamId);
     }),
 
   /** Crée un tirage puis produit les documents dans la foulée. */
@@ -591,16 +535,11 @@ export const paperRouter = createRouter({
     )
     .mutation(async ({ input, ctx }) => {
       await assertOwnedClass(input.classId, ctx.user.id);
+      // La classe ne suffit pas : sans ce second contrôle, un enseignant
+      // imprimait l'évaluation d'un collègue — sujet ET corrigé — pour sa
+      // propre classe.
+      await assertEvaluationAccessible(input.evaluationId, ctx.user.id);
       const db = getDb();
-
-      const [evaluation] = await db
-        .select()
-        .from(evaluations)
-        .where(eq(evaluations.id, input.evaluationId))
-        .limit(1);
-      if (!evaluation) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Évaluation introuvable" });
-      }
 
       const [row] = await db.insert(paperExams).values({
         evaluationId: input.evaluationId,

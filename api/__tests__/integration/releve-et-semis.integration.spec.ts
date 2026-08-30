@@ -10,6 +10,7 @@ import { eq, inArray } from "drizzle-orm";
 import {
   appelEnseignant, creerEnseignant, creerEvaluation, db, nettoyer, unique,
 } from "./harnais";
+import { seedEvaluation } from "@db/seed-evaluation";
 import { buildReleve } from "../../paper/results-pdf";
 import { renderReleveCsv } from "../../paper/results-csv";
 import { classes, evaluations, paperCopies, paperExams, students } from "@db/schema";
@@ -137,16 +138,20 @@ describe("buildReleve", () => {
 
 describe("évaluation de référence", () => {
   it("se sème et reste idempotente", async () => {
-    const api = appelEnseignant(prof);
-    const premier = await api.evaluation.seed();
-    const second = await api.evaluation.seed();
+    // Le semis n'est plus une route : c'était un bouton pour ajouter des
+    // données de démonstration à une base de production. Il reste une commande,
+    // et c'est cette fonction-là qui doit être idempotente — relancée sur une
+    // base déjà peuplée, elle met à jour au lieu de dupliquer.
+    const premier = await seedEvaluation();
+    const second = await seedEvaluation();
     expect(second.evaluationId).toBe(premier.evaluationId);
+    expect(second.created).toBe(0);
+    expect(second.updated).toBe(second.total);
 
+    const api = appelEnseignant(prof);
     const detail = await api.authoring.getEvaluation({ id: premier.evaluationId });
     expect(detail.questions.length).toBeGreaterThan(0);
 
-    // Semée par un autre appel, l'évaluation appartient à qui l'a demandée :
-    // on la laisse en place, elle sert de référence commune.
     const restantes = await db
       .select({ id: evaluations.id })
       .from(evaluations)
