@@ -204,10 +204,14 @@ export KIMI_AUTH_URL="https://auth.invalid"
 export KIMI_OPEN_URL="https://open.invalid"
 export NODE_ENV=development
 
-COOKIE=$(npx tsx scripts/dev-session.ts "Enseignant recette" "recette@local" "recette-docker" 2>/dev/null \
-  | grep -oP 'kimi_sid=\K[^;"]+' | head -1)
+# Le message d'erreur est conservé : sans lui, l'étape échouait sans dire
+# pourquoi — c'est ainsi qu'une absence de dépendances est passée pour un
+# problème de secret.
+sortie_session=$(npx tsx scripts/dev-session.ts "Enseignant recette" "recette@local" "recette-docker" 2>&1)
+COOKIE=$(echo "$sortie_session" | grep -oP 'kimi_sid=\K[^;"]+' | head -1)
 ok "une session enseignant est signée avec le secret du conteneur" \
-  "$([ -n "$COOKIE" ] && echo 0 || echo 1)" "${COOKIE:+jeton obtenu}"
+  "$([ -n "$COOKIE" ] && echo 0 || echo 1)" \
+  "${COOKIE:+jeton obtenu}${COOKIE:-$(echo "$sortie_session" | tail -3 | tr '\n' ' ')}"
 
 sortie=$(npx tsx scripts/smoke-chaine-papier.ts "$COOKIE" http://127.0.0.1:3100 2>&1)
 code=$?
