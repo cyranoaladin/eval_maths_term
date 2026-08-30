@@ -343,6 +343,25 @@ Autrement dit, même en supprimant tout ce qui reste de superflu dans le chemin
 d'écriture, la correction synchrone de deux cents copies remises **dans la même
 seconde** ne tient pas les 500 ms sur cette machine.
 
+### Attribution : est-ce la durabilité du disque ?
+
+Une hypothèse naturelle est que le coût vient des écritures synchrones du
+journal InnoDB. Elle a été testée en rejouant la même charge contre deux bases
+identiques, l'une en `innodb_flush_log_at_trx_commit=1` (durabilité stricte),
+l'autre en `=2` (validation différée d'une seconde) :
+
+| Réglage | p95 de la remise |
+|---|---|
+| `=1`, durabilité stricte | 1,61 s |
+| `=2`, validation différée | 2,25 s |
+
+Le second réglage, censé être plus rapide, est ressorti **plus lent**. La
+conclusion honnête n'est pas « la durabilité ne coûte rien » mais **la mesure
+est trop bruitée à cette échelle sur cette machine pour trancher** : le poste
+exécute simultanément l'application, la base, k6 et le reste du système. C'est
+une raison de plus de refaire la mesure sur l'infrastructure cible avant toute
+décision d'architecture.
+
 **Deux réserves importantes, dans les deux sens :**
 
 1. La mesure est prise sur un poste de développement où tournent simultanément
@@ -354,6 +373,15 @@ seconde** ne tient pas les 500 ms sur cette machine.
    pas le déroulement ordinaire d'une épreuve. Avec une arrivée étalée sur dix
    secondes, le p50 tombe à 123 ms. Et la remise automatique de fin d'épreuve,
    elle, est faite par le serveur : elle ne fait attendre personne.
+
+**Le levier synchrone suivant, non engagé.** La table des réponses ne porte
+aucune contrainte d'unicité sur le couple (session, question) — rien
+n'empêcherait aujourd'hui deux réponses à la même question dans une même copie.
+L'ajouter serait une amélioration d'intégrité en soi, et permettrait d'écrire
+les vingt et une corrections en un seul ordre `INSERT … ON DUPLICATE KEY
+UPDATE` au lieu de vingt et un. Ce n'est pas engagé ici : le calcul du §9.6
+montre que cela ne suffirait pas à tenir les 500 ms, et une migration touchant
+la table des notes se décide avec vous, pas en fin de campagne.
 
 **Ce qui n'a pas été fait, et pourquoi.** Passer la correction en traitement
 différé tiendrait le chiffre, mais changerait le contrat fonctionnel — la copie
