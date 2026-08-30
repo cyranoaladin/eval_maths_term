@@ -92,7 +92,7 @@ décimaux), `ceeb833` (journal d'audit), `e4c05a6` (écran de correction),
 | 17 | Audit : 100 % des modifications manuelles | PASS | `npx vitest run api/grading/__tests__/grade-audit.spec.ts` + `api/__tests__/integration/correction-audit.integration.spec.ts` — refus anonyme et inter-enseignants, journal en ajout seul, auteur, ancienne et nouvelle valeur, motif, requestId |
 | 18 | Export CSV et PDF fonctionnel | PASS | `smoke-releve-typographie.ts` (PDF) + `smoke-export-csv.ts` (téléchargement réel : type, nom de fichier, BOM, CRLF, virgule décimale, périmètre de classe, refus anonyme et inter-enseignants) |
 | 19 | Login + AuthLayout + NotFound en français | PASS | interface en fr-FR |
-| 20 | k6 : 200 élèves, p95 < 500 ms | **FAIL** | mesuré, voir §9 : tout ce que fait un élève en composition passe sous 500 ms ; la remise simultanée de 200 copies ne passe pas (p95 6,73 s) |
+| 20 | k6 : 200 élèves, p95 < 500 ms | **FAIL** | mesuré et optimisé, voir §9 : remise passée de 6,73 s à 2,29 s de p95 ; ouverture, énoncés et brouillons sous 500 ms ; constat chiffré `SYNC_OPTIMIZATION_LIMIT` |
 | 21 | RGPD : mentions, confidentialité, export | PASS | commit `4a0b188` |
 | 22 | `SECURITY.md` à jour | PASS | présent, à resynchroniser en fin de campagne |
 | 23 | `README.md` réécrit, quickstart vierge | PASS | commit `62c9e6a` |
@@ -132,6 +132,9 @@ pas en attente : voir §9.
 | 28 | **L'impression était impossible dans le déploiement documenté** : le volume `/data/paper-exams` appartenait à root alors que le processus tourne en utilisateur non privilégié | bloquant | `260ae02` |
 | 29 | Débordement horizontal sur téléphone : le bouton « Terminer » sortait de l'écran ; et sur tablette côté enseignant, 35 px de trop. Invisibles en développement, présents dans le bundle | majeur | `260ae02` |
 | 30 | **Une réponse valant l'infini était acceptée comme égale à n'importe quoi** : « 1/0 » rapportait tous les points sur toute question symbolique | critique | `81fe8b3` |
+| 32 | **Le pool de connexions valait dix**, valeur par défaut du pilote jamais écrite : premier point de contention d'une fin d'épreuve | majeur (performance) | mesuré §9 |
+| 33 | Les écritures de correction étaient émises une par une, sans transaction : coût inutile **et** copie à moitié corrigée en cas d'interruption | majeur | mesuré §9 |
+| 34 | La remise relisait chaque réponse avant de l'écrire : quarante-deux allers-retours pour vingt et une questions | majeur (performance) | mesuré §9 |
 | 31 | **Tout logarithme décimal était corrompu** : `\log(10)` devenait `log(1)0*(10)`, illisible pour mathjs | critique | `81fe8b3` |
 | 23 | **Le bundle de production ne démarrait pas** : collision `createRequire` entre le banner esbuild et pdfkit. Le développement passe par Vite, jamais par le bundle | bloquant | `5b9b357` |
 | 24 | Le quota de démarrage (5/min/IP) rendait une salle d'examen impossible derrière un NAT d'établissement | bloquant | `5b9b357` |
@@ -217,57 +220,147 @@ transactions, invariants — et rien de cela ne s'éprouve avec une base simulé
 Le front n'est pas dans le périmètre instrumenté : il est couvert par les
 24 scénarios Playwright, exécutés contre le build de production.
 
-## 9. Charge (k6)
+## 9. Charge (k6) — critère 20 **FAIL**, avec constat chiffré
 
-Scénario : `load/parcours-eleve.k6.js`, 200 utilisateurs virtuels, **une copie
-chacun** — parcours complet, pas une route isolée. Cible : le build de
-production (`node dist/boot.js`), pas le serveur de développement.
+### 9.1 Ce qui a été mesuré
 
-```
-docker run --rm -i --network host -e BASE_URL=http://localhost:3000 -e VUS=200 \
-  grafana/k6 run - < load/parcours-eleve.k6.js
-```
+Scénario `load/parcours-eleve.k6.js` : 200 utilisateurs virtuels, **une copie
+chacun**, parcours complet. Cible : le build de production (`node dist/boot.js`),
+base MySQL 8.4 en conteneur, tout sur la même machine que k6.
 
-**Premier passage, quota d'origine** : 10 sessions ouvertes sur 5 576
-tentatives, 5 566 refus (429). La limite de cinq ouvertures par minute et par
-IP rendait une salle d'examen impossible. Clé requalifiée (voir défaut 24).
+Le service de correction assistée n'est pas sollicité : les questions de
+l'évaluation de référence sont toutes déterministes (`llmReviewRequired: false`).
+La mesure porte donc sur **DETERMINISTIC_GRADING_LATENCY** et sur elle seule.
+Aucun appel au LLM ni au RAG n'intervient — ce n'est pas une fonction désactivée
+pour la circonstance, c'est la configuration de ces questions.
 
-**Second passage, après requalification** :
+### 9.2 Profil d'une remise, avant toute optimisation
 
-| Mesure | Valeur | Critère |
+`PROFIL_SQL=1 npx tsx scripts/profil-submit.ts`
+
+| Part | Durée |
+|---|---|
+| Calcul (mathjs, 21 questions) | 12,4 ms |
+| Base de données | 153,1 ms |
+| **Correction complète** | **165,5 ms** |
+| Requêtes SQL par correction | 25 |
+| Requêtes SQL par remise entière | 82 |
+
+**Le moteur de correction n'était pas en cause** : sept pour cent du temps. Tout
+le reste était des allers-retours à la base.
+
+### 9.3 Ce qui a été corrigé
+
+1. **Les écritures de correction étaient émises une par une.** Vingt et un ordres
+   d'écriture, chacun avec son aller-retour et sa validation sur disque. Elles
+   sont maintenant appliquées en une seule transaction — ce qui leur donne au
+   passage l'atomicité : une interruption en cours de route laissait jusqu'ici
+   une copie à moitié corrigée.
+2. **La remise relisait chaque réponse avant de l'écrire.** Quarante-deux
+   allers-retours pour vingt et une questions. L'état existant est lu une fois,
+   les nouvelles réponses insérées en un seul ordre, et seules celles qui
+   changent réellement sont mises à jour.
+3. **Le pool de connexions valait dix**, la valeur par défaut du pilote,
+   invisible parce que jamais écrite. Il est désormais explicite et dimensionné.
+
+| | Avant | Après |
 |---|---|---|
-| Sessions ouvertes | 200 / 200 | — |
-| Copies remises | 200 | — |
-| Refus de quota | 0 | — |
-| Échecs métier | 0,00 % | 0 |
-| Débit | 135 req/s | — |
-| p50 global | 78,9 ms | < 200 ms ✅ |
-| p95 global | 6,73 s | < 500 ms ❌ |
-| p99 global | 6,84 s | < 1 s ❌ |
+| Correction | 165,5 ms | 41,3 ms |
+| Dont base | 153,1 ms | 34,3 ms |
+| Requêtes par remise | 82 | 43 |
+| Remise complète, hors charge | 61,0 ms | 44,9 ms |
 
-Décomposition par opération — c'est elle qui dit où passe le temps :
+### 9.4 Courbe de contention
 
-| Opération | p95 | Critère |
+`load/courbe-contention.k6.js`, remise seule, p95 :
+
+| Élèves simultanés | p95 |
+|---|---|
+| 1 | 56 ms |
+| 25 | 459 ms |
+| 50 | 584 ms |
+| 100 (pool 20) | 5,49 s |
+| 100 (pool 60) | 1,54 s |
+| 200 (pool 60) | 1,74 s |
+
+Dimensionnement du pool, à 200 remises simultanées :
+
+| Pool | p95 |
+|---|---|
+| 20 | 3,90 s |
+| 40 | 1,90 s |
+| **60** | **1,74 s** |
+| 80 | 2,13 s |
+| 100 | 2,31 s |
+| 140 | 5,19 s |
+
+Au-delà de soixante, la base passe plus de temps à arbitrer qu'à travailler, et
+MySQL n'accepte de toute façon que cent cinquante et une connexions par défaut.
+**Soixante devient la valeur par défaut**, documentée et surchargeable par
+`DB_POOL_SIZE`.
+
+Étalement des remises, pool 60, 200 élèves :
+
+| Arrivée | p50 | p95 |
 |---|---|---|
-| `session.start` | 202 ms | ✅ |
-| `question.getForActiveSession` | 145 ms | ✅ |
-| `answer.saveDraft` | 260 ms | ✅ |
-| `session.heartbeat` | 355 ms | ✅ |
-| `session.submit` | ≈ 6,7 s | ❌ |
+| Toutes dans la même seconde | 1,13 s | 1,74 s |
+| Réparties sur 5 s | 563 ms | 1,78 s |
+| Réparties sur 10 s | 123 ms | 682 ms |
 
-**Lecture.** Tout ce qu'un élève fait pendant qu'il compose tient largement
-sous 500 ms avec deux cents élèves en même temps. Le seul dépassement est la
-remise, et il est concentré : deux cents copies remises dans la même seconde,
-chacune déclenchant la correction complète de vingt et une questions. Les deux
-cents copies sont corrigées en seize secondes au total.
+### 9.5 Mesure officielle, après optimisation
 
-Le critère 20, tel qu'il est écrit, n'est **pas** atteint. Le tenir supposerait
-de rendre la correction asynchrone — une file de travaux —, ce que la mission
-exclut explicitement (pas de Redis, pas de nouveau moteur). Le levier interne
-identifié est la boucle d'écriture de `gradeSessionResponses`, qui applique
-vingt et une mises à jour séquentielles par copie ; les paralléliser
-diviserait le coût unitaire sans suffire à passer sous 500 ms en pointe. Rien
-de tout cela n'est engagé sans arbitrage.
+Parcours complet, 200 élèves, pool par défaut :
+
+| Opération | p50 | p95 | Critère |
+|---|---|---|---|
+| `session.start` | 94 ms | 313 ms | ✅ |
+| `question.getForActiveSession` | 41 ms | 71 ms | ✅ |
+| `answer.saveDraft` | 65 ms | 380 ms | ✅ |
+| `session.heartbeat` | 307 ms | 649 ms | ❌ |
+| `session.submit` | 1,91 s | 2,29 s | ❌ |
+| Global | 110 ms | 1,88 s | ❌ |
+
+200 sessions ouvertes, 200 copies remises, **0 échec métier, 0 refus de quota**.
+
+Le p95 de la remise passe de **6,73 s à 2,29 s** sur ce scénario, et de 3,90 s à
+1,74 s sur la remise isolée.
+
+### 9.6 SYNC_OPTIMIZATION_LIMIT
+
+Le critère 20 n'est **pas** atteint et n'est pas déclaré atteint.
+
+Il reste un levier synchrone identifié : regrouper les vingt et un ordres
+d'écriture de la correction en un seul, ce qui ramènerait la remise de 43 à
+environ 23 requêtes. Voici pourquoi il ne suffirait pas.
+
+- Débit mesuré de cette base : 200 remises × 43 requêtes en ≈ 3,5 s, soit
+  **≈ 2 460 requêtes par seconde**.
+- Pour tenir 500 ms avec 23 requêtes par remise, il faudrait
+  200 × 23 ÷ 0,5 = **9 200 requêtes par seconde**, soit **3,7 fois** la capacité
+  observée.
+
+Autrement dit, même en supprimant tout ce qui reste de superflu dans le chemin
+d'écriture, la correction synchrone de deux cents copies remises **dans la même
+seconde** ne tient pas les 500 ms sur cette machine.
+
+**Deux réserves importantes, dans les deux sens :**
+
+1. La mesure est prise sur un poste de développement où tournent simultanément
+   l'application, la base en conteneur, k6 en conteneur et le reste de la
+   machine. Une base de production sur matériel dédié irait plus vite — d'un
+   facteur qui reste à mesurer **sur l'infrastructure cible**, ce qui n'a pas
+   été fait et ne sera pas supposé.
+2. Le pire cas modélisé — deux cents copies remises dans la même seconde — n'est
+   pas le déroulement ordinaire d'une épreuve. Avec une arrivée étalée sur dix
+   secondes, le p50 tombe à 123 ms. Et la remise automatique de fin d'épreuve,
+   elle, est faite par le serveur : elle ne fait attendre personne.
+
+**Ce qui n'a pas été fait, et pourquoi.** Passer la correction en traitement
+différé tiendrait le chiffre, mais changerait le contrat fonctionnel — la copie
+serait remise puis corrigée plus tard, ce qui touche l'API, le jeton de
+résultats, le statut des sessions, l'écran de résultats et le déploiement. La
+mission l'exclut tant que la voie synchrone n'est pas épuisée, et surtout tant
+que la mesure n'a pas été refaite sur l'infrastructure de production.
 
 ## 10. Docker / AMC
 

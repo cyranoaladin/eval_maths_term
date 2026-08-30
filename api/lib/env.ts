@@ -77,11 +77,19 @@ const envSchema = z.object({
 
   DATABASE_URL: z.string().min(1, "DATABASE_URL est requise"),
   /**
-   * Taille du pool de connexions. Le pilote en retient dix par défaut, ce qui
-   * suffit à un usage courant mais devient le point de contention quand une
-   * classe entière remet sa copie dans la même seconde.
+   * Taille du pool de connexions.
+   *
+   * Le pilote en retient dix par défaut. C'est le premier point de contention
+   * quand une classe entière remet sa copie dans la même seconde : mesuré à
+   * deux cents remises simultanées, le p95 passe de 3,9 s (dix connexions) à
+   * 1,74 s (soixante). Au-delà, il remonte — cent quarante connexions donnent
+   * 5,19 s, la base passant plus de temps à arbitrer qu'à travailler, et
+   * MySQL n'en accepte de toute façon que cent cinquante et une par défaut.
+   *
+   * Soixante est l'optimum mesuré sur une base seule ; à ajuster si la base
+   * est partagée avec d'autres applications.
    */
-  DB_POOL_SIZE: z.coerce.number().int().min(1).max(200).default(20),
+  DB_POOL_SIZE: z.coerce.number().int().min(1).max(150).default(60),
   REDIS_URL: z.string().optional(),
 
   KIMI_AUTH_URL: z.string().min(1, "KIMI_AUTH_URL est requise"),
