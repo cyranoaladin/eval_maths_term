@@ -63,7 +63,9 @@ describe("application des migrations", () => {
     ]) {
       expect(presentes).toContain(attendue);
     }
-  });
+    // Monter le schéma entier prend le temps qu'il prend, surtout quand la
+    // suite complète occupe déjà la machine.
+  }, 120_000);
 
   it("ne rejoue pas ce qui est déjà appliqué", async () => {
     const avant = await tables();
@@ -73,7 +75,7 @@ describe("application des migrations", () => {
     // Rejouer doit être sans effet : c'est ce qui rend un redéploiement sûr,
     // et ce qui permet à plusieurs instances de démarrer sans se concerter.
     expect(await tables()).toEqual(avant);
-  });
+  }, 120_000);
 
   it("refuse une base injoignable au lieu de faire croire à un succès", async () => {
     const injoignable = new URL(urlJetable);
@@ -106,7 +108,7 @@ describe("la commande de déploiement", () => {
     // La durée est dite : c'est ce qu'on relit dans le journal d'un
     // déploiement pour savoir si la migration a été instantanée ou longue.
     expect(sortie.mock.calls[0][0]).toMatch(/Migrations appliquées en \d+ ms/);
-  });
+  }, 120_000);
 
   it("refuse de deviner la base et rend un code d'échec", async () => {
     const erreur = vi.spyOn(console, "error").mockImplementation(() => {});

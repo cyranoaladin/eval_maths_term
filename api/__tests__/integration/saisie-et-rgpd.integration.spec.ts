@@ -220,6 +220,73 @@ describe("saisie d'une copie", () => {
     expect(seconde.totalScore).toBeGreaterThan(premiere.totalScore);
   });
 
+  it("passe une question retirée après l'impression et une case mal reportée", async () => {
+    const { evaluationId, qcm } = await evaluationMixte();
+    const { classId, studentId } = await classeAvecEleve("Roche", "Yanis");
+    const paperExamId = await tirageGenere(evaluationId, classId);
+    // La première question disparaît de l'évaluation ; le papier, lui, existe
+    // toujours et l'enseignant saisit ce qu'il a sous les yeux.
+    await db.delete(questions).where(eq(questions.id, qcm[0]));
+
+    const saisie = await appelEnseignant(prof).paper.saveEntry({
+      paperExamId,
+      studentId,
+      answers: [
+        { questionId: qcm[0], choiceIndex: 1 },
+        // Une troisième case sur un vrai/faux : la feuille n'en a que deux.
+        { questionId: qcm[1], choiceIndex: 3 },
+      ],
+    });
+
+    // Ni l'une ni l'autre ne s'enregistre, et la copie est tout de même notée.
+    expect(
+      await db.select().from(responses).where(eq(responses.sessionId, saisie.sessionId)),
+    ).toHaveLength(0);
+    expect(saisie.totalScore).toBe(0);
+  });
+
+  it("accepte une copie rendue blanche", async () => {
+    const { evaluationId } = await evaluationMixte();
+    const { classId, studentId } = await classeAvecEleve("Blanchet", "Emma");
+    const paperExamId = await tirageGenere(evaluationId, classId);
+
+    const saisie = await appelEnseignant(prof).paper.saveEntry({
+      paperExamId,
+      studentId,
+      answers: [],
+    });
+
+    expect(saisie.answered).toBe(0);
+    expect(saisie.totalScore).toBe(0);
+    // Le barème reste celui de la feuille : une copie blanche vaut zéro sur
+    // huit, pas zéro sur zéro.
+    expect(saisie.maxScore).toBe(3);
+  });
+
+  it("refuse une saisie sur un tirage qui n'a jamais été imprimé", async () => {
+    const { evaluationId, qcm } = await evaluationMixte();
+    const { classId, studentId } = await classeAvecEleve("Prevost", "Hugo");
+    const [e] = await db.insert(paperExams).values({
+      evaluationId,
+      classId,
+      createdById: prof.id,
+    });
+    const paperExamId = Number(e.insertId);
+    await db.insert(paperCopies).values({ paperExamId, studentId, copyNumber: 1 });
+
+    const saisie = await appelEnseignant(prof).paper.saveEntry({
+      paperExamId,
+      studentId,
+      answers: [{ questionId: qcm[0], choiceIndex: 1 }],
+    });
+
+    // Aucune question n'a été imprimée : rien ne peut être saisi contre elle.
+    expect(saisie.answered).toBe(0);
+    expect(
+      await db.select().from(responses).where(eq(responses.sessionId, saisie.sessionId)),
+    ).toHaveLength(0);
+  });
+
   it("refuse une saisie sur un tirage inconnu", async () => {
     const { evaluationId } = await evaluationMixte();
     const { classId, studentId } = await classeAvecEleve("Klein", "Théo");

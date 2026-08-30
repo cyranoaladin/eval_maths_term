@@ -19,6 +19,13 @@ describe("choiceToAnswer", () => {
     expect(choiceToAnswer("true_false", 1)).toBe("false");
   });
 
+  it("n'enregistre rien d'une case qui n'existe pas sur la feuille", () => {
+    // Un vrai/faux n'a que deux cases. Une troisième est une erreur de report :
+    // la lire comme « faux » inventerait une réponse.
+    expect(choiceToAnswer("true_false", 2)).toBeNull();
+    expect(choiceToAnswer("true_false", 7)).toBeNull();
+  });
+
   it("n'a rien à convertir pour une question rédigée", () => {
     // Une réponse courte se corrige à la main : il n'y a pas de case.
     expect(choiceToAnswer("short_answer", 0)).toBeNull();

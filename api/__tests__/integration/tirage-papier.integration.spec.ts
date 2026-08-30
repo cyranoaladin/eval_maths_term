@@ -464,6 +464,63 @@ describe("la grille de saisie", () => {
     ).rejects.toThrow(/n'a pas encore été généré/);
   });
 
+  it("grille un vrai/faux à deux cases, et compte les propositions d'un QCM", async () => {
+    const evaluationId = await creerEvaluationPapier([
+      qcm(),
+      {
+        type: "true_false",
+        question: "La fonction carré est croissante sur $\\mathbb{R}$.",
+        correctAnswer: "false",
+        gradingRubric: { mode: { kind: "true_false", correctValue: "false" }, llmReviewRequired: false, weight: 1 },
+      },
+    ]);
+    const { classId, studentIds } = await creerClasse([{ nom: "Perrin", prenom: "Lise" }]);
+    const examId = await creerTirage(evaluationId, classId, null);
+    await generatePaperExam({ paperExamId: examId, userId: prof.id });
+
+    const grille = await appelEnseignant(prof).paper.entrySheet({ paperExamId: examId });
+
+    expect(grille.questions.map((q) => q.choiceCount)).toEqual([4, 2]);
+
+    // Une copie ouverte mais laissée blanche : la grille la rend vide plutôt
+    // que d'inventer des cases.
+    await appelEnseignant(prof).paper.saveEntry({
+      paperExamId: examId,
+      studentId: studentIds[0],
+      answers: [],
+    });
+    const reprise = await appelEnseignant(prof).paper.entrySheet({ paperExamId: examId });
+    expect(reprise.copies[0].answers).toEqual({});
+    expect(reprise.copies[0].openMarks).toEqual({});
+  });
+
+  it("annonce un tirage sans copie plutôt que de l'omettre", async () => {
+    const evaluationId = await creerEvaluationPapier([qcm()]);
+    const { classId } = await creerClasse([{ nom: "Vidal", prenom: "Anna" }]);
+    const examId = await creerTirage(evaluationId, classId, null);
+
+    const liste = await appelEnseignant(prof).paper.listExams({ evaluationId });
+
+    // Un brouillon jamais imprimé n'a aucune copie : il doit apparaître à zéro,
+    // sans quoi l'enseignant ne peut pas le reprendre.
+    expect(liste.find((t) => t.id === examId)).toMatchObject({ copyCount: 0 });
+  });
+
+  it("dit pourquoi une liste d'élèves n'a rien donné", async () => {
+    const { classId } = await creerClasse([]);
+    const api = appelEnseignant(prof);
+
+    // Le motif remonte du lecteur : « aucun élève importé » n'aiderait pas
+    // l'enseignant à comprendre ce qui cloche dans son fichier.
+    await expect(
+      api.paper.importStudents({ classId, csv: "nom;prenom" }),
+    ).rejects.toThrow(/Fichier vide ou sans données/);
+
+    await expect(
+      api.paper.importStudents({ classId, csv: "identifiant;classe\n42;TG6\n" }),
+    ).rejects.toThrow(/Aucune colonne de nom reconnue/);
+  });
+
   it("refuse une saisie pour un élève qui n'existe pas", async () => {
     const evaluationId = await creerEvaluationPapier([qcm()]);
     const { classId } = await creerClasse([{ nom: "Nguyen", prenom: "Minh" }]);

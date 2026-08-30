@@ -58,7 +58,13 @@ export function choiceToAnswer(
   choiceIndex: number,
 ): string | null {
   if (questionType === "qcm") return String(choiceIndex);
-  if (questionType === "true_false") return choiceIndex === 0 ? "true" : "false";
+  if (questionType === "true_false") {
+    // Une feuille-réponses de vrai/faux n'a que deux cases. Toute autre valeur
+    // est une erreur de report : elle était lue comme « faux », ce qui inventait
+    // une réponse que l'élève n'a peut-être pas donnée et pouvait le compter
+    // faux sur une question qu'il avait juste. On n'enregistre rien.
+    return choiceIndex === 0 ? "true" : choiceIndex === 1 ? "false" : null;
+  }
   return null;
 }
 
