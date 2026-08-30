@@ -14,10 +14,10 @@ observée. Un critère non vérifié reste `IN_PROGRESS`, jamais `PASS`.
 | | |
 |---|---|
 | Branche | `phase-3.5-convergence` |
-| HEAD | `593c4d0` |
+| HEAD | `91c09d3` |
 | Base de la finalisation | `5a24b63` (`feat(dashboard)`) |
 | Worktree | propre |
-| Dernière mise à jour | 2026-08-30 (lots critères 7, 12, 14, 17, 18) |
+| Dernière mise à jour | 2026-08-30 (unicité, écriture groupée, mesure d'acceptation) |
 
 ## 1 bis. Incident de procédure — force-push
 
@@ -64,6 +64,12 @@ Aucun force-push ni amend d'un commit publié ne sera fait à partir d'ici.
 | `81fe8b3` | Correction | `api/grading` à 100 %, trois défauts de correction de plus |
 | `bf2c365` | Couverture | Tests d'intégration sur base réelle, seuils inscrits |
 | `593c4d0` | Style | Rapports générés hors périmètre |
+| `4d86076` | Performance | La remise de copie tenait mal la fin d'épreuve |
+| `6a49577` | Couverture | Chemins ouverts par l'optimisation de la remise |
+| `1b91201` | Documentation | Attribution du coût de la remise |
+| `cc96551` | Intégrité | Unicité (session, question), écriture groupée, remise concurrente |
+| `4af25e5` | Charge | Deux scénarios distincts, trois exécutions conformes en local |
+| `91c09d3` | Couverture | Confiance du correcteur assisté |
 
 Commits antérieurs de la même campagne, déjà poussés : `864ec4a` (scores
 décimaux), `ceeb833` (journal d'audit), `e4c05a6` (écran de correction),
@@ -240,7 +246,7 @@ réseau ne change ni la note ni la date de remise.
 | `api/grading/__tests__/input-mode.spec.ts` | nature du champ sans fuite de barème |
 | `api/__tests__/typage-strict.spec.ts` | garde `any` / `@ts-ignore` |
 
-Suite unitaire : **541 tests, 37 fichiers, verts.**
+Suite unitaire et d'intégration : **805 tests, 61 fichiers, verts.**
 
 ## 7. Résultats navigateur
 
@@ -248,9 +254,12 @@ Commande : `npx playwright test`
 Serveur : instance de développement sur `http://localhost:3000`.
 
 ```
-24 passed (3.8m)
-chromium 8/8   firefox 8/8   webkit 8/8
+39 passed (4.4m)
+chromium 13/13   firefox 13/13   webkit 13/13
 ```
+
+Exécutée contre le **build de production** : deux débordements réels
+n'apparaissaient pas sur le serveur de développement.
 
 Dont, sur les trois moteurs :
 
