@@ -14,6 +14,7 @@ import { adminQuery, createRouter } from "../middleware";
 import { getDb } from "../queries/connection";
 import { definirAcces } from "../queries/users";
 import { users } from "@db/schema";
+import { messageDErreur } from "@contracts/erreurs";
 
 const RoleSchema = z.enum(["student", "teacher", "admin"]);
 const StatutSchema = z.enum(["pending", "active", "disabled"]);
@@ -61,7 +62,7 @@ export const accessRouter = createRouter({
       } catch (e) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: e instanceof Error ? e.message : "Modification refusée",
+          message: messageDErreur(e, "Modification refusée"),
         });
       }
       return { ok: true };

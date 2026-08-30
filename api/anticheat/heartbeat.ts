@@ -19,6 +19,7 @@ import {
   type StudentSessionPayload,
 } from "./session-token";
 import { logger } from "../lib/logger";
+import { messageDErreur } from "@contracts/erreurs";
 
 export interface HeartbeatInput {
   sessionToken: string;
@@ -47,7 +48,7 @@ export async function processHeartbeat(
   } catch (err) {
     throw new TRPCError({
       code: "UNAUTHORIZED",
-      message: err instanceof Error ? err.message : "Token invalide",
+      message: messageDErreur(err, "Token invalide"),
     });
   }
 

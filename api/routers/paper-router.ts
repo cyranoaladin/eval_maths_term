@@ -24,6 +24,7 @@ import {
   assertOwnedClass,
   assertOwnedStudent,
 } from "../queries/ownership";
+import { messageDErreur } from "@contracts/erreurs";
 
 export const paperRouter = createRouter({
   /** Disponibilité d'AMC : permet à l'IHM d'expliquer plutôt que d'échouer. */
@@ -502,7 +503,7 @@ export const paperRouter = createRouter({
       } catch (e) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: e instanceof Error ? e.message : String(e),
+          message: messageDErreur(e),
         });
       }
     }),
@@ -564,7 +565,7 @@ export const paperRouter = createRouter({
       } catch (e) {
         // Un tirage qui n'a rien produit ne doit pas rester en base.
         await db.delete(paperExams).where(eq(paperExams.id, paperExamId));
-        const message = e instanceof Error ? e.message : String(e);
+        const message = messageDErreur(e);
         logger.error("[paper] Tirage abandonné", { paperExamId, error: message });
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
       }

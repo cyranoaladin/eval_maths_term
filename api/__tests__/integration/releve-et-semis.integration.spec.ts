@@ -13,7 +13,7 @@ import {
 import { seedEvaluation } from "@db/seed-evaluation";
 import { buildReleve } from "../../paper/results-pdf";
 import { renderReleveCsv } from "../../paper/results-csv";
-import { classes, evaluations, paperCopies, paperExams, students } from "@db/schema";
+import { classes, evaluations, paperCopies, paperExams, questions, students } from "@db/schema";
 import type { User } from "@db/schema";
 
 let prof: User;
@@ -157,5 +157,53 @@ describe("évaluation de référence", () => {
       .from(evaluations)
       .where(inArray(evaluations.id, [premier.evaluationId]));
     expect(restantes).toHaveLength(1);
+  });
+
+  it("la crée de toutes pièces sur une base qui ne l'a pas", async () => {
+    // Le cas d'un premier déploiement. Il ne se produit jamais sur la base
+    // partagée des tests : on l'obtient en écartant l'évaluation existante le
+    // temps du semis, puis on efface celle qui vient d'être créée.
+    const { EVALUATION_TITLE } = await import("@contracts/evaluation-data");
+    const [reference] = await db
+      .select({ id: evaluations.id })
+      .from(evaluations)
+      .where(eq(evaluations.title, EVALUATION_TITLE))
+      .limit(1);
+    const titreEcarte = `${EVALUATION_TITLE} (écartée le temps du test)`;
+    await db
+      .update(evaluations)
+      .set({ title: titreEcarte })
+      .where(eq(evaluations.id, reference.id));
+
+    let neuve: Awaited<ReturnType<typeof seedEvaluation>> | null = null;
+    try {
+      neuve = await seedEvaluation();
+
+      expect(neuve.evaluationId).not.toBe(reference.id);
+      // Tout est créé, rien n'est mis à jour : la base ne connaissait rien.
+      expect(neuve.created).toBe(neuve.total);
+      expect(neuve.updated).toBe(0);
+
+      const posees = await db
+        .select()
+        .from(questions)
+        .where(eq(questions.evaluationId, neuve.evaluationId));
+      expect(posees).toHaveLength(neuve.total);
+      // Le barème part avec la question : sans lui, rien ne se corrige.
+      expect(posees.every((q) => q.gradingRubric !== null)).toBe(true);
+
+    } finally {
+      // Effacée quoi qu'il arrive : laissée derrière, elle deviendrait un
+      // second exemplaire de la référence, et le semis suivant la mettrait à
+      // jour au lieu de la créer — le cas éprouvé ici ne se reproduirait plus.
+      if (neuve) {
+        await db.delete(questions).where(eq(questions.evaluationId, neuve.evaluationId));
+        await db.delete(evaluations).where(eq(evaluations.id, neuve.evaluationId));
+      }
+      await db
+        .update(evaluations)
+        .set({ title: EVALUATION_TITLE })
+        .where(eq(evaluations.id, reference.id));
+    }
   });
 });

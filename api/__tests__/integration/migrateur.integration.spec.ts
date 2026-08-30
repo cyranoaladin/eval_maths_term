@@ -10,9 +10,9 @@
  * la base de test partagée est déjà à jour, et prouver qu'on part de zéro
  * demande de partir de zéro.
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import mysql from "mysql2/promise";
-import { appliquerMigrations, DOSSIER_PAR_DEFAUT } from "@db/migrate";
+import { appliquerMigrations, main, DOSSIER_PAR_DEFAUT } from "@db/migrate";
 
 const URL_TEST = process.env.TEST_DATABASE_URL!;
 const NOM = `migrateur_${process.pid}`;
@@ -86,5 +86,45 @@ describe("application des migrations", () => {
     await expect(
       appliquerMigrations(urlJetable, "./db/migrations-absentes"),
     ).rejects.toThrow();
+  });
+});
+
+describe("la commande de déploiement", () => {
+  const ENV_INITIAL = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...ENV_INITIAL };
+    vi.restoreAllMocks();
+  });
+
+  it("applique les migrations et rend zéro", async () => {
+    const sortie = vi.spyOn(console, "log").mockImplementation(() => {});
+    process.env.DATABASE_URL = urlJetable;
+
+    await expect(main()).resolves.toBe(0);
+
+    // La durée est dite : c'est ce qu'on relit dans le journal d'un
+    // déploiement pour savoir si la migration a été instantanée ou longue.
+    expect(sortie.mock.calls[0][0]).toMatch(/Migrations appliquées en \d+ ms/);
+  });
+
+  it("refuse de deviner la base et rend un code d'échec", async () => {
+    const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+    delete process.env.DATABASE_URL;
+
+    await expect(main()).resolves.toBe(1);
+
+    expect(erreur.mock.calls[0][0]).toMatch(/DATABASE_URL est requise/);
+  });
+
+  it("rend un code d'échec quand la migration ne passe pas", async () => {
+    const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+    process.env.DATABASE_URL = urlJetable;
+    process.env.MIGRATIONS_DIR = "./db/migrations-absentes";
+
+    // Un déploiement doit s'arrêter là : la version applicative qui suit
+    // écrirait dans un schéma qui ne l'attend pas.
+    await expect(main()).resolves.toBe(1);
+    expect(erreur.mock.calls[0][0]).toMatch(/Migration en échec/);
   });
 });

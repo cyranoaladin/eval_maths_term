@@ -1,5 +1,6 @@
 import { env } from "./env";
 import { logger } from "./logger";
+import { messageDErreur } from "@contracts/erreurs";
 
 /**
  * Vérifie l'en-tête Origin sur toutes les requêtes mutations tRPC.
@@ -47,7 +48,7 @@ export async function csrfMiddleware(
       checkOrigin(req);
     } catch (err) {
       return new Response(
-        JSON.stringify({ error: err instanceof Error ? err.message : "CSRF check failed" }),
+        JSON.stringify({ error: messageDErreur(err, "CSRF check failed") }),
         { status: 403, headers: { "Content-Type": "application/json" } },
       );
     }

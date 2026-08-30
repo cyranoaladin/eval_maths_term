@@ -4,6 +4,7 @@ import superjson from "superjson";
 import type { TrpcContext } from "./context";
 import { verifyStudentToken, type StudentSessionPayload } from "./anticheat/session-token";
 import { logger } from "./lib/logger";
+import { messageDErreur } from "@contracts/erreurs";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
@@ -138,7 +139,7 @@ const requireStudentSessionToken = t.middleware(async (opts) => {
   } catch (err) {
     throw new TRPCError({
       code: "UNAUTHORIZED",
-      message: err instanceof Error ? err.message : "Token de session invalide",
+      message: messageDErreur(err, "Token de session invalide"),
     });
   }
 

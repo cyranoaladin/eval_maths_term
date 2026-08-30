@@ -1,6 +1,7 @@
 import * as jose from "jose";
 import { env } from "../lib/env";
 import { logger } from "../lib/logger";
+import { messageDErreur } from "@contracts/erreurs";
 
 const JWT_ALG = "HS256";
 
@@ -80,7 +81,7 @@ export async function verifyStudentToken(
     return { sessionId, evaluationId, studentName, startedAt, expiresAt, shuffleSeed };
   } catch (err) {
     logger.warn("[session-token] Échec de vérification du token élève", {
-      error: err instanceof Error ? err.message : String(err),
+      error: messageDErreur(err),
     });
     throw err;
   }
@@ -126,7 +127,7 @@ export async function verifyResultsToken(
     return { sessionId, issuedAt, expiresAt };
   } catch (err) {
     logger.warn("[session-token] Échec de vérification du token de résultats", {
-      error: err instanceof Error ? err.message : String(err),
+      error: messageDErreur(err),
     });
     throw err;
   }

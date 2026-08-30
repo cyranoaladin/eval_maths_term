@@ -2,6 +2,7 @@ import * as jose from "jose";
 import { env } from "../lib/env";
 import { logger } from "../lib/logger";
 import type { SessionPayload } from "./types";
+import { messageDErreur } from "@contracts/erreurs";
 
 const JWT_ALG = "HS256";
 
@@ -44,7 +45,7 @@ export async function verifySessionToken(
     return { unionId, clientId } as SessionPayload;
   } catch (error) {
     logger.warn("[session-teacher] Échec de vérification du JWT", {
-      error: error instanceof Error ? error.message : String(error),
+      error: messageDErreur(error),
     });
     return null;
   }

@@ -19,6 +19,7 @@ import { pathToFileURL } from "node:url";
 import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
 import { migrate } from "drizzle-orm/mysql2/migrator";
+import { messageDErreur } from "@contracts/erreurs";
 
 export const DOSSIER_PAR_DEFAUT = "./db/migrations";
 
@@ -43,12 +44,16 @@ export async function appliquerMigrations(
   }
 }
 
-/** Lancé en ligne de commande, pas à l'import : le module reste éprouvable. */
-async function main() {
+/**
+ * La ligne de commande. Rend un code de sortie plutôt que de le poser
+ * lui-même : c'est ce qui rend cette fonction éprouvable, et c'est ce code que
+ * le script de déploiement regarde.
+ */
+export async function main(): Promise<number> {
   const url = process.env.DATABASE_URL;
   if (!url) {
     console.error("DATABASE_URL est requise.");
-    process.exit(1);
+    return 1;
   }
   try {
     const { dureeMs, dossier } = await appliquerMigrations(
@@ -56,12 +61,14 @@ async function main() {
       process.env.MIGRATIONS_DIR ?? DOSSIER_PAR_DEFAUT,
     );
     console.log(`Migrations appliquées en ${dureeMs} ms (${dossier}).`);
+    return 0;
   } catch (e) {
-    console.error("Migration en échec :", e instanceof Error ? e.message : e);
-    process.exit(1);
+    console.error("Migration en échec :", messageDErreur(e));
+    return 1;
   }
 }
 
+/** Exécuté en ligne de commande, pas à l'import : le module reste éprouvable. */
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await main();
+  process.exit(await main());
 }

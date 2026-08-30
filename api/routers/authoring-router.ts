@@ -31,6 +31,7 @@ import {
   assertEvaluationAccessible,
   assertQuestionAccessible,
 } from "../queries/ownership";
+import { messageDErreur } from "@contracts/erreurs";
 
 const QuestionTypeSchema = z.enum(["qcm", "short_answer", "true_false"]);
 
@@ -383,7 +384,7 @@ export const authoringRouter = createRouter({
         // quoi le modèle s'est appuyé.
         return { ...result, sources: passages.map((p) => p.source) };
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
+        const message = messageDErreur(e);
         logger.error("[authoring] Génération échouée", { error: message });
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
       }
