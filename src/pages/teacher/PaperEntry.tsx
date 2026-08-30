@@ -228,7 +228,7 @@ export default function PaperEntry() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
         {/* ── Élèves ── */}
         <Card className="h-fit lg:sticky lg:top-4">
           <CardHeader className="pb-2">

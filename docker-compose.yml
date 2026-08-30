@@ -4,6 +4,11 @@
 #   docker compose up -d --build
 #   docker compose exec app node dist/migrate.js
 #
+# Le fichier `.env` est passé tel quel au conteneur. Ce compose n'invente
+# aucune valeur par défaut : elles vivent dans `api/lib/env.ts`, qui est aussi
+# le seul à valider la configuration. Deux jeux de défauts — un ici, un dans le
+# code — donneraient deux comportements selon la façon de démarrer.
+#
 # Le développement utilise `docker-compose.dev.yml`, qui ne fournit que MySQL.
 services:
   mysql:
@@ -11,8 +16,8 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?renseignez MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-eval_maths}
-      MYSQL_USER: ${MYSQL_USER:-eval}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?renseignez MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER:?renseignez MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?renseignez MYSQL_PASSWORD}
     volumes:
       - mysql_data:/var/lib/mysql
@@ -31,27 +36,16 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+    # Tout le contrat de configuration vient de `.env`, tel qu'il est décrit
+    # dans `.env.example`. Ce qui suit ne le complète pas : ce sont les trois
+    # valeurs que le conteneur impose, parce qu'elles décrivent sa propre
+    # topologie et non un choix de l'exploitant.
+    env_file: .env
     environment:
       NODE_ENV: production
-      PORT: 3000
-      DATABASE_URL: mysql://${MYSQL_USER:-eval}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-eval_maths}
-      APP_ID: ${APP_ID:?}
-      APP_SECRET: ${APP_SECRET:?}
-      TEACHER_SESSION_SECRET: ${TEACHER_SESSION_SECRET:?}
-      STUDENT_SESSION_SECRET: ${STUDENT_SESSION_SECRET:?}
-      KIMI_AUTH_URL: ${KIMI_AUTH_URL:?}
-      KIMI_OPEN_URL: ${KIMI_OPEN_URL:?}
-      OWNER_UNION_ID: ${OWNER_UNION_ID:-}
-      LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_PROVIDER: ${LLM_PROVIDER:-openrouter}
-      LLM_API_URL: ${LLM_API_URL:-https://openrouter.ai/api/v1}
-      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-5}
-      RAG_URL: ${RAG_URL:-}
-      RAG_API_KEY: ${RAG_API_KEY:-}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      # Soixante connexions : optimum mesuré à deux cents remises simultanées.
-      DB_POOL_SIZE: ${DB_POOL_SIZE:-60}
+      # La base écoute sur le réseau interne du compose, jamais sur l'hôte.
+      DATABASE_URL: mysql://${MYSQL_USER:?}:${MYSQL_PASSWORD:?}@mysql:3306/${MYSQL_DATABASE:?}
+      # Le volume monté ci-dessous, pas un chemin du dépôt.
       PAPER_OUTPUT_DIR: /data/paper-exams
     volumes:
       - paper_exams:/data/paper-exams

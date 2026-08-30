@@ -34,9 +34,11 @@ l'établit, est dans [`RELEASE_EVIDENCE.md`](RELEASE_EVIDENCE.md).
 ```bash
 cd /home/alaeddine/Documents/02_Plateformes/app
 npm install
-docker compose -f docker-compose.dev.yml up -d    # MySQL sur 127.0.0.1:3307
-cp .env.example .env                               # renseigner les secrets
-npm run db:migrate && npx tsx db/seed.ts
+scripts/bootstrap-dev.sh                           # .env, secrets tirés localement
+docker compose -f docker-compose.dev.yml up -d     # MySQL sur 127.0.0.1:3307
+npx tsx db/migrate.ts && npx tsx db/seed.ts
+npx tsx scripts/dev-session.ts                     # session enseignant locale
+npx tsx scripts/fixtures-e2e.ts                    # classe, élèves et tirage de démonstration
 npm run dev                                        # http://localhost:3000
 npx tsx scripts/dev-session.ts                     # session enseignant locale
 ```
@@ -623,22 +625,30 @@ une variable requise manque ou est trop courte.
 |---|---|---|---|
 | `APP_ID` | oui | — | Application OAuth |
 | `APP_SECRET` | oui (≥32) | — | Signature OAuth |
-| `TEACHER_SESSION_SECRET` | ≥32 | valeur de dev | Session enseignant |
-| `STUDENT_SESSION_SECRET` | ≥32 | valeur de dev | Jeton élève |
+| `TEACHER_SESSION_SECRET` | oui (≥32) | — | Session enseignant |
+| `STUDENT_SESSION_SECRET` | oui (≥32) | — | Jeton élève |
 | `DATABASE_URL` | oui | — | MySQL |
 | `KIMI_AUTH_URL`, `KIMI_OPEN_URL` | oui | — | Serveurs OAuth |
 | `ALLOWED_ORIGINS` | — | `http://localhost:3000` | CORS et CSRF |
 | `LLM_API_KEY` | non | — | Sans elle, aucune assistance |
 | `LLM_PROVIDER` / `LLM_API_URL` / `LLM_MODEL` | — | `openrouter` / OpenRouter / `anthropic/claude-sonnet-5` | |
-| `LLM_MAX_TOKENS`, `LLM_TIMEOUT_MS` | — | 1000, 30000 | Surchargés par appel |
+| `LLM_MAX_TOKENS`, `LLM_TIMEOUT_MS` | — | 1000, 60000 | Surchargés par appel |
 | `RAG_URL`, `RAG_API_KEY`, `RAG_COLLECTION`, `RAG_TIMEOUT_MS` | non | — / — / `default` / 10000 | Port débranché sans `RAG_URL` |
 | `PAPER_OUTPUT_DIR` | — | `./.paper-exams` | Dossiers de tirage |
 | `OWNER_UNION_ID` | non | — | Rôle admin à la première connexion |
 | `LOG_LEVEL`, `BRAND_NAME`, `SENTRY_DSN`, `REDIS_URL` | non | | |
 | `VITE_ETABLISSEMENT`, `VITE_ETABLISSEMENT_ADRESSE`, `VITE_DIRECTEUR_PUBLICATION`, `VITE_CONTACT_DONNEES`, `VITE_HEBERGEUR` | non | — | Mentions légales |
 
-**Les deux secrets de session ont une valeur par défaut de développement.**
-C'est un risque en production : la valider explicitement au déploiement.
+Aucun secret n'a de valeur par défaut : une valeur de repli écrite dans le
+dépôt est une valeur publique, et signer un cookie enseignant avec elle ne
+demanderait que de savoir lire. `scripts/bootstrap-dev.sh` en tire de nouveaux,
+propres à la machine, dans un `.env` que Git ignore.
+
+Les valeurs par défaut du tableau ci-dessus vivent dans `api/lib/env.ts` et
+nulle part ailleurs : ni `docker-compose.yml` ni `.env.example` n'en proposent
+d'autres, et `api/__tests__/config/contrat-env.spec.ts` le vérifie. La même
+version de l'application se comporte donc pareil, qu'on la démarre par npm ou
+par Docker.
 
 ---
 
@@ -648,11 +658,9 @@ C'est un risque en production : la valider explicitement au déploiement.
 ```bash
 npm run check   # tsc -b
 npm run lint    # eslint (0 erreur, 3 avertissements react-hooks connus)
-# Les tests d'intégration parlent à une vraie base : indiquez-la une fois.
-# Les identifiants sont ceux déclarés dans docker-compose.dev.yml ; ils ne
-# sont écrits nulle part ailleurs dans le dépôt.
-export TEST_DATABASE_URL='mysql://<utilisateur>:<mot de passe>@127.0.0.1:3307/eval_maths_test'
-npm test        # 805 tests, 61 fichiers
+# Les tests d'intégration parlent à une vraie base. `scripts/bootstrap-dev.sh`
+# a écrit TEST_DATABASE_URL dans `.env` ; la base est créée si elle manque.
+npm test        # 813 tests, 62 fichiers
 npm run build   # vite + esbuild
 ```
 
@@ -854,7 +862,8 @@ fragile.
   derrière `127.0.0.1:3000`, volume dédié aux tirages. Secrets obligatoires
   (`:?`) : un démarrage avec des valeurs par défaut signerait des jetons
   forgeables.
-- `docker-compose.dev.yml` — MySQL seul, port 3307.
+- `docker-compose.dev.yml` — MySQL seul, port 3307. Aucun mot de passe versionné :
+  ils viennent du `.env` produit par `scripts/bootstrap-dev.sh`.
 - `.github/workflows/ci.yml` — trois travaux : qualité (types, style, tests,
   build), **création de la base depuis le dépôt** (garde-fou contre la
   régression n° 3), construction de l'image. **Jamais exécuté** : demande une
@@ -956,7 +965,8 @@ exécutée.
 ## 18. Environnement de la machine
 
 - MySQL de développement : conteneur `eval-maths-mysql-dev`, `127.0.0.1:3307`,
-  base `eval_maths`, identifiants déclarés dans `docker-compose.dev.yml`
+  base `eval_maths`, identifiants tirés au hasard dans `.env` par
+  `scripts/bootstrap-dev.sh`
 - `auto-multiple-choice` 1.6.0, `pdflatex`, `latexmk`, `automultiplechoice.sty`
   installés au niveau système
 - Une clé OpenRouter est configurée dans `.env` (non versionné), modèle

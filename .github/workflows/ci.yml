@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "phase-*"]
+    branches: [main, "release/*", "phase-*"]
   pull_request:
     branches: [main]
 
@@ -11,27 +11,14 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   qualite:
     name: Types, style, tests, build
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
-    # Les tests d'intégration parlent à une vraie base : la moitié de la
-    # logique métier — propriété des données, transactions, invariants de
-    # correction — ne s'éprouve pas autrement.
-    services:
-      mysql:
-        image: mysql:8.4
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: eval_maths_test
-          MYSQL_USER: eval
-          MYSQL_PASSWORD: eval
-        ports: ["3306:3306"]
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -proot"
-          --health-interval=10s --health-timeout=5s --health-retries=10
 
     steps:
       - uses: actions/checkout@v4
@@ -44,18 +31,48 @@ jobs:
       - name: Installer les dépendances
         run: npm ci --no-audit --no-fund
 
-      # Les variables sont validées au chargement d'`api/lib/env.ts` : sans
-      # elles, tests et build échouent avant même de commencer.
-      - name: Variables d'environnement de test
+      # Les tests d'intégration parlent à une vraie base : la moitié de la
+      # logique métier — propriété des données, transactions, invariants de
+      # correction — ne s'éprouve pas autrement.
+      #
+      # La base est démarrée ici plutôt que par `services:` parce que ce bloc
+      # exige des identifiants littéraux dans le fichier. Ceux-ci sont tirés au
+      # hasard à chaque exécution, masqués dans le journal, et meurent avec le
+      # runner : aucune valeur écrite dans ce dépôt n'ouvre quoi que ce soit.
+      - name: Base de données éphémère
         run: |
+          MDP="$(openssl rand -hex 24)"
+          echo "::add-mask::$MDP"
+          docker run -d --name mysql-ci \
+            -e MYSQL_ROOT_PASSWORD="$MDP" \
+            -e MYSQL_DATABASE=eval_maths_test \
+            -p 127.0.0.1:3306:3306 mysql:8.4
+          for _ in $(seq 1 60); do
+            docker exec mysql-ci mysqladmin ping -h 127.0.0.1 -u root -p"$MDP" \
+              >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker exec mysql-ci mysqladmin ping -h 127.0.0.1 -u root -p"$MDP" >/dev/null
+          URL="mysql://root:${MDP}@127.0.0.1:3306/eval_maths_test"
+          {
+            echo "DATABASE_URL=$URL"
+            echo "TEST_DATABASE_URL=$URL"
+          } >> "$GITHUB_ENV"
+
+      # `api/lib/env.ts` valide la configuration au chargement : sans elle,
+      # tests et build échouent avant de commencer. Les secrets sont tirés au
+      # hasard eux aussi — une valeur fixe dans un fichier de CI est une valeur
+      # publique, même si elle ne sert qu'aux tests.
+      - name: Secrets éphémères
+        run: |
+          for nom in APP_SECRET TEACHER_SESSION_SECRET STUDENT_SESSION_SECRET; do
+            valeur="$(openssl rand -hex 32)"
+            echo "::add-mask::$valeur"
+            echo "$nom=$valeur" >> "$GITHUB_ENV"
+          done
           {
             echo "NODE_ENV=test"
             echo "APP_ID=ci"
-            echo "APP_SECRET=ci_secret_de_test_au_moins_32_caracteres"
-            echo "TEACHER_SESSION_SECRET=ci_teacher_secret_au_moins_32_caracteres"
-            echo "STUDENT_SESSION_SECRET=ci_student_secret_au_moins_32_caracteres"
-            echo "DATABASE_URL=mysql://eval:eval@127.0.0.1:3306/eval_maths_test"
-            echo "TEST_DATABASE_URL=mysql://eval:eval@127.0.0.1:3306/eval_maths_test"
             echo "KIMI_AUTH_URL=http://localhost:9999"
             echo "KIMI_OPEN_URL=http://localhost:9998"
             echo "ALLOWED_ORIGINS=http://localhost:3000"
@@ -82,19 +99,6 @@ jobs:
     # Garde-fou : les migrations ne contenaient que des ALTER sans journal, et
     # aucune base ne pouvait être construite depuis le dépôt. Ce travail vérifie
     # qu'une base vierge se monte et se peuple.
-    services:
-      mysql:
-        image: mysql:8.4
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: eval_maths
-          MYSQL_USER: eval
-          MYSQL_PASSWORD: eval
-        ports: ["3306:3306"]
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -proot"
-          --health-interval=10s --health-timeout=5s --health-retries=10
-
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -104,14 +108,37 @@ jobs:
 
       - run: npm ci --no-audit --no-fund
 
+      - name: Base de données éphémère
+        run: |
+          MDP="$(openssl rand -hex 24)"
+          echo "::add-mask::$MDP"
+          docker run -d --name mysql-ci \
+            -e MYSQL_ROOT_PASSWORD="$MDP" \
+            -e MYSQL_DATABASE=eval_maths \
+            -p 127.0.0.1:3306:3306 mysql:8.4
+          for _ in $(seq 1 60); do
+            docker exec mysql-ci mysqladmin ping -h 127.0.0.1 -u root -p"$MDP" \
+              >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker exec mysql-ci mysqladmin ping -h 127.0.0.1 -u root -p"$MDP" >/dev/null
+          echo "DATABASE_URL=mysql://root:${MDP}@127.0.0.1:3306/eval_maths" >> "$GITHUB_ENV"
+
+      - name: Secrets éphémères
+        run: |
+          for nom in APP_SECRET TEACHER_SESSION_SECRET STUDENT_SESSION_SECRET; do
+            valeur="$(openssl rand -hex 32)"
+            echo "::add-mask::$valeur"
+            echo "$nom=$valeur" >> "$GITHUB_ENV"
+          done
+          {
+            echo "APP_ID=ci"
+            echo "KIMI_AUTH_URL=http://localhost:9999"
+            echo "KIMI_OPEN_URL=http://localhost:9998"
+            echo "LOG_LEVEL=error"
+          } >> "$GITHUB_ENV"
+
       - name: Appliquer les migrations puis semer
-        env:
-          DATABASE_URL: mysql://eval:eval@127.0.0.1:3306/eval_maths
-          APP_ID: ci
-          APP_SECRET: ci_secret_de_test_au_moins_32_caracteres
-          KIMI_AUTH_URL: http://localhost:9999
-          KIMI_OPEN_URL: http://localhost:9998
-          LOG_LEVEL: error
         run: |
           npx drizzle-kit migrate
           npx tsx db/seed.ts

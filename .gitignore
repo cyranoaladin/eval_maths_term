@@ -22,10 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-# Environment variables
+# Environment variables — tout sauf le modèle. Les fichiers produits par
+# scripts/bootstrap-dev.sh, et ses sauvegardes datées, ne sortent pas d'ici.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 # Database
 *.db
 *.sqlite

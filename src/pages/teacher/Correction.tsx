@@ -147,7 +147,7 @@ export default function Correction() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[250px_1fr]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[250px_minmax(0,1fr)]">
         {/* ── Copies ── */}
         <Card className="h-fit lg:sticky lg:top-4">
           <CardHeader className="pb-2">

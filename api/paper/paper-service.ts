@@ -16,10 +16,11 @@ import { GradingRubricSchema } from "@contracts/grading-rubric";
 import { buildAmcDocument } from "./amc-template";
 import { runAmc, type AmcArtifact } from "./amc-runner";
 import { logger } from "../lib/logger";
+import { env } from "../lib/env";
 
 /** Racine des dossiers de tirage. Hors du dépôt, configurable. */
 export function paperRoot(): string {
-  return resolve(process.env.PAPER_OUTPUT_DIR ?? join(process.cwd(), ".paper-exams"));
+  return resolve(env.paperOutputDir);
 }
 
 export function workdirFor(paperExamId: number): string {

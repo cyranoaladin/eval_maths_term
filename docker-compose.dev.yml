@@ -2,28 +2,32 @@
 #
 # L'application tourne hors conteneur (`npm run dev`) : seul MySQL est fourni
 # ici, pour que migrations, seed et tests d'intégration soient exécutables sur
-# une machine vierge. Le compose de production (app + MySQL + Redis) relève de
-# la Phase 5.
+# une machine vierge.
 #
+# Les mots de passe viennent du `.env` que `scripts/bootstrap-dev.sh` tire au
+# hasard sur la machine. Aucun n'est écrit ici : une valeur de développement
+# versionnée est une valeur publique, et celle-ci ouvre un service qui écoute.
+#
+#   scripts/bootstrap-dev.sh
 #   docker compose -f docker-compose.dev.yml up -d
-#   npm run db:migrate && npx tsx db/seed.ts
+#   npx tsx db/migrate.ts && npx tsx db/seed.ts
 services:
   mysql:
     image: mysql:8.4
     container_name: eval-maths-mysql-dev
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: dev_root
-      MYSQL_DATABASE: eval_maths
-      MYSQL_USER: eval
-      MYSQL_PASSWORD: dev_password
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?lancez d'abord scripts/bootstrap-dev.sh}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?lancez d'abord scripts/bootstrap-dev.sh}
+      MYSQL_USER: ${MYSQL_USER:?lancez d'abord scripts/bootstrap-dev.sh}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?lancez d'abord scripts/bootstrap-dev.sh}
     # Publié sur 3307 pour ne pas entrer en conflit avec un MySQL local.
     ports:
       - "127.0.0.1:3307:3306"
     volumes:
       - eval_maths_mysql:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-pdev_root"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 5s
       timeout: 5s
       retries: 20

@@ -99,7 +99,7 @@ export default function Evaluations() {
         liste débordait de l'écran vers la droite. La troncature ne peut faire
         son office que si la carte a le droit de rétrécir.
       */}
-      <div className="grid gap-3 min-w-0">
+      <div className="grid grid-cols-1 gap-3 min-w-0">
         {evaluations?.map((e) => {
           const ModeIcon = MODE_LABELS[e.deliveryMode as DeliveryMode].icon;
           const verrouillee = e.sessionCount > 0;

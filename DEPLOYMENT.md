@@ -14,26 +14,40 @@
 cp .env.example .env
 ```
 
+`.env.example` est la liste complète de ce que l'application lit. Il ne porte
+aucune valeur : les valeurs par défaut vivent dans `api/lib/env.ts`, et nulle
+part ailleurs — ni ce fichier, ni le compose, ni cette page n'en proposent
+d'autres. Un test le vérifie à chaque exécution de la CI.
+
 Renseignez au minimum :
 
 | Variable | Rôle |
 |---|---|
-| `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD` | Base de données |
+| `MYSQL_ROOT_PASSWORD`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE` | Base de données |
 | `APP_ID`, `APP_SECRET` | Application OAuth Kimi |
 | `TEACHER_SESSION_SECRET`, `STUDENT_SESSION_SECRET` | Signature des jetons de session |
 | `KIMI_AUTH_URL`, `KIMI_OPEN_URL` | Serveurs OAuth |
 | `ALLOWED_ORIGINS` | Origines autorisées, séparées par des virgules |
+| `DATABASE_URL` | Imposée par le compose ; à renseigner hors conteneur |
 
-Les deux secrets de session doivent faire **au moins 32 caractères** et être
-distincts d'`APP_SECRET`. Générez-les :
+Les trois secrets doivent faire **au moins 32 caractères** et être distincts les
+uns des autres. Générez-les :
 
 ```bash
-openssl rand -hex 32
+openssl rand -base64 48
 ```
 
-`env.ts` refuse de démarrer si une variable requise manque ou est trop courte.
-C'est voulu : une application qui démarre avec un secret par défaut signe des
-jetons que n'importe qui peut forger.
+Aucun n'a de valeur par défaut. Une valeur de repli écrite dans le dépôt est une
+valeur publique : signer un cookie enseignant avec elle ne demande que de savoir
+lire. `env.ts` refuse par ailleurs de démarrer en production si un secret
+ressemble à une valeur de remplissage (`dev_…`, `change_me`, `test_…`), ou si
+deux d'entre eux sont identiques — un jeton élève pourrait alors passer pour un
+jeton enseignant.
+
+Le compose passe `.env` au conteneur tel quel et n'impose que trois valeurs, qui
+décrivent la topologie du conteneur et non un choix d'exploitation :
+`NODE_ENV=production`, l'adresse interne de la base, et le volume des tirages
+papier.
 
 ```bash
 docker compose up -d --build

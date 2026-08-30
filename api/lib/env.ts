@@ -2,17 +2,6 @@ import "dotenv/config";
 import { z } from "zod";
 
 /**
- * Valeurs de repli du développement.
- *
- * Elles sont publiées dans ce dépôt : signer un cookie enseignant avec l'une
- * d'elles ne demande que de savoir lire. Elles rendent la machine de
- * développement utilisable sans configuration, et sont refusées en production
- * par `verifierSecretsDeProduction`.
- */
-const SECRET_ENSEIGNANT_DEV = "dev_teacher_secret_change_in_production_at_least_32";
-const SECRET_ELEVE_DEV = "dev_student_secret_change_in_production_at_least_32";
-
-/**
  * Un secret de production ne doit ressembler à aucun de ces motifs. Un
  * déploiement qui démarre avec « change_me » est un déploiement dont les
  * sessions sont forgeables par n'importe qui.
@@ -33,19 +22,13 @@ export function verifierSecretsDeProduction(config: {
   if (config.NODE_ENV !== "production") return [];
 
   const erreurs: string[] = [];
-  const aVerifier: Array<[string, string, string | null]> = [
-    ["TEACHER_SESSION_SECRET", config.TEACHER_SESSION_SECRET, SECRET_ENSEIGNANT_DEV],
-    ["STUDENT_SESSION_SECRET", config.STUDENT_SESSION_SECRET, SECRET_ELEVE_DEV],
-    ["APP_SECRET", config.APP_SECRET, null],
+  const aVerifier: Array<[string, string]> = [
+    ["TEACHER_SESSION_SECRET", config.TEACHER_SESSION_SECRET],
+    ["STUDENT_SESSION_SECRET", config.STUDENT_SESSION_SECRET],
+    ["APP_SECRET", config.APP_SECRET],
   ];
 
-  for (const [nom, valeur, defautDev] of aVerifier) {
-    if (defautDev && valeur === defautDev) {
-      erreurs.push(
-        `${nom} vaut encore la valeur de développement, publiée dans le dépôt : n'importe qui peut forger une session. Générez-en une avec « openssl rand -base64 48 ».`,
-      );
-      continue;
-    }
+  for (const [nom, valeur] of aVerifier) {
     if (MOTIFS_INTERDITS.some((m) => m.test(valeur))) {
       erreurs.push(
         `${nom} ressemble à une valeur de remplissage (« ${valeur.slice(0, 12)}… ») : générez un secret réel avec « openssl rand -base64 48 ».`,
@@ -72,8 +55,13 @@ const envSchema = z.object({
   APP_ID: z.string().min(1, "APP_ID est requis"),
   APP_SECRET: z.string().min(32, "APP_SECRET doit faire au moins 32 caractères"),
 
-  TEACHER_SESSION_SECRET: z.string().min(32, "TEACHER_SESSION_SECRET doit faire au moins 32 caractères").default(SECRET_ENSEIGNANT_DEV),
-  STUDENT_SESSION_SECRET: z.string().min(32, "STUDENT_SESSION_SECRET doit faire au moins 32 caractères").default(SECRET_ELEVE_DEV),
+  /**
+   * Aucune valeur de repli : un secret né dans le dépôt est un secret public.
+   * `scripts/bootstrap-dev.sh` en fabrique de nouveaux, propres à la machine,
+   * dans un `.env` que Git ignore.
+   */
+  TEACHER_SESSION_SECRET: z.string().min(32, "TEACHER_SESSION_SECRET doit faire au moins 32 caractères"),
+  STUDENT_SESSION_SECRET: z.string().min(32, "STUDENT_SESSION_SECRET doit faire au moins 32 caractères"),
 
   DATABASE_URL: z.string().min(1, "DATABASE_URL est requise"),
   /**
@@ -92,18 +80,30 @@ const envSchema = z.object({
   DB_POOL_SIZE: z.coerce.number().int().min(1).max(150).default(60),
   REDIS_URL: z.string().optional(),
 
+  /**
+   * Racine des dossiers de tirage papier. Hors du dépôt : les sujets imprimés
+   * et les copies scannées ne sont pas du code, et le volume qui les porte est
+   * sauvegardé séparément.
+   */
+  PAPER_OUTPUT_DIR: z.string().default("./.paper-exams"),
+
   KIMI_AUTH_URL: z.string().min(1, "KIMI_AUTH_URL est requise"),
   KIMI_OPEN_URL: z.string().min(1, "KIMI_OPEN_URL est requise"),
   KIMI_API_KEY: z.string().optional(),
 
   OWNER_UNION_ID: z.string().optional(),
 
-  LLM_PROVIDER: z.string().default("moonshot"),
-  LLM_API_URL: z.string().default("https://api.moonshot.cn/v1"),
+  /**
+   * Correction assistée. Ce fichier porte les valeurs par défaut ; ni le
+   * compose ni la documentation n'en proposent d'autres — deux comportements
+   * selon la façon de démarrer l'application seraient un piège.
+   */
+  LLM_PROVIDER: z.string().default("openrouter"),
+  LLM_API_URL: z.string().default("https://openrouter.ai/api/v1"),
   LLM_API_KEY: z.string().optional(),
-  LLM_MODEL: z.string().default("moonshot-v1-32k"),
+  LLM_MODEL: z.string().default("anthropic/claude-sonnet-5"),
   LLM_MAX_TOKENS: z.coerce.number().default(1000),
-  LLM_TIMEOUT_MS: z.coerce.number().default(30000),
+  LLM_TIMEOUT_MS: z.coerce.number().default(60000),
 
   // Recherche documentaire (lot D). Sans RAG_URL, le port reste débranché.
   RAG_URL: z.string().optional(),
@@ -153,6 +153,7 @@ export const env = {
   databaseUrl: _env.DATABASE_URL,
   dbPoolSize: _env.DB_POOL_SIZE,
   redisUrl: _env.REDIS_URL,
+  paperOutputDir: _env.PAPER_OUTPUT_DIR,
   kimiAuthUrl: _env.KIMI_AUTH_URL,
   kimiOpenUrl: _env.KIMI_OPEN_URL,
   kimiApiKey: _env.KIMI_API_KEY,

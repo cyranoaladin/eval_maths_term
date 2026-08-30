@@ -1,16 +1,29 @@
 /**
- * Un serveur de production ne doit pas pouvoir démarrer avec les secrets du
- * dépôt.
+ * Aucun secret ne vient du dépôt, et aucune valeur de remplissage ne passe en
+ * production.
  *
- * `TEACHER_SESSION_SECRET` et `STUDENT_SESSION_SECRET` avaient une valeur par
- * défaut, publiée dans ce dépôt. Un déploiement qui oubliait de les définir
- * démarrait normalement, sans le moindre avertissement, et signait ses cookies
- * enseignant avec une chaîne que n'importe qui peut lire dans le code source :
- * forger une session d'administration ne demandait que de savoir cloner le
- * projet.
+ * `TEACHER_SESSION_SECRET` et `STUDENT_SESSION_SECRET` ont eu une valeur par
+ * défaut publiée ici. Un déploiement qui oubliait de les définir démarrait
+ * normalement, sans le moindre avertissement, et signait ses cookies enseignant
+ * avec une chaîne lisible dans le code source : forger une session
+ * d'administration ne demandait que de savoir cloner le projet. Ces valeurs de
+ * repli n'existent plus — le schéma exige désormais les deux secrets, et
+ * `scripts/bootstrap-dev.sh` en tire de nouveaux, propres à chaque machine.
+ *
+ * Reste le filet : un secret peut être renseigné et rester une plaisanterie.
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { verifierSecretsDeProduction } from "../../lib/env";
+
+/**
+ * Entrées d'assertion : elles n'ouvrent rien, et tout leur intérêt est d'être
+ * refusées. Les vraies valeurs de repli qui vivaient dans le code ont disparu
+ * avec lui.
+ */
+const REMPLISSAGE_A = "dev_valeur_de_remplissage_assez_longue_pour_zod";
+const REMPLISSAGE_B = "dev_autre_remplissage_assez_long_pour_le_schema";
 
 const SOLIDE_A = "Zx8Qw2mR7pL4vN1sT6yU9bK3jH5gF0dC2aE8wQ4rY7uI";
 const SOLIDE_B = "Mn4Kp7Rt2Vx9Zs5Wq8Ye3Ub6Ij1Od0Lc7Gh4Af2Nm5Pz";
@@ -31,21 +44,37 @@ describe("secrets de production", () => {
     expect(verifierSecretsDeProduction(config())).toEqual([]);
   });
 
-  it("refuse le secret enseignant de développement", () => {
+  it("refuse un secret enseignant de développement", () => {
     const fautes = verifierSecretsDeProduction(
-      config({ TEACHER_SESSION_SECRET: "dev_teacher_secret_change_in_production_at_least_32" }),
+      config({ TEACHER_SESSION_SECRET: REMPLISSAGE_A }),
     );
     expect(fautes).toHaveLength(1);
     expect(fautes[0]).toMatch(/TEACHER_SESSION_SECRET/);
-    expect(fautes[0]).toMatch(/forger une session/);
+    expect(fautes[0]).toMatch(/remplissage/);
   });
 
-  it("refuse le secret élève de développement", () => {
+  it("refuse un secret élève de développement", () => {
     const fautes = verifierSecretsDeProduction(
-      config({ STUDENT_SESSION_SECRET: "dev_student_secret_change_in_production_at_least_32" }),
+      config({ STUDENT_SESSION_SECRET: REMPLISSAGE_B }),
     );
     expect(fautes).toHaveLength(1);
     expect(fautes[0]).toMatch(/STUDENT_SESSION_SECRET/);
+  });
+
+  it("n'accepte plus aucune valeur de repli venue du code", () => {
+    // La garde ne vaut que si le schéma n'a pas de porte de service : une
+    // valeur par défaut réintroduite ici redeviendrait un secret public.
+    const source = readFileSync(
+      join(import.meta.dirname, "..", "..", "lib", "env.ts"),
+      "utf8",
+    );
+    for (const nom of ["TEACHER_SESSION_SECRET", "STUDENT_SESSION_SECRET", "APP_SECRET"]) {
+      const declaration = source
+        .split("\n")
+        .find((l) => l.trimStart().startsWith(`${nom}: z.`));
+      expect(declaration, `${nom} introuvable dans le schéma`).toBeTruthy();
+      expect(declaration, `${nom} a une valeur par défaut`).not.toMatch(/\.default\(/);
+    }
   });
 
   it("refuse les valeurs de remplissage", () => {
@@ -74,14 +103,13 @@ describe("secrets de production", () => {
   });
 
   it("ne gêne pas le développement", () => {
-    // Sans repli utilisable, aucune machine de développement ne démarrerait
-    // sans configuration : ce serait payer la sécurité de la production par
-    // l'inutilisabilité du poste de travail.
+    // Le contrôle ne s'applique qu'à la production : une machine de
+    // développement peut porter ce qu'elle veut, elle n'expose rien.
     expect(
       verifierSecretsDeProduction({
         NODE_ENV: "development",
-        TEACHER_SESSION_SECRET: "dev_teacher_secret_change_in_production_at_least_32",
-        STUDENT_SESSION_SECRET: "dev_student_secret_change_in_production_at_least_32",
+        TEACHER_SESSION_SECRET: REMPLISSAGE_A,
+        STUDENT_SESSION_SECRET: REMPLISSAGE_B,
         APP_SECRET: "test-app-secret-min-32-chars-XXXXXXXXXXXXXXXXXX",
       }),
     ).toEqual([]);
@@ -91,8 +119,8 @@ describe("secrets de production", () => {
     expect(
       verifierSecretsDeProduction({
         NODE_ENV: "test",
-        TEACHER_SESSION_SECRET: "dev_teacher_secret_change_in_production_at_least_32",
-        STUDENT_SESSION_SECRET: "dev_student_secret_change_in_production_at_least_32",
+        TEACHER_SESSION_SECRET: REMPLISSAGE_A,
+        STUDENT_SESSION_SECRET: REMPLISSAGE_B,
         APP_SECRET: "test-app-secret",
       }),
     ).toEqual([]);

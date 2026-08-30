@@ -121,7 +121,7 @@ export function GenerationPanel({ evaluationId, onAccept, onEdit, onClose, accep
       </CardHeader>
 
       <CardContent className="space-y-4">
-        <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
           <div className="space-y-1.5">
             <Label htmlFor="theme">Thème ou capacité visée</Label>
             <Input

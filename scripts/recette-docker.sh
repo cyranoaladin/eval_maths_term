@@ -96,19 +96,21 @@ typeScore=$(docker exec "$BASE" mysql --default-character-set=utf8mb4 -u root -p
 ok "les scores sont décimaux dans l'image déployée" \
   "$([ "$typeScore" = "decimal(6,2)" ] && echo 0 || echo 1)" "$typeScore"
 
-# ── 5. Refus des secrets de développement ────────────────────────────────────
+# ── 5. Refus des valeurs de remplissage ──────────────────────────────────────
+# La valeur ci-dessous n'ouvre rien : c'est l'entrée d'une assertion, et tout
+# son intérêt est d'être refusée.
 echo
 echo "Garde-fous de production"
 sortie=$(docker run --rm --network "$RESEAU" \
   -e NODE_ENV=production -e DATABASE_URL="$DB_URL" -e APP_ID=recette \
   -e APP_SECRET="$SECRET_A" \
-  -e TEACHER_SESSION_SECRET=dev_teacher_secret_change_in_production_at_least_32 \
+  -e TEACHER_SESSION_SECRET=change_me_avant_de_deployer_quoi_que_ce_soit \
   -e STUDENT_SESSION_SECRET="$SECRET_C" \
   -e KIMI_AUTH_URL=https://auth.invalid -e KIMI_OPEN_URL=https://open.invalid \
   -e ALLOWED_ORIGINS=http://127.0.0.1:3100,http://localhost:3100 \
   "$IMAGE_BASE" node dist/boot.js 2>&1 | head -20)
 echo "$sortie" | grep -q "Configuration de production refusée"
-ok "le secret de développement est refusé en production" $? \
+ok "une valeur de remplissage est refusée en production" $? \
   "$(echo "$sortie" | grep -o 'TEACHER_SESSION_SECRET[^:]*' | head -1)"
 
 # ── 6. Démarrage et santé ────────────────────────────────────────────────────
