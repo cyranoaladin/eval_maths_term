@@ -649,6 +649,10 @@ C'est un risque en production : la valider explicitement au déploiement.
 ```bash
 npm run check   # tsc -b
 npm run lint    # eslint (0 erreur, 3 avertissements react-hooks connus)
+# Les tests d'intégration parlent à une vraie base : indiquez-la une fois.
+# Les identifiants sont ceux déclarés dans docker-compose.dev.yml ; ils ne
+# sont écrits nulle part ailleurs dans le dépôt.
+export TEST_DATABASE_URL='mysql://<utilisateur>:<mot de passe>@127.0.0.1:3307/eval_maths_test'
 npm test        # 805 tests, 61 fichiers
 npm run build   # vite + esbuild
 ```
@@ -953,7 +957,7 @@ exécutée.
 ## 18. Environnement de la machine
 
 - MySQL de développement : conteneur `eval-maths-mysql-dev`, `127.0.0.1:3307`,
-  base `eval_maths`, utilisateur `eval` / `dev_password`
+  base `eval_maths`, identifiants déclarés dans `docker-compose.dev.yml`
 - `auto-multiple-choice` 1.6.0, `pdflatex`, `latexmk`, `automultiplechoice.sty`
   installés au niveau système
 - Une clé OpenRouter est configurée dans `.env` (non versionné), modèle
@@ -1008,7 +1012,7 @@ npx tsx db/seed.ts
 
 # Inspecter la base
 docker exec eval-maths-mysql-dev mysql --default-character-set=utf8mb4 \
-  -ueval -pdev_password eval_maths -e "SHOW TABLES;"
+  -ueval -p eval_maths -e "SHOW TABLES;"
 
 # Vérifier une modification du moteur de correction
 npx vitest run api/grading

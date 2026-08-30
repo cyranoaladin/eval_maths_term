@@ -40,7 +40,15 @@ const BASE_RECETTE = `eval_recette_decimal_${Date.now()}`;
  * de l'application.
  */
 const ADMIN_USER = process.env.RECETTE_DB_ADMIN_USER ?? "root";
-const ADMIN_PASSWORD = process.env.RECETTE_DB_ADMIN_PASSWORD ?? "dev_root";
+const ADMIN_PASSWORD = process.env.RECETTE_DB_ADMIN_PASSWORD;
+if (!ADMIN_PASSWORD) {
+  console.error(
+    "RECETTE_DB_ADMIN_PASSWORD est requise : créer et détruire une base de\n" +
+      "recette demande des droits que le compte applicatif n'a pas. Le mot de\n" +
+      "passe d'administration n'est écrit nulle part dans le dépôt.",
+  );
+  process.exit(1);
+}
 
 function urlAdmin(nomBase: string): string {
   const u = new URL(URL_BASE!);
