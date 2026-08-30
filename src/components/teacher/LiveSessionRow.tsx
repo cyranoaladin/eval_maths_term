@@ -81,7 +81,7 @@ export function LiveSessionRow({
             {idleSec}s
           </span>
         ) : (
-          <span className="text-xs text-gray-400">—</span>
+          <span className="text-xs text-gray-500">—</span>
         )}
       </td>
 
@@ -100,7 +100,7 @@ export function LiveSessionRow({
             {cheatEventCount}
           </span>
         ) : (
-          <span className="text-xs text-gray-400">0</span>
+          <span className="text-xs text-gray-500">0</span>
         )}
       </td>
 

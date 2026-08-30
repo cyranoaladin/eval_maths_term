@@ -22,9 +22,18 @@ export function HeartbeatStatus({ isConnected, remainingMs }: HeartbeatStatusPro
   if (isConnected && remainingMs === null) return null;
 
   return (
+    /*
+      Les couleurs sont héritées du bandeau, pas fixées ici.
+
+      Le gris clair d'origine se lisait à 1,9 contre 1 sur le bandeau rouge des
+      dernières minutes — c'est-à-dire au moment précis où l'élève regarde le
+      temps qui lui reste. Le bandeau passe son texte en blanc quand il devient
+      rouge ; ce composant s'aligne dessus. Une opacité, même légère, suffisait
+      à repasser sous le seuil : le temps restant se lit ou ne se lit pas.
+    */
     <div
       className={`flex items-center gap-1.5 text-xs ${
-        isConnected ? "text-gray-400" : "text-red-500"
+        isConnected ? "" : "font-medium"
       }`}
       title={isConnected ? "Connecté au serveur" : "Connexion perdue"}
     >

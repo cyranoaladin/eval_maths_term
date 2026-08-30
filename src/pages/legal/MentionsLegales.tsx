@@ -61,7 +61,7 @@ export default function MentionsLegales() {
           <h2 className="text-base font-semibold text-slate-900">Données personnelles</h2>
           <p>
             Le traitement des données est décrit sur la page{" "}
-            <Link to="/confidentialite" className="text-blue-700 hover:underline">
+            <Link to="/confidentialite" className="text-blue-700 underline underline-offset-2">
               confidentialité
             </Link>
             .

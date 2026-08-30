@@ -10,12 +10,13 @@
  * différemment sous Gecko et WebKit, et les élèves composent sur le matériel
  * dont ils disposent.
  */
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import {
   brouillonsDuServeur,
   collecterErreurs,
   focaliserMath,
   formulesAffichees,
+  test,
 } from "./fixtures";
 
 const EVALUATION_ID = 1;
@@ -193,6 +194,66 @@ test.describe("parcours élève", () => {
     ).toBe(true);
     expect(trouves.some((v) => v.includes("3x+1")), etat).toBe(true);
 
+    expect(erreurs, erreurs.join(" | ")).toEqual([]);
+  });
+
+  test("un rechargement sur réseau lent n'annonce pas une épreuve terminée", async ({
+    page,
+  }) => {
+    /*
+      Le minuteur démarrait avant de connaître la durée de l'épreuve. Or celle-ci
+      vaut zéro le temps qu'elle revienne du serveur, et un minuteur de zéro
+      seconde est un minuteur déjà écoulé : l'élève voyait 00:00 sur bandeau
+      rouge — l'affichage de la dernière minute — au moment précis où il
+      reprenait sa copie après un rechargement. Le minuteur déclenchait aussi,
+      dans cet état, la remise automatique pour temps dépassé.
+
+      En local, la durée revient en vingt millisecondes et rien ne se voyait.
+      Sur le réseau d'un établissement, elle met plus d'une seconde. Ce test
+      retarde délibérément cette seule requête et regarde ce que l'élève voit
+      pendant ce temps-là — une assertion posée après coup ne verrait rien,
+      puisque tout se remet en ordre dès que la durée arrive.
+    */
+    const erreurs = collecterErreurs(page);
+    await demarrer(page, "E2E Réseau lent");
+
+    await page.route(/question\.getPublicInfo/, async (route) => {
+      await new Promise((suite) => setTimeout(suite, 4_000));
+      await route.continue();
+    });
+    await page.reload({ waitUntil: "commit" });
+
+    const vus: string[] = [];
+    const urls = new Set<string>();
+    for (let i = 0; i < 24; i++) {
+      await page.waitForTimeout(250);
+      const etat = await page
+        .evaluate(() => {
+          const badge = document.querySelector(".sticky .inline-flex");
+          const barre = document.querySelector(".sticky.top-0") as HTMLElement | null;
+          return {
+            url: location.pathname,
+            minuteur: badge?.textContent?.trim() ?? "",
+            fond: barre ? getComputedStyle(barre).backgroundColor : "",
+          };
+        })
+        .catch(() => ({ url: "", minuteur: "", fond: "" }));
+      urls.add(etat.url);
+      if (etat.minuteur) vus.push(`${etat.minuteur} sur ${etat.fond}`);
+      if (vus.length >= 3) break;
+    }
+
+    expect(vus.length, "le minuteur doit finir par s'afficher").toBeGreaterThan(0);
+    expect(
+      vus.filter((v) => v.startsWith("00:00")),
+      `l'élève a vu son épreuve annoncée terminée : ${vus.join(" | ")}`,
+    ).toEqual([]);
+    expect(
+      [...urls].filter((u) => u.includes("results")),
+      "la copie ne doit pas être remise toute seule",
+    ).toEqual([]);
+
+    await page.unroute(/question\.getPublicInfo/);
     expect(erreurs, erreurs.join(" | ")).toEqual([]);
   });
 

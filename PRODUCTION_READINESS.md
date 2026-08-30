@@ -145,9 +145,9 @@ Huit procédures ne sont appelées par aucun écran :
 | P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | IN_PROGRESS | cinq jobs écrits, aucun `continue-on-error` ; reste à les voir passer sur GitHub |
 | P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | IN_PROGRESS | 857 tests, 39 parcours ; `fileParallelism: false` rétabli (l'option était ignorée depuis Vitest 4) |
 | P22 | Couverture : 100 % sur les domaines critiques, ≥ 95 % global serveur | IN_PROGRESS | seuils actuels : 100 % sur `api/grading`, 80 % global |
-| P23 | Accessibilité — 0 violation critique ou sérieuse | IN_PROGRESS | — |
+| P23 | Accessibilité — 0 violation critique ou sérieuse | **PASS** | `e2e/accessibilite.spec.ts` : axe sur 10 écrans, 3 moteurs, plus deux parcours au clavier seul — voir §7 |
 | P24 | Régression visuelle sur les écrans critiques | IN_PROGRESS | — |
-| P25 | Aucune erreur navigateur inattendue tolérée | IN_PROGRESS | `collecterErreurs` en place ; à généraliser |
+| P25 | Aucune erreur navigateur inattendue tolérée | **PASS** | surveillance installée sur chaque test sans qu'il ait à la demander ; exceptions, pageerror, `console.error` et 5xx ; aucun filtre global |
 | P26 | 0 code mort, 0 dépendance inutilisée, 0 duplication métier | **PASS** | `knip` ne signale plus rien ; `jscpd` 1,34 % — voir §4 |
 | P27 | `main` protégée, tags protégés | IN_PROGRESS | — |
 | P28 | Sauvegarde et restauration éprouvées | IN_PROGRESS | — |
@@ -158,7 +158,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 19 / 34. IN_PROGRESS : 13. BLOCKED_EXTERNAL : 2.**
+**PASS : 21 / 34. IN_PROGRESS : 11. BLOCKED_EXTERNAL : 2.**
 
 ---
 
@@ -266,3 +266,43 @@ avec les noms et les notes, et signale par ailleurs quatre états anormaux qui
 n'entraînent pas de contrainte — notes hors barème, notes sur 20 hors bornes,
 copies finies avant d'avoir commencé, copies rendues dont les réponses n'ont pas
 de date de correction.
+
+
+---
+
+## 7. Accessibilité : ce que l'audit a trouvé
+
+Un élève ne choisit ni son matériel ni ses capacités, et une épreuve ne se
+repasse pas. Le seuil est « aucune violation critique, aucune violation
+sérieuse » sur dix écrans et trois moteurs, plus deux parcours menés au clavier
+seul — l'élève qui compose, l'enseignant qui circule.
+
+Ce que le premier passage a trouvé, et qui était là depuis le début :
+
+| Trouvé | Conséquence |
+|---|---|
+| Le temps restant en gris clair sur le bandeau rouge des dernières minutes — 1,9 contre 1 | Illisible au moment précis où l'élève le regarde |
+| Quatre barres de progression sans nom accessible | Un lecteur d'écran annonce « barre de progression », sans dire de quoi |
+| Le rouge d'alerte portant du texte blanc — 3,76 contre 1 | Sous le seuil de 4,5 exigé pour du texte |
+| Le bouton « Terminer » en vert 600 — 3,15 contre 1 | Le bouton qui rend la copie |
+| Le champ mathématique : puits de saisie sans nom | « Édition de texte », sans dire de quelle question |
+| Son texte de substitution — 1,87 contre 1 | Un texte d'aide qu'on ne peut pas lire n'aide personne |
+| Les formules KaTeX : `aria-label` sur un `<span>` sans rôle | L'étiquette était purement ignorée ; restait l'énoncé glyphe par glyphe |
+| Les liens des pages légales, distingués par la seule couleur | Invisibles pour qui ne perçoit pas cette différence |
+| Gris 400 sur blanc, à cinq endroits — 2,53 contre 1 | Texte secondaire illisible |
+
+**Une seule exception, nommée.** `<math-field>` est un élément focusable qui
+contient un puits de saisie lui-même focusable : axe y voit des contrôles
+imbriqués, et c'est exact. C'est aussi la façon dont MathLive est construit, et
+nous n'y pouvons rien sans le réécrire. Plutôt que de désactiver la règle
+partout ou d'exclure le champ de tout examen, l'audit se fait en deux passes :
+le reste de la page avec la règle, le champ avec toutes les autres.
+
+**Un défaut trouvé en chemin, sans rapport avec l'accessibilité.** L'audit a
+montré le bandeau rouge de dernière minute sur une épreuve qui commençait. Le
+minuteur démarrait avant de connaître la durée : celle-ci vaut zéro le temps
+qu'elle revienne du serveur, et un minuteur de zéro seconde est un minuteur
+déjà écoulé. L'élève voyait 00:00 sur fond rouge en reprenant sa copie après un
+rechargement, et le minuteur déclenchait dans cet état la remise automatique
+pour temps dépassé. En local la durée revient en vingt millisecondes et rien ne
+se voyait ; sur le réseau d'un établissement, elle met plus d'une seconde.

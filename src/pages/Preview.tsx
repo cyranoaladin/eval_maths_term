@@ -128,7 +128,7 @@ export default function Preview() {
                         {idx + 1}
                       </span>
                       <span className="truncate flex-1">{getTypeLabel(q.type)}</span>
-                      <span className="text-xs text-slate-400">{q.points}pt</span>
+                      <span className="text-xs text-slate-600">{q.points}pt</span>
                     </button>
                   ))}
                 </div>
@@ -174,7 +174,7 @@ export default function Preview() {
                       </Badge>
                     )}
                   </div>
-                  <span className="text-sm text-slate-400">
+                  <span className="text-sm text-slate-600">
                     Question {currentQuestion + 1} / {evaluationQuestions.length}
                   </span>
                 </div>
@@ -322,7 +322,7 @@ export default function Preview() {
                       {evaluationQuestions.filter((q) => q.type === "qcm").length}
                     </p>
                     <p className="text-xs text-slate-500">QCM</p>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-600">
                       {evaluationQuestions.filter((q) => q.type === "qcm").reduce((s, q) => s + q.points, 0)} pts
                     </p>
                   </div>
@@ -331,7 +331,7 @@ export default function Preview() {
                       {evaluationQuestions.filter((q) => q.type === "short_answer").length}
                     </p>
                     <p className="text-xs text-slate-500">Réponses courtes</p>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-600">
                       {evaluationQuestions.filter((q) => q.type === "short_answer").reduce((s, q) => s + q.points, 0)} pts
                     </p>
                   </div>
@@ -340,7 +340,7 @@ export default function Preview() {
                       {evaluationQuestions.filter((q) => q.type === "true_false").length}
                     </p>
                     <p className="text-xs text-slate-500">Vrai / Faux</p>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-600">
                       {evaluationQuestions.filter((q) => q.type === "true_false").reduce((s, q) => s + q.points, 0)} pts
                     </p>
                   </div>

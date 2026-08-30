@@ -453,14 +453,18 @@ export default function Evaluation() {
               variant="default"
               size="sm"
               onClick={() => setShowSubmitConfirm(true)}
-              className="bg-green-600 hover:bg-green-700"
+              className="bg-green-700 hover:bg-green-800"
             >
               <Send className="w-4 h-4 mr-1" />
               Terminer
             </Button>
           </div>
         </div>
-        <Progress value={progress} className="h-1 rounded-none" />
+        <Progress
+          value={progress}
+          aria-label={`Temps écoulé : ${Math.round(progress)} %`}
+          className="h-1 rounded-none"
+        />
       </div>
 
       {/* Contenu principal */}
@@ -560,7 +564,7 @@ export default function Evaluation() {
                               !(prev[currentQ.id] ?? currentQ.inputMode === "text"),
                           }))
                         }
-                        className="text-xs text-blue-700 hover:underline"
+                        className="text-xs text-blue-700 underline underline-offset-2"
                       >
                         {(saisieClavier[currentQ.id] ??
                           currentQ.inputMode === "text")
@@ -649,7 +653,7 @@ export default function Evaluation() {
                       <ChevronRight className="w-4 h-4 ml-1" />
                     </Button>
                   ) : (
-                    <Button onClick={() => setShowSubmitConfirm(true)} className="bg-green-600 hover:bg-green-700">
+                    <Button onClick={() => setShowSubmitConfirm(true)} className="bg-green-700 hover:bg-green-800">
                       <Send className="w-4 h-4 mr-1" />
                       Terminer
                     </Button>
@@ -679,7 +683,7 @@ export default function Evaluation() {
             <Button variant="outline" onClick={() => setShowSubmitConfirm(false)}>
               Continuer l'évaluation
             </Button>
-            <Button onClick={() => handleSubmit(false)} className="bg-green-600 hover:bg-green-700">
+            <Button onClick={() => handleSubmit(false)} className="bg-green-700 hover:bg-green-800">
               Confirmer et soumettre
             </Button>
           </div>

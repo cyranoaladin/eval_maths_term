@@ -88,7 +88,11 @@ export default function Results() {
             </p>
 
             <div className="w-full max-w-md mx-auto">
-              <Progress value={percentage} className="h-3" />
+              <Progress
+                value={percentage}
+                aria-label={`Note obtenue : ${Math.round(percentage)} % du barème`}
+                className="h-3"
+              />
               <p className="text-sm text-slate-500 mt-2">{percentage}% de réussite</p>
             </div>
 

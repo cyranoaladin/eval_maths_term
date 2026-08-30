@@ -24,22 +24,65 @@ export function cookieEnseignant(): string {
   return cookieCache;
 }
 
-/** Erreurs console et exceptions collectées pendant un test. */
+/**
+ * Tout ce qu'un navigateur signale et qu'on ne devrait pas voir.
+ *
+ * Exceptions non rattrapées, erreurs de console — les avertissements React
+ * critiques en font partie —, et réponses en 5xx. Aucun filtre global : une
+ * erreur attendue se déclare dans le test qui l'attend, avec le motif exact.
+ * Un filtre posé ici masquerait la même chose partout, y compris là où
+ * personne ne l'a prévue.
+ */
 export function collecterErreurs(page: Page): string[] {
   const erreurs: string[] = [];
   page.on("pageerror", (e) => erreurs.push(`pageerror: ${e.message}`));
   page.on("console", (m) => {
     if (m.type() !== "error") return;
-    const texte = m.text();
-    // Le navigateur réclame une icône que le serveur de développement ne sert
-    // pas : sans rapport avec l'application.
-    if (/favicon\.ico/.test(texte)) return;
-    erreurs.push(`console: ${texte}`);
+    erreurs.push(`console: ${m.text()}`);
+  });
+  page.on("response", (r) => {
+    if (r.status() >= 500) erreurs.push(`http ${r.status()}: ${r.url()}`);
   });
   return erreurs;
 }
 
-export const test = base.extend<{ enseignant: Page }>({
+/** Ce qu'un test peut tolérer, et rien de plus. */
+export interface Surveillance {
+  /** Déclare une anomalie attendue, avec le motif qui la reconnaît. */
+  tolerer(motif: RegExp, raison: string): void;
+}
+
+export const test = base.extend<{ enseignant: Page; surveillance: Surveillance }>({
+  /**
+   * Installée sur chaque test, sans qu'il ait à la demander.
+   *
+   * La surveillance des erreurs navigateur existait, mais il fallait y penser :
+   * un test qui l'oubliait passait sur une page qui hurlait dans la console.
+   * Elle est maintenant automatique, et c'est le test qui déclare ce qu'il
+   * attend — pas l'inverse.
+   */
+  surveillance: [
+    async ({ page }, use) => {
+      const anomalies = collecterErreurs(page);
+      const tolerances: Array<{ motif: RegExp; raison: string }> = [];
+
+      await use({
+        tolerer(motif, raison) {
+          tolerances.push({ motif, raison });
+        },
+      });
+
+      const restantes = anomalies.filter(
+        (a) => !tolerances.some((t) => t.motif.test(a)),
+      );
+      expect(
+        restantes,
+        `Le navigateur a signalé ce que personne n'attendait :\n  ${restantes.join("\n  ")}`,
+      ).toEqual([]);
+    },
+    { auto: true },
+  ],
+
   enseignant: async ({ browser, baseURL }, use) => {
     const ctx = await browser.newContext({ baseURL });
     await ctx.addCookies([

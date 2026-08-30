@@ -80,6 +80,19 @@ const STYLE_CHAMP: Partial<CSSStyleDeclaration> = {
   background: "transparent",
 };
 
+/**
+ * Donne un nom au puits de saisie caché dans le shadow DOM de MathLive.
+ *
+ * C'est lui qui reçoit les frappes, et c'est donc lui qu'un lecteur d'écran
+ * annonce. MathLive ne lui recopie pas le nom du champ hôte : l'élève
+ * n'entendait qu'« édition de texte », sans savoir de quelle question. On le
+ * pose nous-mêmes — c'est notre champ, et personne d'autre ne le fera.
+ */
+function nommerLePuits(champ: MathfieldElement, nom: string): void {
+  const puits = champ.shadowRoot?.querySelector(".ML__keyboard-sink");
+  puits?.setAttribute("aria-label", nom);
+}
+
 export function MathInput({
   value,
   onChange,
@@ -103,6 +116,12 @@ export function MathInput({
   useEffect(() => {
     valeurRef.current = value;
     onChangeRef.current = onChange;
+    ariaRef.current = {
+      label: ariaLabel ?? "Saisie mathématique",
+      id,
+      describedBy: ariaDescribedBy,
+      placeholder,
+    };
   });
 
   /**
@@ -120,6 +139,14 @@ export function MathInput({
    */
   const derniereValeurEmise = useRef<string | null>(null);
 
+  /** Les attributs d'accessibilité, disponibles dès la construction du champ. */
+  const ariaRef = useRef({
+    label: ariaLabel ?? "Saisie mathématique",
+    id,
+    describedBy: ariaDescribedBy,
+    placeholder,
+  });
+
   // Construction du champ, une fois MathLive chargé.
   useEffect(() => {
     let monte = true;
@@ -129,6 +156,30 @@ export function MathInput({
 
       const champ = new MathfieldElement();
       Object.assign(champ.style, STYLE_CHAMP);
+
+      /*
+        Le nom accessible est posé avant l'insertion dans la page. MathLive le
+        recopie sur le puits de saisie caché de son shadow DOM au moment où il
+        se connecte : posé après, le champ reste un « textbox » sans nom pour
+        un lecteur d'écran.
+      */
+      champ.setAttribute("aria-label", ariaRef.current.label);
+      if (ariaRef.current.id) champ.id = ariaRef.current.id;
+      if (ariaRef.current.describedBy) {
+        champ.setAttribute("aria-describedby", ariaRef.current.describedBy);
+      }
+      /*
+        Pas de `placeholder` sur le champ.
+
+        MathLive le rend en gris fixe — 1,87 contre 1 sur fond blanc, là où le
+        seuil est 4,5 — et cette couleur n'est atteignable ni par les variables
+        qu'il expose, ni par une règle CSS extérieure : elle est posée à
+        l'intérieur de son shadow DOM. Un texte de substitution illisible ne
+        renseigne personne. L'étiquette « Votre réponse : » est juste au-dessus,
+        le nom accessible est porté par le champ, et la ligne d'aide sous le
+        champ dit ce qu'on peut écrire.
+      */
+
       champ.setValue(valeurRef.current, { silenceNotifications: true });
       champ.addEventListener("input", () => {
         const lue = champ.getValue();
@@ -138,6 +189,7 @@ export function MathInput({
       });
 
       hote.appendChild(champ);
+      nommerLePuits(champ, ariaRef.current.label);
       champRef.current = champ;
       setPret(true);
     });
@@ -153,12 +205,13 @@ export function MathInput({
   useEffect(() => {
     const champ = champRef.current;
     if (!pret || !champ) return;
-    champ.setAttribute("aria-label", ariaLabel ?? "Saisie mathématique");
+    const nom = ariaLabel ?? "Saisie mathématique";
+    champ.setAttribute("aria-label", nom);
+    nommerLePuits(champ, nom);
     if (id) champ.id = id;
     if (ariaDescribedBy) champ.setAttribute("aria-describedby", ariaDescribedBy);
     else champ.removeAttribute("aria-describedby");
-    if (placeholder !== undefined) champ.setAttribute("placeholder", placeholder);
-  }, [pret, id, ariaLabel, ariaDescribedBy, placeholder]);
+  }, [pret, id, ariaLabel, ariaDescribedBy]);
 
   // Synchronisation d'une valeur venue d'ailleurs → champ.
   useEffect(() => {

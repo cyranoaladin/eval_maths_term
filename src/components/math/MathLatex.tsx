@@ -133,8 +133,15 @@ export function MathLatex({ tex, display = false, auto = false, className }: Mat
             );
           }
           return (
+            /*
+              `role="math"` avec l'étiquette : KaTeX produit un enchevêtrement
+              de <span> que personne ne peut écouter. Sans rôle, l'étiquette
+              était purement et simplement ignorée — un lecteur d'écran énonçait
+              les glyphes un à un, ou rien du tout.
+            */
             <span
               key={idx}
+              role="math"
               dangerouslySetInnerHTML={{ __html: html }}
               aria-label={part.content}
             />
@@ -160,6 +167,7 @@ export function MathLatex({ tex, display = false, auto = false, className }: Mat
   if (display) {
     return (
       <div
+        role="math"
         className={`my-2 overflow-x-auto text-center ${className ?? ""}`}
         dangerouslySetInnerHTML={{ __html: html }}
         aria-label={tex}
@@ -169,6 +177,7 @@ export function MathLatex({ tex, display = false, auto = false, className }: Mat
 
   return (
     <span
+      role="math"
       className={className}
       dangerouslySetInnerHTML={{ __html: html }}
       aria-label={tex}

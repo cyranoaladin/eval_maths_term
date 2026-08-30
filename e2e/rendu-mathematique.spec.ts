@@ -5,7 +5,8 @@
  * correct sous Chromium ne dit rien de Safari. Ces tests s'exécutent sur les
  * trois moteurs.
  */
-import { test, expect, collecterErreurs } from "./fixtures";
+import { expect } from "@playwright/test";
+import { collecterErreurs, test } from "./fixtures";
 
 test.describe("rendu LaTeX", () => {
   test("l'éditeur affiche toutes les familles de formules sans erreur", async ({ enseignant: page }) => {

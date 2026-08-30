@@ -235,7 +235,11 @@ export default function PaperEntry() {
             <CardTitle className="text-sm flex items-center gap-1.5">
               <Users className="h-4 w-4" /> Élèves
             </CardTitle>
-            <Progress value={(saisies / Math.max(1, data.copies.length)) * 100} className="h-1.5 mt-2" />
+            <Progress
+              value={(saisies / Math.max(1, data.copies.length)) * 100}
+              aria-label={`Copies saisies : ${saisies} sur ${data.copies.length}`}
+              className="h-1.5 mt-2"
+            />
           </CardHeader>
           <CardContent className="p-2 space-y-0.5 max-h-[70vh] overflow-y-auto">
             {data.copies.map((c) => (

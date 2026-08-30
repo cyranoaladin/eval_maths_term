@@ -139,7 +139,11 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <Progress value={(t.saisies / Math.max(1, t.copies)) * 100} className="h-1.5" />
+              <Progress
+                value={(t.saisies / Math.max(1, t.copies)) * 100}
+                aria-label={`Copies saisies : ${t.saisies} sur ${t.copies}`}
+                className="h-1.5"
+              />
 
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="text-muted-foreground">

@@ -20,8 +20,8 @@
  * un tableau large, un bloc de code — est légitime et n'est pas compté : c'est
  * le corps de page qui ne doit pas déborder.
  */
-import { test, expect, type Page } from "@playwright/test";
-import { collecterErreurs, cookieEnseignant, focaliserMath } from "./fixtures";
+import { expect, type Page } from "@playwright/test";
+import { collecterErreurs, cookieEnseignant, focaliserMath, test } from "./fixtures";
 
 /** Surfaces réellement rencontrées, du téléphone à la tablette. */
 const SURFACES = [

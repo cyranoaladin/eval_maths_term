@@ -14,7 +14,7 @@ const STATUS_CONFIG: Record<
   idle: {
     label: "Brouillon sauvegardé",
     icon: <Check className="h-3 w-3" />,
-    className: "text-gray-400",
+    className: "text-gray-500",
   },
   saving: {
     label: "Sauvegarde…",

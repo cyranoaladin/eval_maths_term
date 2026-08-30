@@ -57,7 +57,7 @@ export function LiveDashboard({ evaluationId }: LiveDashboardProps) {
         </div>
         <div className="flex items-center gap-3">
           {serverTime && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-gray-500">
               Mis à jour : {new Date(serverTime).toLocaleTimeString("fr-FR")}
             </span>
           )}
@@ -83,7 +83,7 @@ export function LiveDashboard({ evaluationId }: LiveDashboardProps) {
       )}
 
       {sessions.length === 0 && !isLoading && (
-        <div className="py-10 text-center text-sm text-gray-400">
+        <div className="py-10 text-center text-sm text-gray-500">
           Aucune session pour cette évaluation.
         </div>
       )}

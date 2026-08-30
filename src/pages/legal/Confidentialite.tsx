@@ -94,7 +94,7 @@ export default function Confidentialite() {
 
         <p className="text-xs text-slate-500 pt-2">
           Voir aussi les{" "}
-          <Link to="/mentions-legales" className="text-blue-700 hover:underline">
+          <Link to="/mentions-legales" className="text-blue-700 underline underline-offset-2">
             mentions légales
           </Link>
           .
