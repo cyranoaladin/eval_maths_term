@@ -865,16 +865,12 @@ fragile.
 - **Pas d'anti-copiage par permutation sur papier.** Conséquence assumée de la
   saisie manuelle. Pour avoir les deux, il faudrait enregistrer la permutation
   de chaque copie et la rejouer à la saisie.
-- **Aucun export PDF des résultats** (critère 18). Le CSV existe.
-- **Aucun journal d'audit** des modifications de notes (critère 17).
 - **Limitation de débit en mémoire** : ne tient pas sur plusieurs instances.
-- **`auto-multiple-choice` absent de l'image Docker** : il tire plusieurs
-  gigaoctets de LaTeX. L'interface signale l'impression indisponible plutôt que
-  d'échouer ; recette d'image dérivée dans `DEPLOYMENT.md`.
+- **L'image de production pèse environ 3,3 Go** : `auto-multiple-choice` tire
+  une chaîne LaTeX complète. C'est le prix d'une image unique qui sait imprimer
+  — un `docker compose up -d` qui démarrerait une application incapable
+  d'imprimer serait pire. L'étage `sans-impression` reste constructible.
 - **Le service RAG ne démarre pas** — voir §9.3.
-- **Trois avertissements ESLint** subsistent (`react-hooks/exhaustive-deps` sur
-  des mutations tRPC volontairement hors dépendances).
-- **Secrets de session à valeur par défaut** en développement.
 - Le tableau de bord `/dashboard` reste centré sur le mode en ligne et n'a pas
   été repensé pour l'atelier papier.
 
@@ -882,21 +878,29 @@ fragile.
 
 ## 16. Déploiement
 
-- `Dockerfile` multi-étapes (node:22-slim), utilisateur non privilégié,
-  healthcheck sur `/api/health`. **Image construite et exécutée avec succès** :
-  tRPC répond, la base est jointe, le conteneur passe `healthy`.
+- `Dockerfile` multi-étapes, base épinglée **par empreinte** (`node:22-trixie-slim`),
+  utilisateur non privilégié, ni npm ni npx ni yarn dans le runtime, healthcheck
+  sur `/api/ready`, `STOPSIGNAL SIGTERM`. L'étage `production` — le défaut —
+  embarque `auto-multiple-choice` : c'est le même artefact que la CI construit,
+  que la recette éprouve et que le compose démarre.
 - `docker-compose.yml` — production : MySQL non publié sur l'hôte, application
   derrière `127.0.0.1:3000`, volume dédié aux tirages. Secrets obligatoires
   (`:?`) : un démarrage avec des valeurs par défaut signerait des jetons
   forgeables.
 - `docker-compose.dev.yml` — MySQL seul, port 3307. Aucun mot de passe versionné :
   ils viennent du `.env` produit par `scripts/bootstrap-dev.sh`.
-- `.github/workflows/ci.yml` — trois travaux : qualité (types, style, tests,
-  build), **création de la base depuis le dépôt** (garde-fou contre la
-  régression n° 3), construction de l'image. **Jamais exécuté** : demande une
-  poussée.
+- `.github/workflows/ci.yml` — cinq travaux, aucun tolérant l'échec, aucune
+  étape en `continue-on-error` : **Qualité** (types, style, 878 tests,
+  couverture, build), **Parcours navigateur** (build de production, base isolée,
+  migrations, jeu de données déterministe, serveur de production, trois moteurs,
+  `retries=0`), **Migrations** (base vierge montée depuis le dépôt, rejeu sans
+  effet, cohérence des barèmes), **Image de production** (construction puis les
+  27 étapes de la recette sur cette image-là), **Sécurité** (analyse de secrets
+  sur tout l'historique, vulnérabilités de production, nomenclature CycloneDX,
+  analyse de l'image).
 - `DEPLOYMENT.md` — secrets, reverse proxy (délai 300 s, la génération prenant
-  une à deux minutes), image dérivée avec AMC, sauvegardes.
+  une à deux minutes), épinglage par empreinte, chaîne d'approvisionnement,
+  sauvegardes.
 
 **Redis a été volontairement écarté** du compose : la limitation de débit est en
 mémoire et Redis ne servirait qu'en multi-instances.

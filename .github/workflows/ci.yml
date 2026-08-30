@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "release/*", "phase-*"]
+    branches: [main, "release/*"]
   pull_request:
     branches: [main]
 
@@ -14,15 +14,18 @@ concurrency:
 permissions:
   contents: read
 
+# Aucun job ne tolère l'échec, et aucune étape ne porte `continue-on-error` :
+# un contrôle qu'on peut ignorer n'est pas un contrôle.
+
 jobs:
+  # ── Types, style, tests, couverture, build ──────────────────────────────────
   qualite:
-    name: Types, style, tests, build
+    name: Qualité
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -40,44 +43,10 @@ jobs:
       # hasard à chaque exécution, masqués dans le journal, et meurent avec le
       # runner : aucune valeur écrite dans ce dépôt n'ouvre quoi que ce soit.
       - name: Base de données éphémère
-        run: |
-          MDP="$(openssl rand -hex 24)"
-          echo "::add-mask::$MDP"
-          docker run -d --name mysql-ci \
-            -e MYSQL_ROOT_PASSWORD="$MDP" \
-            -e MYSQL_DATABASE=eval_maths_test \
-            -p 127.0.0.1:3306:3306 mysql:8.4
-          for _ in $(seq 1 60); do
-            docker exec mysql-ci mysqladmin ping -h 127.0.0.1 -u root -p"$MDP" \
-              >/dev/null 2>&1 && break
-            sleep 2
-          done
-          docker exec mysql-ci mysqladmin ping -h 127.0.0.1 -u root -p"$MDP" >/dev/null
-          URL="mysql://root:${MDP}@127.0.0.1:3306/eval_maths_test"
-          {
-            echo "DATABASE_URL=$URL"
-            echo "TEST_DATABASE_URL=$URL"
-          } >> "$GITHUB_ENV"
+        run: bash .github/base-ephemere.sh eval_maths_test
 
-      # `api/lib/env.ts` valide la configuration au chargement : sans elle,
-      # tests et build échouent avant de commencer. Les secrets sont tirés au
-      # hasard eux aussi — une valeur fixe dans un fichier de CI est une valeur
-      # publique, même si elle ne sert qu'aux tests.
       - name: Secrets éphémères
-        run: |
-          for nom in APP_SECRET TEACHER_SESSION_SECRET STUDENT_SESSION_SECRET; do
-            valeur="$(openssl rand -hex 32)"
-            echo "::add-mask::$valeur"
-            echo "$nom=$valeur" >> "$GITHUB_ENV"
-          done
-          {
-            echo "NODE_ENV=test"
-            echo "APP_ID=ci"
-            echo "KIMI_AUTH_URL=http://localhost:9999"
-            echo "KIMI_OPEN_URL=http://localhost:9998"
-            echo "ALLOWED_ORIGINS=http://localhost:3000"
-            echo "LOG_LEVEL=error"
-          } >> "$GITHUB_ENV"
+        run: bash .github/secrets-ephemeres.sh
 
       - name: Vérification des types
         run: npm run check
@@ -91,14 +60,12 @@ jobs:
       - name: Build
         run: npm run build
 
-  migrations:
-    name: Base créée depuis le dépôt
+  # ── Parcours navigateur, contre le build de production ──────────────────────
+  e2e:
+    name: Parcours navigateur
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 40
 
-    # Garde-fou : les migrations ne contenaient que des ALTER sans journal, et
-    # aucune base ne pouvait être construite depuis le dépôt. Ce travail vérifie
-    # qu'une base vierge se monte et se peuple.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -109,51 +76,181 @@ jobs:
       - run: npm ci --no-audit --no-fund
 
       - name: Base de données éphémère
-        run: |
-          MDP="$(openssl rand -hex 24)"
-          echo "::add-mask::$MDP"
-          docker run -d --name mysql-ci \
-            -e MYSQL_ROOT_PASSWORD="$MDP" \
-            -e MYSQL_DATABASE=eval_maths \
-            -p 127.0.0.1:3306:3306 mysql:8.4
-          for _ in $(seq 1 60); do
-            docker exec mysql-ci mysqladmin ping -h 127.0.0.1 -u root -p"$MDP" \
-              >/dev/null 2>&1 && break
-            sleep 2
-          done
-          docker exec mysql-ci mysqladmin ping -h 127.0.0.1 -u root -p"$MDP" >/dev/null
-          echo "DATABASE_URL=mysql://root:${MDP}@127.0.0.1:3306/eval_maths" >> "$GITHUB_ENV"
+        run: bash .github/base-ephemere.sh eval_maths
 
       - name: Secrets éphémères
-        run: |
-          for nom in APP_SECRET TEACHER_SESSION_SECRET STUDENT_SESSION_SECRET; do
-            valeur="$(openssl rand -hex 32)"
-            echo "::add-mask::$valeur"
-            echo "$nom=$valeur" >> "$GITHUB_ENV"
-          done
-          {
-            echo "APP_ID=ci"
-            echo "KIMI_AUTH_URL=http://localhost:9999"
-            echo "KIMI_OPEN_URL=http://localhost:9998"
-            echo "LOG_LEVEL=error"
-          } >> "$GITHUB_ENV"
+        run: bash .github/secrets-ephemeres.sh
 
-      - name: Appliquer les migrations puis semer
+      - name: Navigateurs
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Construire l'artefact de production
+        run: npm run build
+
+      # Migrations, puis un jeu de données déterministe : sans lui, les écrans
+      # enseignant s'appuyaient sur un tirage créé à la main un jour dans une
+      # base de développement, et échouaient sur une base neuve.
+      - name: Migrations et jeu de données
+        run: |
+          node dist/migrate.js
+          node dist/seed.js
+          npx tsx scripts/dev-session.ts
+          npx tsx scripts/fixtures-e2e.ts
+
+      # Le serveur de production, pas celui de développement : la politique de
+      # contenu, le découpage du bundle et les consignes de cache n'y sont pas
+      # les mêmes, et trois défauts s'y étaient déjà cachés.
+      - name: Démarrer le serveur de production
+        run: |
+          NODE_ENV=production PORT=3200 \
+          PUBLIC_BASE_URL=http://127.0.0.1:3200 \
+          ALLOWED_ORIGINS=http://127.0.0.1:3200,http://localhost:3200 \
+          node dist/boot.js > serveur.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:3200/api/ready >/dev/null && exit 0
+            sleep 1
+          done
+          echo "Le serveur n'est pas devenu disponible :"; cat serveur.log; exit 1
+
+      # `retries` reste à zéro : une instabilité masquée par une reprise est une
+      # instabilité qu'on retrouvera un jour d'épreuve.
+      - name: Chromium, Firefox, WebKit
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3200
+        run: npx playwright test --retries=0
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  # ── Une base vierge se monte depuis le dépôt ────────────────────────────────
+  migrations:
+    name: Migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Base de données éphémère
+        run: bash .github/base-ephemere.sh eval_maths
+
+      - name: Secrets éphémères
+        run: bash .github/secrets-ephemeres.sh
+
+      # Garde-fou : les migrations ne contenaient que des ALTER sans journal, et
+      # aucune base ne pouvait être construite depuis le dépôt.
+      - name: Monter une base vierge et la peupler
         run: |
           npx drizzle-kit migrate
           npx tsx db/seed.ts
 
+      # Rejouer sur une base déjà migrée ne doit rien changer : c'est ce qui
+      # rend une mise à jour de production reproductible.
+      - name: Rejouer les migrations est sans effet
+        run: npx drizzle-kit migrate
+
+      # Les réponses annoncées par les questions et les barèmes qui les notent
+      # doivent s'accorder — sinon toute une classe a faux sans qu'on le sache.
+      - name: Cohérence des barèmes
+        run: npx tsx scripts/audit-coherence-questions.ts
+
+  # ── L'image qui sera déployée, éprouvée telle quelle ────────────────────────
   image:
     name: Image de production
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
+
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+
+      # L'image de production embarque `auto-multiple-choice` : c'est le même
+      # artefact qui est construit ici, éprouvé par la recette et démarré par le
+      # compose. Il y en avait deux, et ce qui était vérifié n'était pas ce qui
+      # était déployé.
       - name: Construire l'image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: false
+          load: true
+          tags: atelier-qcm:ci
+          build-args: |
+            APP_VERSION=${{ github.ref_name }}
+            GIT_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Vingt-sept vérifications sur le runtime réel : base vierge, migrations
+      # depuis l'image, garde-fous de production, démarrage, chaîne papier
+      # complète avec une génération AMC réelle.
+      - name: Recette de mise en service
+        run: RECETTE_IMAGE=atelier-qcm:ci bash scripts/recette-docker.sh
+
+  # ── Chaîne d'approvisionnement ──────────────────────────────────────────────
+  securite:
+    name: Sécurité
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # L'analyse de secrets lit l'historique, pas seulement la pointe.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      # Chaque signalement écarté l'est nominativement, dans `.gitleaksignore`,
+      # avec sa raison : ni règle désactivée, ni chemin exclu, ni motif ignoré.
+      - name: Analyse de secrets
+        run: |
+          docker run --rm -v "$PWD:/repo" \
+            ghcr.io/gitleaks/gitleaks:v8.29.0 \
+            detect --source=/repo --redact --exit-code 1
+
+      - name: Vulnérabilités des dépendances de production
+        run: npm run audit:prod
+
+      - name: Nomenclature logicielle
+        run: npm run sbom
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+          retention-days: 90
+
+      - uses: docker/setup-buildx-action@v3
+      - name: Construire l'image à analyser
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: atelier-qcm:securite
+          cache-from: type=gha
+
+      # Le seuil est « aucune vulnérabilité élevée ou critique pour laquelle un
+      # correctif existe ». Une faille sans correctif amont ne se répare pas en
+      # la déclarant inacceptable ; elle est listée, et la porte se ferme d'elle
+      # même le jour où un correctif paraît.
+      - name: Analyse de l'image
+        run: bash scripts/scan-image.sh atelier-qcm:securite

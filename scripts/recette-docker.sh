@@ -14,8 +14,13 @@
 set -uo pipefail
 
 PROJET="recette-eval-$$"
-IMAGE_BASE="eval-maths:recette"
-IMAGE_AMC="eval-maths-amc:recette"
+# Une seule image, celle qui sera déployée. La recette éprouvait auparavant
+# l'image avec impression pendant que le compose de production démarrait celle
+# sans : ce qui était vérifié n'était pas ce qui tournait.
+# En CI, l'image vient d'être construite avec le cache du runner : la
+# reconstruire ici la referait de zéro. `RECETTE_IMAGE` permet d'éprouver
+# exactement celle-là — c'est tout l'objet de la recette.
+IMAGE="${RECETTE_IMAGE:-atelier-qcm:recette}"
 RESEAU="${PROJET}-net"
 BASE="${PROJET}-mysql"
 APP="${PROJET}-app"
@@ -46,11 +51,16 @@ echo
 
 # ── 1–2. Construction ────────────────────────────────────────────────────────
 echo "Construction"
-docker build -q -t "$IMAGE_BASE" . >/dev/null 2>&1
-ok "l'image de base se construit" $? "$(docker image inspect "$IMAGE_BASE" --format '{{.Size}}' 2>/dev/null | awk '{printf "%.0f Mo", $1/1048576}')"
+if [ -n "${RECETTE_IMAGE:-}" ]; then
+  docker image inspect "$IMAGE" >/dev/null 2>&1
+  ok "l'image à éprouver est fournie" $? "$IMAGE — $(docker image inspect "$IMAGE" --format '{{.Size}}' 2>/dev/null | awk '{printf "%.0f Mo", $1/1048576}')"
+else
+  docker build -q -t "$IMAGE" . >/dev/null 2>&1
+  ok "l'image de production se construit" $? "$(docker image inspect "$IMAGE" --format '{{.Size}}' 2>/dev/null | awk '{printf "%.0f Mo", $1/1048576}')"
+fi
 
-docker build -q -t "$IMAGE_AMC" -f Dockerfile.amc --build-arg IMAGE_BASE="$IMAGE_BASE" . >/dev/null 2>&1
-ok "l'image avec impression se construit" $? "$(docker image inspect "$IMAGE_AMC" --format '{{.Size}}' 2>/dev/null | awk '{printf "%.0f Mo", $1/1048576}')"
+docker run --rm "$IMAGE" sh -c 'command -v npm >/dev/null && exit 1 || exit 0' >/dev/null 2>&1
+ok "l'image ne contient pas de gestionnaire de paquets" $?
 
 # ── 3. Base vierge ───────────────────────────────────────────────────────────
 echo
@@ -84,7 +94,7 @@ env_app() {
 # Les migrations sont appliquées depuis l'image elle-même : c'est le seul
 # chemin qui existe réellement en production. `drizzle-kit` est une dépendance
 # de développement, absente de l'image.
-docker run --rm --network "$RESEAU" $(env_app) "$IMAGE_BASE" node dist/migrate.js >/dev/null 2>&1
+docker run --rm --network "$RESEAU" $(env_app) "$IMAGE" node dist/migrate.js >/dev/null 2>&1
 ok "les migrations passent sur une base vierge, depuis l'image" $?
 
 tables=$(docker exec "$BASE" mysql --default-character-set=utf8mb4 -u root -p"$MDP_ROOT" -N -B -e \
@@ -109,7 +119,7 @@ sortie=$(docker run --rm --network "$RESEAU" \
   -e KIMI_AUTH_URL=https://auth.invalid -e KIMI_OPEN_URL=https://open.invalid \
   -e ALLOWED_ORIGINS=http://127.0.0.1:3100,http://localhost:3100 \
   -e PUBLIC_BASE_URL=http://127.0.0.1:3100 \
-  "$IMAGE_BASE" node dist/boot.js 2>&1 | head -20)
+  "$IMAGE" node dist/boot.js 2>&1 | head -20)
 echo "$sortie" | grep -q "Configuration de production refusée"
 ok "une valeur de remplissage est refusée en production" $? \
   "$(echo "$sortie" | grep -o 'TEACHER_SESSION_SECRET[^:]*' | head -1)"
@@ -119,7 +129,7 @@ echo
 echo "Démarrage"
 depart=$(date +%s%N)
 docker run -d --name "$APP" --network "$RESEAU" -p 127.0.0.1:3100:3000 \
-  $(env_app) -v "${PROJET}-data-paper:/data/paper-exams" "$IMAGE_AMC" >/dev/null 2>&1
+  $(env_app) -v "${PROJET}-data-paper:/data/paper-exams" "$IMAGE" >/dev/null 2>&1
 sain=1
 for _ in $(seq 1 60); do
   if curl -sf http://127.0.0.1:3100/api/health >/dev/null 2>&1; then sain=0; break; fi
@@ -153,7 +163,7 @@ docker exec "$BASE" mysql --default-character-set=utf8mb4 -u root -p"$MDP_ROOT" 
    INSERT INTO responses (id, sessionId, questionId, answer, score, maxScore) VALUES (900, 900, 900, 'x', 1.75, 2);" >/dev/null 2>&1
 ok "des données existantes sont enregistrées" $?
 
-docker run --rm --network "$RESEAU" $(env_app) "$IMAGE_BASE" node dist/migrate.js >/dev/null 2>&1
+docker run --rm --network "$RESEAU" $(env_app) "$IMAGE" node dist/migrate.js >/dev/null 2>&1
 ok "rejouer les migrations sur une base peuplée est sans effet" $?
 
 conserve=$(docker exec "$BASE" mysql --default-character-set=utf8mb4 -u root -p"$MDP_ROOT" -N -B eval_maths -e \
@@ -174,7 +184,7 @@ corps=$(curl -s "http://127.0.0.1:3100/api/trpc/evaluation.listPublic")
 echo "$corps" | grep -q '"result"'
 ok "l'API publique répond" $?
 
-code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:3100/api/trpc/session.getAllForTeacher")
+code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:3100/api/trpc/authoring.listEvaluations")
 ok "une route enseignant reste fermée sans authentification" \
   "$([ "$code" = "401" ] || [ "$code" = "403" ] && echo 0 || echo 1)" "HTTP $code"
 

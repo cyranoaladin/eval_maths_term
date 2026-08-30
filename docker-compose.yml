@@ -31,7 +31,13 @@ services:
       retries: 10
 
   app:
-    build: .
+    # L'étage `production` : celui qui sait imprimer. Le compose construisait
+    # l'image sans `auto-multiple-choice` — un `docker compose up -d` démarrait
+    # donc une application incapable d'imprimer un sujet, alors que l'atelier
+    # papier est la moitié du produit.
+    build:
+      context: .
+      target: production
     restart: unless-stopped
     depends_on:
       mysql:

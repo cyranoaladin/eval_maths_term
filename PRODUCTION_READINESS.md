@@ -134,15 +134,15 @@ Huit procédures ne sont appelées par aucun écran :
 | P9 | Provisionnement enseignant explicite, aucun accès automatique | **PASS** | migration 0006 + `acces-comptes.integration.spec.ts` (11 cas sur la vraie base) |
 | P10 | OAuth durci — `PUBLIC_BASE_URL`, cookie `Secure`, validation du jeton | **PASS** | `api/__tests__/security/oauth-durcissement.spec.ts` — 18 cas |
 | P11 | En-têtes de sécurité HTTP, CSP sans `unsafe-eval` | **PASS** | `surface-http.integration.spec.ts` sur du vrai HTTP + 39 parcours sur le build de production, trois moteurs |
-| P12 | Analyse de secrets dans notre CI | IN_PROGRESS | — |
-| P13 | Chaîne d'approvisionnement — 0 vulnérabilité HIGH/CRITICAL, SBOM | IN_PROGRESS | `npm audit` : 0 vulnérabilité, production et développement. SBOM et scan d'image restants |
-| P14 | Build reproductible, images épinglées par empreinte | IN_PROGRESS | — |
-| P15 | Une seule image canonique de production, avec impression | IN_PROGRESS | — |
+| P12 | Analyse de secrets dans notre CI | **PASS** | job `Sécurité` : gitleaks sur tout l'historique, `--exit-code 1` ; 5 signalements instruits nominativement dans `.gitleaksignore` |
+| P13 | Chaîne d'approvisionnement — 0 vulnérabilité HIGH/CRITICAL, SBOM | **PASS** | `npm audit` : 0 ; SBOM CycloneDX 1.6, 127 composants, publié en artefact ; image : 0 vulnérabilité corrigeable |
+| P14 | Build reproductible, images épinglées par empreinte | **PASS** | base épinglée par empreinte ; `scripts/relever-empreintes-images.sh` ; actions GitHub épinglées par version majeure |
+| P15 | Une seule image canonique de production, avec impression | **PASS** | un seul `Dockerfile`, étage `production` avec AMC ; compose, recette et CI construisent le même artefact ; recette 27/27 |
 | P16 | Vivacité et disponibilité distinctes et réelles | **PASS** | `/api/health` et `/api/ready` ; 4 vérifications HTTP dans `surface-http.integration.spec.ts` ; le conteneur interroge la disponibilité |
 | P17 | Arrêt gracieux | **PASS** | `scripts/smoke-arret-gracieux.ts` : SIGTERM pendant une remise en vol, copie entière, sortie 0 ; 4 tests unitaires sur l'ordre |
 | P18 | Contre-pression, remise idempotente | **PASS** | `remise-concurrente.integration.spec.ts` : une remise rejouée rend mot pour mot la même réponse ; audit des files en §5 |
 | P19 | Observabilité — 0 `console.*`, supervision d'erreurs | IN_PROGRESS | `journalisation.spec.ts` : 0 appel direct. Supervision non branchée |
-| P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | IN_PROGRESS | identifiants éphémères faits ; matrice de jobs à faire |
+| P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | IN_PROGRESS | cinq jobs écrits, aucun `continue-on-error` ; reste à les voir passer sur GitHub |
 | P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | IN_PROGRESS | 857 tests, 39 parcours ; `fileParallelism: false` rétabli (l'option était ignorée depuis Vitest 4) |
 | P22 | Couverture : 100 % sur les domaines critiques, ≥ 95 % global serveur | IN_PROGRESS | seuils actuels : 100 % sur `api/grading`, 80 % global |
 | P23 | Accessibilité — 0 violation critique ou sérieuse | IN_PROGRESS | — |
@@ -158,7 +158,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 14 / 34. IN_PROGRESS : 18. BLOCKED_EXTERNAL : 2.**
+**PASS : 18 / 34. IN_PROGRESS : 14. BLOCKED_EXTERNAL : 2.**
 
 ---
 

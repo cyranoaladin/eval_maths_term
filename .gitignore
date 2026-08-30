@@ -44,3 +44,4 @@ coverage/
 # Rapports Playwright
 test-results/
 playwright-report/
+sbom.json

@@ -187,9 +187,9 @@ async function main() {
 
   console.log("\n5. Résultats");
   const res = await api.paper.results.query({ paperExamId: tirage.paperExamId });
-  ok("copies saisies comptées", res.stats.entered === 2, `${res.stats.entered}/${res.stats.total}`);
-  ok("moyenne cohérente", res.stats.average === 10, `${res.stats.average}/20`);
-  ok("copie non saisie signalée", res.rows.some((r) => !r.entered));
+  ok("copies saisies comptées", res.stats.saisies === 2, `${res.stats.saisies}/${res.stats.total}`);
+  ok("moyenne cohérente", res.stats.moyenne === 10, `${res.stats.moyenne}/20`);
+  ok("copie non saisie signalée", res.lignes.some((l) => !l.saisie));
 
   console.log("\n6. Nettoyage");
   // L'évaluation porte des copies : elle doit résister à la suppression.

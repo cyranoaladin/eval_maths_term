@@ -1,0 +1,27 @@
+# Signalements instruits, un par un, et écartés.
+#
+# Chaque ligne désigne une occurrence précise dans un commit précis : une
+# empreinte n'écarte rien d'autre. Il n'y a ici ni règle désactivée, ni chemin
+# exclu, ni motif ignoré — c'est la seule forme d'exception qui ne crée pas
+# d'angle mort pour la suite.
+#
+# L'historique n'est pas réécrit : `v1.0.0-rc1` est un jalon acquis, et
+# réécrire des commits publiés est plus dangereux que les quatre chaînes de
+# test qu'on effacerait.
+
+# ── Identifiants de test de l'ancienne CI ────────────────────────────────────
+# `ci_secret_de_test_au_moins_32_caracteres` et ses deux voisins : des chaînes
+# écrites dans le fichier de workflow, utilisées par la seule CI, n'ouvrant
+# aucun service. Elles ont disparu depuis : la CI tire désormais ses secrets au
+# hasard dans le job, les masque dans le journal, et les laisse mourir avec le
+# runner.
+78db0dd864665c2d4d2410507220f24f5afc7f59:.github/workflows/ci.yml:generic-api-key:38
+78db0dd864665c2d4d2410507220f24f5afc7f59:.github/workflows/ci.yml:generic-api-key:39
+78db0dd864665c2d4d2410507220f24f5afc7f59:.github/workflows/ci.yml:generic-api-key:40
+78db0dd864665c2d4d2410507220f24f5afc7f59:.github/workflows/ci.yml:generic-api-key:94
+
+# ── Faux positif sur un modèle de configuration ──────────────────────────────
+# `.env.example` ligne 41 : la ligne est `# RAG_API_KEY=`, commentée et vide.
+# Le détecteur réagit au commentaire qui la précède, lequel décrit le contrat
+# d'appel du service de recherche documentaire. Aucune valeur n'est en jeu.
+4375d7c3cb7eae8671a013ec98354b2b58767fd7:.env.example:generic-api-key:41

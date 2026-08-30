@@ -59,7 +59,10 @@ const banniere = {
     "const require = __creerRequire(import.meta.url);",
 };
 
-for (const entree of ["api/boot.ts", "db/migrate.ts"]) {
+// `db/seed.ts` est bundlé comme le migrateur : l'image de production n'a plus
+// de gestionnaire de paquets, et `npx tsx db/seed.ts` — la commande que la
+// documentation donnait — ne peut plus y fonctionner.
+for (const entree of ["api/boot.ts", "db/migrate.ts", "db/seed.ts"]) {
   await build({
     entryPoints: [entree],
     platform: "node",

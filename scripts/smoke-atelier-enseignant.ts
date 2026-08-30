@@ -37,12 +37,21 @@ async function teacher(): Promise<User> {
   const db = getDb();
   const unionId = "smoke-teacher";
   const [existing] = await db.select().from(users).where(eq(users.unionId, unionId)).limit(1);
-  if (existing) return existing;
+  if (existing) {
+    // Le statut est écrit explicitement : un compte créé sans le préciser
+    // arrive « en attente » et n'ouvre aucune route.
+    await db
+      .update(users)
+      .set({ role: "teacher", status: "active" })
+      .where(eq(users.id, existing.id));
+    return { ...existing, role: "teacher", status: "active" };
+  }
   await db.insert(users).values({
     unionId,
     name: "Enseignant Fumée",
     email: "smoke@example.test",
     role: "teacher",
+    status: "active",
   });
   const [created] = await db.select().from(users).where(eq(users.unionId, unionId)).limit(1);
   return created;

@@ -60,8 +60,14 @@ papier.
 ```bash
 docker compose up -d --build
 docker compose exec app node dist/migrate.js
-docker compose exec app npx tsx db/seed.ts   # évaluation de démonstration, facultatif
+docker compose exec app node dist/seed.js   # évaluation de démonstration, facultatif
 ```
+
+L'image ne contient ni npm, ni npx, ni yarn : le serveur démarre par `node`, les
+migrations et le semis aussi. Les gestionnaires de paquets traînaient une
+dizaine de vulnérabilités élevées à critiques dans une image qui ne les
+exécutait jamais — et offraient de quoi installer ce qu'on veut à qui y
+entrerait.
 
 L'application écoute sur `127.0.0.1:3000`. Elle n'est pas exposée directement :
 placez un reverse proxy devant.
@@ -105,23 +111,53 @@ CSRF rejette toutes les mutations.
 
 ## Impression des sujets
 
-L'image de production **n'embarque pas** `auto-multiple-choice` : il tire une
-chaîne LaTeX complète de plusieurs gigaoctets, inutile aux établissements qui
-n'évaluent qu'en ligne. Sans lui, l'application fonctionne normalement et
-l'interface signale l'impression comme indisponible.
+**L'image de production embarque `auto-multiple-choice`.** C'est le défaut, et
+c'est l'unique image : celle que la CI construit, celle que la recette éprouve,
+celle que le compose démarre.
 
-Pour l'activer, construisez une image dérivée :
+Il y en avait deux — une légère sans AMC, et une variante avec — et le compose
+construisait la légère. Un `docker compose up -d` « de production » démarrait
+donc une application incapable d'imprimer un sujet, alors que l'atelier papier
+est la moitié du produit. Pire : la recette éprouvait l'autre image, si bien que
+ce qui était vérifié n'était pas ce qui était déployé.
 
-```dockerfile
-FROM eval-maths:latest
-USER root
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      auto-multiple-choice texlive-latex-extra texlive-lang-french \
- && rm -rf /var/lib/apt/lists/*
-USER evalapp
+Le prix est la taille : environ 3,3 Go, dont deux pour la chaîne LaTeX. Un
+établissement qui n'évalue qu'en ligne peut construire l'étage allégé —
+
+```bash
+docker build --target sans-impression -t atelier-qcm:sans-impression .
 ```
 
-Comptez environ 2 Go d'image supplémentaire.
+— mais ce n'est plus le défaut, et rien ne le construit tout seul. Sans AMC,
+l'application fonctionne normalement et l'interface signale l'impression comme
+indisponible plutôt que d'échouer.
+
+## Ce qui fige l'artefact
+
+L'image de base est épinglée **par empreinte**, pas par étiquette :
+`node:22-trixie-slim` désigne une image différente chaque semaine, et deux
+constructions du même commit doivent produire la même chose.
+
+```bash
+bash scripts/relever-empreintes-images.sh   # montre l'écart, demande confirmation
+```
+
+Après une montée volontaire : reconstruire, relancer la recette, refaire passer
+le scan. Ces trois-là vont ensemble.
+
+## Chaîne d'approvisionnement
+
+```bash
+npm run audit:prod    # 0 vulnérabilité élevée ou critique en production
+npm run sbom          # nomenclature CycloneDX 1.6
+npm run scan:image    # vulnérabilités de l'image
+```
+
+Le seuil du scan d'image est « aucune vulnérabilité élevée ou critique **pour
+laquelle un correctif existe** ». C'est le seul critère actionnable : une faille
+sans correctif amont ne se répare pas en la déclarant inacceptable. Celles-là
+sont listées à chaque passage — on sait ce qu'on porte — et la porte se ferme
+d'elle-même le jour où un correctif paraît.
 
 
 ## Deux portes distinctes

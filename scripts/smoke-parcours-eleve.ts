@@ -169,9 +169,14 @@ async function main() {
   );
 
   console.log("\n7. Session scellée");
-  await expectRejection(
-    "une seconde soumission est refusée",
-    () => client.session.submit.mutate({ answers, timeSpent: 1 }),
+  // Une copie déjà rendue se redonne : la réponse HTTP se perd parfois, et
+  // l'élève doit retrouver sa note et son jeton plutôt qu'un message d'erreur.
+  const rejouee = await client.session.submit.mutate({ answers, timeSpent: 1 });
+  check(
+    "une seconde soumission redonne exactement la première",
+    rejouee.totalScore === result.totalScore &&
+      rejouee.resultsToken === result.resultsToken,
+    `${rejouee.totalScore}/${rejouee.maxScore}`,
   );
 
   console.log(
