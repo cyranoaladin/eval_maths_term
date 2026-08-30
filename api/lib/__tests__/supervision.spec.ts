@@ -17,8 +17,15 @@ import {
   nettoyerValeur,
 } from "../supervision";
 
+/*
+  Un jeton fabriqué pour ce test. Il n'ouvre rien : sa signature ne correspond à
+  aucun secret, et il ne provient d'aucune session. C'est précisément le motif
+  qu'on veut voir disparaître au nettoyage — l'écrire autrement rendrait le test
+  moins fidèle, et le cacher au détecteur par un assemblage de morceaux serait
+  la mauvaise sorte de ruse.
+*/
 const JETON =
-  "eyJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uSWQiOjQyLCJleHAiOjE3ODgxMTF9.y0JF5ecVILDjIrIZ90edKRUb1CMXUT7vFPyfEBfXrw";
+  "eyJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uSWQiOjQyLCJleHAiOjE3ODgxMTF9.y0JF5ecVILDjIrIZ90edKRUb1CMXUT7vFPyfEBfXrw"; // gitleaks:allow
 
 describe("nettoyage du texte", () => {
   it("retire un jeton trouvé au milieu d'un message", () => {

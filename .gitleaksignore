@@ -25,3 +25,14 @@
 # Le détecteur réagit au commentaire qui la précède, lequel décrit le contrat
 # d'appel du service de recherche documentaire. Aucune valeur n'est en jeu.
 4375d7c3cb7eae8671a013ec98354b2b58767fd7:.env.example:generic-api-key:41
+
+# ── Jeton fabriqué pour un test de nettoyage ─────────────────────────────────
+# `api/lib/__tests__/supervision.spec.ts` contient un JWT d'exemple : c'est le
+# motif même que le nettoyage doit faire disparaître, et le test ne prouverait
+# rien avec autre chose. Sa signature ne correspond à aucun secret, il ne
+# provient d'aucune session, il n'ouvre rien.
+#
+# La ligne porte désormais un marqueur `gitleaks:allow` : les commits suivants
+# ne le signaleront plus. Celui-ci est déjà publié, et l'historique ne se
+# réécrit pas.
+6bd48a43b084f6d9bdda608bc38acc7026772598:api/lib/__tests__/supervision.spec.ts:jwt:21
