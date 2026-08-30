@@ -39,8 +39,9 @@ export function computeSuspicionScore(
   let total = 0;
 
   for (const [type, count] of counts) {
+    // Le barème couvre tous les types que la base accepte : la colonne est une
+    // énumération, et `EVENT_WEIGHTS` est indexé par ce même type.
     const w = EVENT_WEIGHTS[type];
-    if (!w) continue;
     const contribution = Math.min(w.cap, count * w.unit);
     if (contribution > 0) {
       reasons.push({ type, count, contribution });

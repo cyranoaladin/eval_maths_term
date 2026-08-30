@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
+import * as jose from "jose";
+import { env } from "../../lib/env";
 import { signStudentToken, verifyStudentToken, signResultsToken, verifyResultsToken } from "../../anticheat/session-token";
 
 const VALID_PAYLOAD = {
@@ -70,5 +72,46 @@ describe("session-token : token de résultats", () => {
     const ttlMs = payload.expiresAt - payload.issuedAt;
     expect(ttlMs).toBeGreaterThanOrEqual(9 * 60 * 1000);
     expect(ttlMs).toBeLessThanOrEqual(11 * 60 * 1000);
+  });
+});
+
+describe("un jeton bien signé mais mal formé", () => {
+  /** Signe n'importe quoi avec le vrai secret élève. */
+  async function jetonForge(charge: Record<string, unknown>): Promise<string> {
+    return new jose.SignJWT(charge)
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("1h")
+      .sign(new TextEncoder().encode(env.studentSessionSecret));
+  }
+
+  it("refuse une charge à laquelle il manque un champ", async () => {
+    // La signature ne garantit que l'origine : le contenu se vérifie aussi.
+    // Un identifiant de copie absent ou d'un autre type ouvrirait une session
+    // qui ne désigne rien.
+    await expect(
+      verifyStudentToken(await jetonForge({ sessionId: 1, evaluationId: 1 })),
+    ).rejects.toThrow(/Payload du token de session élève invalide/);
+  });
+
+  it("refuse une charge dont les types ne sont pas les bons", async () => {
+    await expect(
+      verifyStudentToken(
+        await jetonForge({
+          sessionId: "42",
+          evaluationId: 1,
+          studentName: "Alice",
+          startedAt: Date.now(),
+          expiresAt: Date.now() + 1000,
+          shuffleSeed: "abc",
+        }),
+      ),
+    ).rejects.toThrow(/Payload du token de session élève invalide/);
+  });
+
+  it("refuse un jeton de résultats à la charge incomplète", async () => {
+    await expect(
+      verifyResultsToken(await jetonForge({ sessionId: 42 })),
+    ).rejects.toThrow(/Payload du token de résultats invalide/);
   });
 });

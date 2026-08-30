@@ -77,6 +77,16 @@ describe("QCM", () => {
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.errors.join()).toMatch(/exige un barème de type « qcm »/);
   });
+
+  it("refuse un QCM dont les propositions manquent tout à fait", () => {
+    const brouillon = qcm();
+    delete (brouillon as { options?: string[] }).options;
+
+    const r = validateQuestionCoherence(brouillon);
+
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.errors.join()).toMatch(/au moins deux propositions/);
+  });
 });
 
 describe("Vrai / Faux", () => {
@@ -107,6 +117,12 @@ describe("Vrai / Faux", () => {
     const r = validateQuestionCoherence(tf({ options: ["Vrai", "Faux"] }));
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.errors.join()).toMatch(/ne porte pas de propositions/);
+  });
+
+  it("tolère une liste de propositions vide, qui ne dit rien", () => {
+    // L'éditeur envoie parfois un tableau vide plutôt que rien : ce n'est pas
+    // une proposition, c'est l'absence de propositions.
+    expect(validateQuestionCoherence(tf({ options: [] }))).toEqual({ ok: true });
   });
 });
 
@@ -152,6 +168,58 @@ describe("Réponse courte", () => {
   it("refuse une réponse attendue vide", () => {
     const r = validateQuestionCoherence(sa({ correctAnswer: "   " }));
     expect(r.ok).toBe(false);
+  });
+
+  it("refuse un barème « exact » sans aucune forme de référence", () => {
+    // Ce mode ne porte pas de valeur attendue : sans forme acceptée, il note
+    // tout le monde faux sans que rien ne le signale.
+    const r = validateQuestionCoherence(
+      sa({
+        gradingRubric: {
+          mode: { kind: "exact" },
+          llmReviewRequired: false,
+          weight: 2,
+        },
+      }),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.errors.join()).toMatch(/aucune valeur de référence/);
+  });
+
+  it("accepte un barème « exact » qui énumère ses formes", () => {
+    expect(
+      validateQuestionCoherence(
+        sa({
+          gradingRubric: {
+            mode: { kind: "exact" },
+            llmReviewRequired: false,
+            weight: 2,
+            acceptableForms: ["1/2", "0,5"],
+          },
+        }),
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it("refuse des propositions sur une réponse courte, et tolère une liste vide", () => {
+    const avec = validateQuestionCoherence(sa({ options: ["1/2", "2"] }));
+    expect(avec.ok).toBe(false);
+    expect(validateQuestionCoherence(sa({ options: [] }))).toEqual({ ok: true });
+  });
+
+  it("refuse un barème fractionnaire : les points se comptent en entiers", () => {
+    const r = validateQuestionCoherence(
+      sa({
+        points: 1.5,
+        gradingRubric: {
+          mode: { kind: "fraction", numerator: 1, denominator: 2, reduced: true },
+          llmReviewRequired: false,
+          weight: 1.5,
+        },
+      }),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.errors.join()).toMatch(/entier d'au moins 1 point/);
   });
 });
 

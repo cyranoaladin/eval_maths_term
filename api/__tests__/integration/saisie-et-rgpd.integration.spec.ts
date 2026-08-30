@@ -364,6 +364,12 @@ describe("données personnelles", () => {
     expect(libre.userAgent).toBeNull();
   });
 
+  it("refuse d'exporter ou d'anonymiser un élève qui n'existe pas", async () => {
+    const { exportStudentData, anonymizeStudent } = await import("../../paper/student-data");
+    await expect(exportStudentData(999_999_999)).rejects.toThrow(/introuvable/);
+    await expect(anonymizeStudent(999_999_999)).rejects.toThrow(/introuvable/);
+  });
+
   it("refuse l'accès aux données d'un élève d'un collègue", async () => {
     const { studentId } = await classeAvecEleve("Voisine", "Nour");
     const voisin = await creerEnseignant("Enseignant voisin rgpd");

@@ -1,36 +1,31 @@
 /**
- * La remise automatique d'une copie abandonnée, et les droits de l'élève sur
- * ses données.
+ * La remise automatique d'une copie abandonnée.
  *
  * Une copie qu'on n'a pas rendue doit quand même être corrigée sur ce qui a
- * été écrit : c'est ce que garantit la remise automatique. Et un élève — ou sa
- * famille — doit pouvoir obtenir ce que la plateforme sait de lui, puis en
- * demander l'effacement.
+ * été écrit. Les droits de l'élève sur ses données sont éprouvés à part, dans
+ * `saisie-et-rgpd` : ils tiennent à la même fonction et méritaient un seul
+ * endroit plutôt que deux moitiés.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { eq } from "drizzle-orm";
 import {
-  appelEleve, appelEnseignant, creerEnseignant, creerEvaluation, db, nettoyer,
-  ouvrirSession, unique,
+  appelEleve, creerEnseignant, creerEvaluation, db, nettoyer, ouvrirSession, unique,
 } from "./harnais";
 import { autoSubmitSession } from "../../anticheat/auto-submit";
-import { exportStudentData, anonymizeStudent } from "../../paper/student-data";
 import {
-  answerDrafts, cheatEvents, classes, paperCopies, paperExams, responses,
+  answerDrafts, cheatEvents, classes, evaluations, questions, responses,
   sessions, students,
 } from "@db/schema";
 import type { User } from "@db/schema";
 
 let prof: User;
 let evaluationId: number;
-let questionIds: number[];
 const evaluationsCreees: number[] = [];
 
 beforeAll(async () => {
   prof = await creerEnseignant("Enseignant remise");
   const ev = await creerEvaluation(prof, "Remise automatique");
   evaluationId = ev.evaluationId;
-  questionIds = ev.questionIds;
   evaluationsCreees.push(evaluationId);
 });
 
@@ -116,87 +111,98 @@ describe("remise automatique après abandon", () => {
   });
 });
 
-describe("données personnelles d'un élève", () => {
-  async function eleveAvecCopie() {
-    const api = appelEnseignant(prof);
-    const { id: classId } = await api.paper.createClass({ name: unique("Classe RGPD") });
-    // Nom unique : le rapprochement des sessions en ligne se fait par le nom,
-    // et un homonyme créé par une autre suite fausserait la mesure — c'est
-    // précisément la limite que la méthode documente.
-    await api.paper.importStudents({
-      classId,
-      csv: `nom;prenom\n${unique("Durand")};Léa\n`,
-    });
-    const [eleve] = await api.paper.listStudents({ classId });
+describe("ce que la remise automatique sait traverser", () => {
+  it("remet la copie même si une question a été retirée pendant l'épreuve", async () => {
+    const ev = await creerEvaluation(prof, "Question retirée");
+    evaluationsCreees.push(ev.evaluationId);
+    const { jeton, sessionId } = await ouvrirSession(ev.evaluationId, unique("Orpheline"));
+    const eleve = appelEleve(jeton);
+    const qs = await eleve.question.getForActiveSession();
+    for (const q of qs.slice(0, 2)) {
+      await eleve.answer.saveDraft({ questionId: q.id, answer: "1" });
+    }
 
-    const [row] = await db.insert(paperExams).values({
-      evaluationId,
-      classId,
-      label: unique("Tirage RGPD"),
-      status: "generated",
-      createdById: prof.id,
-      printedQuestionIds: questionIds.slice(0, 2),
-      generatedAt: new Date(),
-    });
-    const paperExamId = Number(row.insertId);
-    await db.insert(paperCopies).values({ paperExamId, studentId: eleve.id, copyNumber: 1 });
-    await api.paper.saveEntry({
-      paperExamId,
-      studentId: eleve.id,
-      answers: questionIds.slice(0, 2).map((q) => ({ questionId: q, choiceIndex: 1 })),
-    });
-    return { eleve, paperExamId, classId };
-  }
+    // La suppression emporte le brouillon avec elle — la clé étrangère est en
+    // cascade. Ce qui reste doit tout de même être corrigé et rendu.
+    await db.delete(questions).where(eq(questions.id, qs[1].id));
+    expect(
+      await db.select().from(answerDrafts).where(eq(answerDrafts.sessionId, sessionId)),
+    ).toHaveLength(1);
 
-  it("rend tout ce que la plateforme sait de l'élève", async () => {
-    const { eleve } = await eleveAvecCopie();
-    const donnees = await exportStudentData(eleve.id);
-    const texte = JSON.stringify(donnees);
-    expect(texte).toMatch(/Léa/);
-    // Ses copies et ses notes en font partie : un export qui n'en dit rien
-    // ne répond pas à la demande.
-    expect(texte).toMatch(/Durand/);
-    expect(donnees).toBeTruthy();
-  });
+    await autoSubmitSession(sessionId, { reason: "idle_disconnect" });
 
-  it("refuse d'exporter un élève inexistant", async () => {
-    await expect(exportStudentData(99_999_999)).rejects.toThrow();
-  });
-
-  it("efface l'identité en conservant les notes", async () => {
-    // L'effacement ne doit pas détruire la moyenne de la classe : c'est le
-    // nom qui disparaît, pas le résultat.
-    const { eleve, paperExamId } = await eleveAvecCopie();
-    const avant = await appelEnseignant(prof).paper.results({ paperExamId });
-    const moyenneAvant = avant.stats.moyenne;
-
-    await anonymizeStudent(eleve.id);
-
-    const [apres] = await db.select().from(students).where(eq(students.id, eleve.id));
-    expect(`${apres.firstName} ${apres.lastName}`).not.toMatch(/Léa/);
-
-    const resultats = await appelEnseignant(prof).paper.results({ paperExamId });
-    expect(resultats.stats.moyenne).toBe(moyenneAvant);
-  });
-
-  it("rassemble aussi les sessions en ligne rapprochées par le nom", async () => {
-    // Une session en ligne n'est pas liée à la fiche élève : le rapprochement
-    // se fait par le nom, et l'export doit le dire — homonymes compris.
-    const { eleve } = await eleveAvecCopie();
-    const [fiche] = await db.select().from(students).where(eq(students.id, eleve.id));
-    // Le rapprochement compare « Nom Prénom », dans cet ordre.
-    const { jeton, sessionId } = await ouvrirSession(
-      evaluationId, `${fiche.lastName} ${fiche.firstName}`,
-    );
-    await appelEleve(jeton).session.submit({ answers: [], timeSpent: 30 });
-
-    const donnees = await exportStudentData(eleve.id);
-    expect(donnees.sessionsEnLigne.sessions.length).toBeGreaterThanOrEqual(1);
-    expect(donnees.sessionsEnLigne.methodeDeRapprochement).toMatch(/homonymes/i);
+    const [apres] = await db.select().from(sessions).where(eq(sessions.id, sessionId));
+    expect(apres.status).toBe("auto_submitted_idle");
+    const notees = await db.select().from(responses).where(eq(responses.sessionId, sessionId));
+    expect(notees).toHaveLength(1);
     await effacer(sessionId);
   });
 
-  it("refuse d'anonymiser un élève inexistant", async () => {
-    await expect(anonymizeStudent(99_999_999)).rejects.toThrow();
+  it("laisse à l'enseignant ce que le moteur ne peut pas trancher seul", async () => {
+    const [ev] = await db.insert(evaluations).values({
+      title: unique("Avec justification"),
+      duration: 30,
+      isActive: true,
+      ownerId: prof.id,
+    });
+    const evaluationId2 = Number(ev.insertId);
+    evaluationsCreees.push(evaluationId2);
+    const [q] = await db.insert(questions).values({
+      evaluationId: evaluationId2,
+      type: "short_answer",
+      question: "Justifier la convergence de la suite.",
+      correctAnswer: "récurrence",
+      points: 4,
+      order: 1,
+      gradingRubric: {
+        mode: { kind: "text", expected: ["récurrence"] },
+        llmReviewRequired: true,
+        weight: 4,
+      },
+    } as never);
+    const questionId = Number(q.insertId);
+    const { jeton, sessionId } = await ouvrirSession(evaluationId2, unique("À relire"));
+    await appelEleve(jeton).answer.saveDraft({
+      questionId,
+      answer: "Par récurrence",
+      justification: "La propriété est vraie au rang 0 et se transmet.",
+    });
+
+    await autoSubmitSession(sessionId, { reason: "idle_disconnect" });
+
+    const [notee] = await db.select().from(responses).where(eq(responses.sessionId, sessionId));
+    // La remise automatique ne fait pas appel au modèle : la copie attend une
+    // relecture humaine plutôt que de recevoir une note improvisée.
+    expect(notee.llmFeedback).toMatch(/corriger manuellement/);
+    expect(notee.justification).toMatch(/rang 0/);
+    await effacer(sessionId);
+  });
+
+  it("ne divise pas par zéro sur une évaluation sans barème", async () => {
+    const [ev] = await db.insert(evaluations).values({
+      title: unique("Sans points"),
+      duration: 30,
+      isActive: true,
+      ownerId: prof.id,
+    });
+    const evaluationId3 = Number(ev.insertId);
+    evaluationsCreees.push(evaluationId3);
+    await db.insert(questions).values({
+      evaluationId: evaluationId3,
+      type: "qcm",
+      question: "Question hors barème",
+      options: JSON.stringify(["A", "B"]),
+      correctAnswer: "0",
+      points: 0,
+      order: 1,
+      gradingRubric: { mode: { kind: "qcm", correctIndex: 0 }, llmReviewRequired: false, weight: 0 },
+    } as never);
+    const { sessionId } = await ouvrirSession(evaluationId3, unique("Sans barème"));
+
+    await autoSubmitSession(sessionId, { reason: "idle_disconnect" });
+
+    const [apres] = await db.select().from(sessions).where(eq(sessions.id, sessionId));
+    expect(Number(apres.normalizedScore)).toBe(0);
+    await effacer(sessionId);
   });
 });

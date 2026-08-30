@@ -143,3 +143,47 @@ describe("nettoyage d'un événement complet", () => {
     expect(JSON.stringify(propre)).not.toContain("eyJ");
   });
 });
+
+describe("ce que le nettoyage traverse sans s'y perdre", () => {
+  it("nettoie les contextes et les étiquettes comme les données jointes", () => {
+    const nettoye = nettoyerEvenement({
+      contexts: { copie: { studentName: "Aïcha", sessionId: 12 } },
+      tags: { studentEmail: "aicha@exemple.test", route: "session.submit" },
+    } as unknown as ErrorEvent) as unknown as {
+      contexts: { copie: Record<string, unknown> };
+      tags: Record<string, unknown>;
+    };
+
+    expect(nettoye.contexts.copie.studentName).toBe("[retiré]");
+    expect(nettoye.contexts.copie.sessionId).toBe(12);
+    expect(nettoye.tags.studentEmail).toBe("[retiré]");
+    // Ce qui n'identifie personne survit : c'est ce qui rend le rapport utile.
+    expect(nettoye.tags.route).toBe("session.submit");
+  });
+
+  it("s'arrête avant de descendre indéfiniment", () => {
+    // Une structure qui se contient elle-même ne doit pas faire tourner le
+    // nettoyage sans fin au moment d'envoyer une erreur.
+    const boucle: Record<string, unknown> = {};
+    boucle.soi = boucle;
+
+    const nettoye = nettoyerValeur(boucle) as Record<string, unknown>;
+
+    let profondeur = 0;
+    let courant: unknown = nettoye;
+    while (courant && typeof courant === "object" && "soi" in courant) {
+      courant = (courant as Record<string, unknown>).soi;
+      profondeur += 1;
+      if (profondeur > 20) break;
+    }
+    expect(profondeur).toBeLessThanOrEqual(10);
+    expect(courant).toBe("[retiré]");
+  });
+
+  it("laisse intacts les nombres, les booléens et l'absence de valeur", () => {
+    expect(nettoyerValeur(42)).toBe(42);
+    expect(nettoyerValeur(true)).toBe(true);
+    expect(nettoyerValeur(null)).toBeNull();
+    expect(nettoyerValeur(undefined)).toBeUndefined();
+  });
+});

@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { appRouter } from "../../router";
+import { lireJetonEleve } from "../../middleware";
+import { signStudentToken } from "../../anticheat/session-token";
 import { authoringRouter } from "../../routers/authoring-router";
 import { sessionRouter } from "../../routers/session-router";
 import { questionRouter } from "../../routers/question-router";
@@ -113,5 +116,96 @@ describe("role-access : routes élève protégées", () => {
         fingerprintHash: "abc",
       }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+});
+
+
+describe("le message dit ce qu'il faut faire", () => {
+  it("distingue un compte en attente d'un compte révoqué", async () => {
+    const enAttente = appRouter.createCaller(
+      makeCtx({ user: utilisateur("teacher", "pending") }),
+    );
+    await expect(enAttente.authoring.listEvaluations()).rejects.toThrow(
+      /attend l'autorisation/,
+    );
+
+    const revoque = appRouter.createCaller(
+      makeCtx({ user: utilisateur("teacher", "disabled") }),
+    );
+    // Deux situations différentes : l'une s'attend, l'autre se conteste.
+    await expect(revoque.authoring.listEvaluations()).rejects.not.toThrow(
+      /attend l'autorisation/,
+    );
+  });
+
+  it("laisse un compte en attente lire sa propre fiche", async () => {
+    // Sans cela, l'interface ne pourrait pas lui dire pourquoi il n'a accès à
+    // rien : elle le renverrait à la page de connexion en boucle.
+    const enAttente = appRouter.createCaller(
+      makeCtx({ user: utilisateur("teacher", "pending") }),
+    );
+
+    await expect(enAttente.auth.me()).resolves.toMatchObject({ status: "pending" });
+  });
+
+  it("refuse l'administration à un enseignant, et à un anonyme", async () => {
+    const prof = appRouter.createCaller(makeCtx({ user: utilisateur("teacher") }));
+    await expect(prof.access.listUsers()).rejects.toThrow();
+
+    const personne = appRouter.createCaller(makeCtx());
+    await expect(personne.access.listUsers()).rejects.toThrow();
+  });
+});
+
+describe("jeton élève", () => {
+  const entetes = (h: Record<string, string>) => ({
+    headers: { get: (n: string) => h[n.toLowerCase()] ?? null },
+  });
+
+  it("se lit dans l'en-tête dédié comme dans un Bearer", () => {
+    expect(lireJetonEleve(entetes({ "x-student-session-token": "abc" }))).toBe("abc");
+    expect(lireJetonEleve(entetes({ authorization: "Bearer xyz" }))).toBe("xyz");
+    // L'en-tête dédié prime : c'est celui que le client de l'application pose.
+    expect(
+      lireJetonEleve(entetes({ "x-student-session-token": "abc", authorization: "Bearer xyz" })),
+    ).toBe("abc");
+  });
+
+  it("ne prend rien d'un en-tête qui n'est pas un Bearer", () => {
+    expect(lireJetonEleve(entetes({ authorization: "Basic abc" }))).toBe("");
+    expect(lireJetonEleve(entetes({}))).toBe("");
+  });
+
+  it("accepte un jeton présenté en Bearer par une route élève", async () => {
+    const jeton = await signStudentToken({
+      sessionId: 999_999_997,
+      evaluationId: 999_999_997,
+      studentName: "Élève au Bearer",
+      startedAt: Date.now(),
+      expiresAt: Date.now() + 600_000,
+      shuffleSeed: "graine",
+    });
+    const api = appRouter.createCaller(
+      makeCtx({
+        req: new Request("http://localhost/api/trpc", {
+          headers: { authorization: `Bearer ${jeton}` },
+        }),
+      }),
+    );
+
+    // Le jeton passe la porte : c'est la copie qui n'existe pas, pas l'accès.
+    await expect(api.session.submit({ answers: [] })).rejects.toThrow(/Session introuvable/);
+  });
+
+  it("refuse un jeton illisible en disant pourquoi", async () => {
+    const api = appRouter.createCaller(
+      makeCtx({
+        req: new Request("http://localhost/api/trpc", {
+          headers: { "x-student-session-token": "pas-un-jeton" },
+        }),
+      }),
+    );
+
+    await expect(api.session.submit({ answers: [] })).rejects.toThrow();
   });
 });
