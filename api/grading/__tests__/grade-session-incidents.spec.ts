@@ -67,6 +67,29 @@ vi.mock("../grade-response", () => ({
 
 const { gradeSessionResponses } = await import("../grade-session");
 
+/**
+ * Rend lisible une clause construite par l'ORM.
+ *
+ * L'ordre étant groupé, la valeur écrite sur une ligne donnée vit dans les
+ * paramètres liés d'une expression `case`, pas dans une propriété simple.
+ */
+function fragment(valeur: unknown): string {
+  const morceaux: string[] = [];
+  const parcourir = (n: unknown) => {
+    if (n === null || n === undefined) return;
+    if (Array.isArray(n)) return n.forEach(parcourir);
+    if (typeof n === "object") {
+      const o = n as { queryChunks?: unknown[]; value?: unknown };
+      if (o.queryChunks) return parcourir(o.queryChunks);
+      if ("value" in o) return parcourir(o.value);
+      return;
+    }
+    morceaux.push(String(n));
+  };
+  parcourir(valeur);
+  return morceaux.join(" ");
+}
+
 const barème: GradingRubric = {
   mode: { kind: "numeric", value: 2, tolerance: 1e-9, relative: false },
   llmReviewRequired: false,
@@ -107,6 +130,23 @@ describe("gradeSessionResponses — réponse en échec", () => {
   it("écrit toute la copie en un seul ordre", async () => {
     await gradeSessionResponses(1);
     expect(etat.misesAJour.filter((m) => m.table === responses)).toHaveLength(1);
+  });
+
+  it("consigne la confiance du correcteur assisté quand il en donne une", async () => {
+    // La correction déterministe n'en produit pas ; seul un correcteur assisté
+    // en rend une, et elle doit atteindre la ligne. L'ordre étant groupé, la
+    // valeur se lit dans les paramètres liés de la clause construite.
+    comportement.confiance = 0.87;
+    await gradeSessionResponses(1);
+    const [ordre] = etat.misesAJour.filter((m) => m.table === responses);
+    expect(fragment(ordre.valeurs.llmConfidence)).toContain("0.87");
+  });
+
+  it("n'inscrit aucune confiance quand la correction est déterministe", async () => {
+    comportement.confiance = null;
+    await gradeSessionResponses(1);
+    const [ordre] = etat.misesAJour.filter((m) => m.table === responses);
+    expect(fragment(ordre.valeurs.llmConfidence)).not.toContain("0.87");
   });
 
   it("n'écrit rien sur les réponses quand aucune n'a pu être corrigée", async () => {
