@@ -2,7 +2,6 @@
  * src/components/math/MathInput.tsx
  *
  * Champ de saisie mathématique basé sur MathLive (mathlive@0.110).
- * Rend un <math-field> web component qui affiche une saisie LaTeX interactive.
  *
  * Props :
  *   value       - valeur LaTeX courante (contrôlé)
@@ -11,38 +10,27 @@
  *   disabled    - désactiver le champ
  *   autoFocus   - focus automatique
  *
- * Pièges gérés :
- * - MathLive est un web component — doit être importé dynamiquement (ESM, pas de SSR)
- * - L'import est lazy pour éviter de bloquer le bundle principal
- * - Ref sur l'élément HTMLElement avec type assertion (MathfieldElement)
- * - L'événement "input" de math-field émet une CustomEvent avec detail.value
- * - Tailwind reset peut casser les styles internes de MathLive — encapsulé dans un div
+ * Le champ n'est pas écrit en JSX. `<math-field>` est un élément personnalisé
+ * que React ne connaît pas : l'écrire en balise obligerait à déclarer un espace
+ * de noms JSX global et à faire taire le vérificateur de types sur la balise
+ * elle-même. Il est donc construit avec le constructeur que MathLive exporte —
+ * `MathfieldElement` — et inséré dans un hôte tenu par une ref. On y gagne le
+ * type réel de la bibliothèque, et React n'a plus à réconcilier un élément
+ * dont il ignore les propriétés.
+ *
+ * Autres pièges gérés :
+ * - MathLive est un module ESM qui définit un élément personnalisé au
+ *   chargement : import dynamique, une seule fois.
+ * - Le répertoire des polices doit être fixé AVANT la première connexion d'un
+ *   champ, sinon MathLive les cherche à côté de son propre script — là où ni le
+ *   serveur de développement ni le bundle de production ne les servent — et les
+ *   formules s'affichent de travers.
+ * - Le reset Tailwind casse les styles internes de MathLive : le champ est
+ *   encapsulé dans un div qui porte la bordure et l'anneau de focus.
  */
-import React, {
-  useRef,
-  useState,
-  useEffect,
-  useCallback,
-  type HTMLAttributes,
-} from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
+import type { MathfieldElement } from "mathlive";
 import { cn } from "@/lib/utils";
-
-// Déclaration du web component pour TypeScript
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace JSX {
-    interface IntrinsicElements {
-      "math-field": React.DetailedHTMLProps<
-        HTMLAttributes<HTMLElement> & {
-          value?: string;
-          readonly?: boolean;
-          placeholder?: string;
-        },
-        HTMLElement
-      >;
-    }
-  }
-}
 
 interface MathInputProps {
   value: string;
@@ -56,61 +44,41 @@ interface MathInputProps {
   "aria-describedby"?: string;
 }
 
+type ModuleMathLive = typeof import("mathlive");
+
 /**
  * Import dynamique de MathLive pour éviter le chargement au démarrage.
- * Retourne une promesse qui se résout une seule fois.
+ * Retourne une promesse résolue une seule fois pour toute l'application.
  */
-let mathliveLoadPromise: Promise<void> | null = null;
-function loadMathLive(): Promise<void> {
-  if (!mathliveLoadPromise) {
-    mathliveLoadPromise = import("mathlive")
-      .then((mathlive) => {
-        // MathLive cherche ses polices à côté de son propre script, c'est-à-dire
-        // dans un répertoire que ni le serveur de développement ni le bundle de
-        // production ne servent : le champ tombait alors sur les polices
-        // système et rendait les formules de travers. Elles sont copiées dans
-        // `public/mathlive/fonts` et désignées explicitement.
-        mathlive.MathfieldElement.fontsDirectory = "/mathlive/fonts";
-        // Aucun retour sonore pendant une évaluation.
-        mathlive.MathfieldElement.soundsDirectory = null;
-      })
-      .catch((e) => {
-        console.error("[MathInput] Impossible de charger MathLive:", e);
-        mathliveLoadPromise = null;
-      });
+let chargement: Promise<ModuleMathLive> | null = null;
+function chargerMathLive(): Promise<ModuleMathLive> {
+  if (!chargement) {
+    chargement = import("mathlive").then((mathlive) => {
+      mathlive.MathfieldElement.fontsDirectory = "/mathlive/fonts";
+      // Aucun retour sonore pendant une évaluation.
+      mathlive.MathfieldElement.soundsDirectory = null;
+      return mathlive;
+    });
+    chargement.catch(() => {
+      // Une seule tentative échouée ne doit pas condamner le champ pour la
+      // durée de la page : la promesse est relâchée pour permettre un nouvel
+      // essai au prochain montage.
+      chargement = null;
+    });
   }
-  return mathliveLoadPromise!;
+  return chargement;
 }
 
-/**
- * Lecture et écriture de la formule.
- *
- * `el.value` n'est utilisable qu'une fois le custom element défini. Tant qu'il
- * ne l'est pas, une affectation crée une propriété propre à l'instance qui
- * masque définitivement l'accesseur du prototype : le champ affiche bien la
- * saisie, mais `el.value` renvoie toujours la chaîne écrite avant l'upgrade —
- * autrement dit la réponse de l'élève n'atteint jamais React. On ne touche donc
- * au champ qu'une fois MathLive chargé, et on passe par `getValue`/`setValue`.
- */
-function lireValeur(el: MathfieldElement): string {
-  return typeof el.getValue === "function" ? el.getValue() : (el.value ?? "");
-}
-
-function ecrireValeur(el: MathfieldElement, latex: string): void {
-  if (typeof el.setValue === "function") {
-    el.setValue(latex, { suppressChangeNotifications: true });
-  } else {
-    el.value = latex;
-  }
-}
-
-interface MathfieldElement extends HTMLElement {
-  value: string;
-  disabled: boolean;
-  focus(): void;
-  getValue?(): string;
-  setValue?(latex: string, options?: { suppressChangeNotifications?: boolean }): void;
-}
+const STYLE_CHAMP: Partial<CSSStyleDeclaration> = {
+  display: "block",
+  width: "100%",
+  minHeight: "2.5rem",
+  padding: "0.5rem 0.75rem",
+  fontSize: "1rem",
+  outline: "none",
+  border: "none",
+  background: "transparent",
+};
 
 export function MathInput({
   value,
@@ -123,60 +91,76 @@ export function MathInput({
   "aria-label": ariaLabel,
   "aria-describedby": ariaDescribedBy,
 }: MathInputProps) {
-  const fieldRef = useRef<MathfieldElement | null>(null);
+  const hoteRef = useRef<HTMLDivElement | null>(null);
+  const champRef = useRef<MathfieldElement | null>(null);
   const [pret, setPret] = useState(false);
 
-  // Charger MathLive au montage
+  // La valeur et le callback les plus récents, pour que la construction du
+  // champ n'ait pas à se rejouer à chaque frappe. Mis à jour dans un effet
+  // déclaré en premier : il s'exécute avant les autres du même composant.
+  const valeurRef = useRef(value);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    valeurRef.current = value;
+    onChangeRef.current = onChange;
+  });
+
+  // Construction du champ, une fois MathLive chargé.
   useEffect(() => {
     let monte = true;
-    loadMathLive().then(() => {
-      if (monte) setPret(true);
+    chargerMathLive().then(({ MathfieldElement }) => {
+      const hote = hoteRef.current;
+      if (!monte || !hote) return;
+
+      const champ = new MathfieldElement();
+      Object.assign(champ.style, STYLE_CHAMP);
+      champ.setValue(valeurRef.current, { silenceNotifications: true });
+      champ.addEventListener("input", () => {
+        const lue = champ.getValue();
+        if (lue !== valeurRef.current) onChangeRef.current(lue);
+      });
+
+      hote.appendChild(champ);
+      champRef.current = champ;
+      setPret(true);
     });
+
     return () => {
       monte = false;
+      champRef.current?.remove();
+      champRef.current = null;
     };
   }, []);
 
-  // Synchroniser la valeur externe → champ, une fois le champ réellement défini.
+  // Attributs d'accessibilité et texte de substitution.
   useEffect(() => {
-    const el = fieldRef.current;
-    if (!pret || !el) return;
-    if (lireValeur(el) !== value) ecrireValeur(el, value);
+    const champ = champRef.current;
+    if (!pret || !champ) return;
+    champ.setAttribute("aria-label", ariaLabel ?? "Saisie mathématique");
+    if (id) champ.id = id;
+    if (ariaDescribedBy) champ.setAttribute("aria-describedby", ariaDescribedBy);
+    else champ.removeAttribute("aria-describedby");
+    if (placeholder !== undefined) champ.setAttribute("placeholder", placeholder);
+  }, [pret, id, ariaLabel, ariaDescribedBy, placeholder]);
+
+  // Synchronisation valeur externe → champ.
+  useEffect(() => {
+    const champ = champRef.current;
+    if (!pret || !champ) return;
+    if (champ.getValue() !== value) {
+      champ.setValue(value, { silenceNotifications: true });
+    }
   }, [value, pret]);
 
-  // Écouter les changements du champ → appeler onChange
-  const handleInput = useCallback(
-    (e: Event) => {
-      const el = e.target as MathfieldElement;
-      const newValue = lireValeur(el);
-      if (newValue !== value) {
-        onChange(newValue);
-      }
-    },
-    [onChange, value],
-  );
-
   useEffect(() => {
-    const el = fieldRef.current;
-    if (!pret || !el) return;
-    el.addEventListener("input", handleInput);
-    return () => {
-      el.removeEventListener("input", handleInput);
-    };
-  }, [handleInput, pret]);
-
-  // disabled
-  useEffect(() => {
-    const el = fieldRef.current;
-    if (pret && el) el.disabled = disabled;
+    const champ = champRef.current;
+    if (pret && champ) champ.disabled = disabled;
   }, [disabled, pret]);
 
-  // autoFocus
+  const focaliser = useCallback(() => champRef.current?.focus(), []);
   useEffect(() => {
-    if (autoFocus && pret && fieldRef.current) {
-      setTimeout(() => fieldRef.current?.focus(), 50);
-    }
-  }, [autoFocus, pret]);
+    if (autoFocus && pret) focaliser();
+  }, [autoFocus, pret, focaliser]);
 
   return (
     <div
@@ -187,12 +171,8 @@ export function MathInput({
         className,
       )}
     >
-      {/*
-        Le champ n'est monté qu'une fois MathLive chargé et configuré : c'est à
-        la connexion du premier <math-field> que la bibliothèque résout le
-        chemin de ses polices, et ce chemin doit déjà être le bon.
-      */}
-      {!pret ? (
+      <div ref={hoteRef} />
+      {!pret && (
         <div
           aria-hidden="true"
           style={{ minHeight: "2.5rem", padding: "0.5rem 0.75rem" }}
@@ -200,28 +180,7 @@ export function MathInput({
         >
           {placeholder ?? ""}
         </div>
-      ) : (
-      /* @ts-expect-error — web component not typed in React by default */
-      <math-field
-        ref={fieldRef}
-        id={id}
-        aria-label={ariaLabel ?? "Saisie mathématique"}
-        aria-describedby={ariaDescribedBy}
-        placeholder={placeholder}
-        style={{
-          display: "block",
-          width: "100%",
-          minHeight: "2.5rem",
-          padding: "0.5rem 0.75rem",
-          fontSize: "1rem",
-          outline: "none",
-          border: "none",
-          background: "transparent",
-        }}
-      />
       )}
     </div>
   );
 }
-
-export default MathInput;

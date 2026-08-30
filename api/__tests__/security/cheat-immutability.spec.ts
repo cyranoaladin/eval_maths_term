@@ -11,6 +11,16 @@ import type { StudentSessionPayload } from "../../anticheat/session-token";
  * 3. La route cheat.report exige un studentSession valide
  */
 
+/**
+ * Une charge utile telle qu'un client hostile peut l'envoyer : elle ne respecte
+ * pas le contrat, et c'est tout l'intérêt. Le typage du routeur décrit ce que
+ * l'application accepte, pas ce qui arrive sur le réseau — on nomme donc la
+ * fiction ici plutôt que de faire taire le vérificateur au point d'appel.
+ */
+function chargeHostile<T>(charge: unknown): T {
+  return charge as T;
+}
+
 function makeCtxWithSession(sessionId: number): TrpcContext {
   const studentSession: StudentSessionPayload = {
     sessionId,
@@ -49,15 +59,13 @@ describe("cheat-immutability : validation des inputs", () => {
   it("cheat.report refuse un type d'événement inconnu", async () => {
     const caller = cheatRouter.createCaller(makeCtxWithSession(1));
     await expect(
-      caller.report({
-        events: [
-          {
-            // @ts-expect-error: type inconnu intentionnel pour tester la validation
-            type: "hack_attempt",
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      }),
+      caller.report(
+        chargeHostile<Parameters<typeof caller.report>[0]>({
+          events: [
+            { type: "hack_attempt", timestamp: new Date().toISOString() },
+          ],
+        }),
+      ),
     ).rejects.toThrow();
   });
 
