@@ -18,7 +18,7 @@ sur le chemin fonctionnel.
 |---|---|
 | Branche | `release/production-hardening` |
 | Base | `90fb380` (`main`, tag `v1.0.0-rc1`) |
-| Dernière mise à jour | 2026-08-30 — 6 lots livrés |
+| Dernière mise à jour | 2026-08-30 — CI complète au vert |
 
 ---
 
@@ -142,8 +142,8 @@ Huit procédures ne sont appelées par aucun écran :
 | P17 | Arrêt gracieux | **PASS** | `scripts/smoke-arret-gracieux.ts` : SIGTERM pendant une remise en vol, copie entière, sortie 0 ; 4 tests unitaires sur l'ordre |
 | P18 | Contre-pression, remise idempotente | **PASS** | `remise-concurrente.integration.spec.ts` : une remise rejouée rend mot pour mot la même réponse ; audit des files en §5 |
 | P19 | Observabilité — 0 `console.*`, supervision d'erreurs | **PASS** | `journalisation.spec.ts` : 0 appel direct ; supervision branchée sur `logger.error`, 9 tests de nettoyage, `scripts/verifier-supervision.ts` |
-| P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | IN_PROGRESS | cinq jobs écrits, aucun `continue-on-error` ; reste à les voir passer sur GitHub |
-| P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | IN_PROGRESS | 857 tests, 39 parcours ; `fileParallelism: false` rétabli (l'option était ignorée depuis Vitest 4) |
+| P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | **PASS** | exécution 33336108963 : les cinq jobs verts, aucun `continue-on-error` |
+| P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | **PASS** | 899 tests, 63 parcours sur trois moteurs, `retries=0` en CI — §8 pour ce que les instabilités cachaient |
 | P22 | Couverture : 100 % sur les domaines critiques, ≥ 95 % global serveur | IN_PROGRESS | seuils actuels : 100 % sur `api/grading`, 80 % global |
 | P23 | Accessibilité — 0 violation critique ou sérieuse | **PASS** | `e2e/accessibilite.spec.ts` : axe sur 10 écrans, 3 moteurs, plus deux parcours au clavier seul — voir §7 |
 | P24 | Régression visuelle sur les écrans critiques | IN_PROGRESS | — |
@@ -158,7 +158,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 22 / 34. IN_PROGRESS : 10. BLOCKED_EXTERNAL : 2.**
+**PASS : 24 / 34. IN_PROGRESS : 8. BLOCKED_EXTERNAL : 2.**
 
 ---
 
@@ -306,3 +306,26 @@ déjà écoulé. L'élève voyait 00:00 sur fond rouge en reprenant sa copie apr
 rechargement, et le minuteur déclenchait dans cet état la remise automatique
 pour temps dépassé. En local la durée revient en vingt millisecondes et rien ne
 se voyait ; sur le réseau d'un établissement, elle met plus d'une seconde.
+
+
+---
+
+## 8. Les instabilités, et ce qu'elles cachaient
+
+`retries = 0`, du début à la fin. Chaque échec intermittent a été instruit
+jusqu'à sa cause ; aucun n'a été absorbé par une reprise. Ce qu'ils cachaient :
+
+| Symptôme | Cause réelle |
+|---|---|
+| Quinze parcours de saisie tombent d'un coup | MathLive 0.110 ne prend plus le focus au clic : il le déplace ensuite vers un puits caché. Un robot frappe dans l'intervalle, pas un élève |
+| Le champ mathématique reste vide sur Gecko et WebKit | L'hôte se déclare actif avant le puits ; on attend désormais le puits |
+| Une réponse « perdue » après un rechargement | Rien n'était perdu : le parcours enchaînait ses « Suivant » à intervalle fixe et sautait la question |
+| Une réponse réellement perdue | La temporisation d'enregistrement était unique et partagée : changer de question annulait l'envoi de la précédente |
+| Trois parcours en échec sur le serveur de production | Une migration appliquée pendant que l'ancienne version tournait — l'artefact du moment, pas un défaut |
+| Le premier champ d'un rechargement toujours vide | Le motif des fichiers versionnés attendait un point là où Vite met un tiret : rien n'était mis en cache, tout se retéléchargeait |
+| Treize parcours blancs sous WebKit | `upgrade-insecure-requests` sur une adresse en clair |
+| Une erreur de console à chaque chargement | Zod découvrait par exception s'il pouvait compiler ses schémas |
+| Firefox se ferme vers la vingtième page en CI | Contrainte de mémoire du runner : un fichier à la fois, dans un navigateur neuf |
+| Une navigation qui expire à quatre-vingt-dix secondes | L'état hors ligne d'un test débordait sur le suivant, sous Gecko |
+
+Aucune de ces lignes n'aurait été écrite si la suite avait eu le droit de réessayer.
