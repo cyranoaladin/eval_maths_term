@@ -24,7 +24,7 @@ import type { User } from "@db/schema";
 let prof: User;
 let evaluationId: number;
 let questionIds: number[];
-let evaluationsCreees: number[] = [];
+const evaluationsCreees: number[] = [];
 
 beforeAll(async () => {
   prof = await creerEnseignant("Enseignant remise");

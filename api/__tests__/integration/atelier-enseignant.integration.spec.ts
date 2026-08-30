@@ -17,7 +17,7 @@ import type { GradingRubric } from "@contracts/grading-rubric";
 
 let prof: User;
 let intrus: User;
-let evaluationsCreees: number[] = [];
+const evaluationsCreees: number[] = [];
 
 const barèmeQcm = (correctIndex: number, poids: number): GradingRubric => ({
   mode: { kind: "qcm", correctIndex },

@@ -18,14 +18,12 @@ import type { User } from "@db/schema";
 let prof: User;
 let intrus: User;
 let evaluationId: number;
-let questionIds: number[];
 
 beforeAll(async () => {
   prof = await creerEnseignant("Enseignant correcteur");
   intrus = await creerEnseignant("Enseignant tiers");
   const ev = await creerEvaluation(prof, "Correction");
   evaluationId = ev.evaluationId;
-  questionIds = ev.questionIds;
 });
 
 afterAll(async () => {

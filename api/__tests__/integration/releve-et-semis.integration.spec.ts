@@ -16,7 +16,7 @@ import { classes, evaluations, paperCopies, paperExams, students } from "@db/sch
 import type { User } from "@db/schema";
 
 let prof: User;
-let evaluationsCreees: number[] = [];
+const evaluationsCreees: number[] = [];
 
 beforeAll(async () => {
   prof = await creerEnseignant("Enseignant relevé");

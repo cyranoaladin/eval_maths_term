@@ -23,7 +23,7 @@ let intrus: User;
 let cookieProf: string;
 let cookieIntrus: string;
 let paperExamId: number;
-let evaluationsCreees: number[] = [];
+const evaluationsCreees: number[] = [];
 
 beforeAll(async () => {
   prof = await creerEnseignant("Enseignant HTTP");
