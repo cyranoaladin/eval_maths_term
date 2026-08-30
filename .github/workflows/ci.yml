@@ -15,7 +15,23 @@ jobs:
   qualite:
     name: Types, style, tests, build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+
+    # Les tests d'intégration parlent à une vraie base : la moitié de la
+    # logique métier — propriété des données, transactions, invariants de
+    # correction — ne s'éprouve pas autrement.
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: eval_maths_test
+          MYSQL_USER: eval
+          MYSQL_PASSWORD: eval
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -proot"
+          --health-interval=10s --health-timeout=5s --health-retries=10
 
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +54,8 @@ jobs:
             echo "APP_SECRET=ci_secret_de_test_au_moins_32_caracteres"
             echo "TEACHER_SESSION_SECRET=ci_teacher_secret_au_moins_32_caracteres"
             echo "STUDENT_SESSION_SECRET=ci_student_secret_au_moins_32_caracteres"
-            echo "DATABASE_URL=mysql://ci:ci@127.0.0.1:3306/ci"
+            echo "DATABASE_URL=mysql://eval:eval@127.0.0.1:3306/eval_maths_test"
+            echo "TEST_DATABASE_URL=mysql://eval:eval@127.0.0.1:3306/eval_maths_test"
             echo "KIMI_AUTH_URL=http://localhost:9999"
             echo "KIMI_OPEN_URL=http://localhost:9998"
             echo "ALLOWED_ORIGINS=http://localhost:3000"
@@ -51,8 +68,8 @@ jobs:
       - name: Style
         run: npm run lint
 
-      - name: Tests
-        run: npm test
+      - name: Tests et couverture
+        run: npm run test:coverage
 
       - name: Build
         run: npm run build

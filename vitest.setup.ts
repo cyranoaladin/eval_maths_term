@@ -7,7 +7,13 @@
 process.env.NODE_ENV = "test";
 process.env.PORT = "3000";
 process.env.ALLOWED_ORIGINS = "http://localhost:3000";
-process.env.DATABASE_URL = "mysql://test:test@localhost:3306/test";
+/**
+ * Les tests unitaires ne se connectent jamais : cette adresse leur suffit.
+ * Les tests d'intégration, eux, lisent `TEST_DATABASE_URL` et parlent à une
+ * vraie base, montée par `vitest.global-setup.ts`.
+ */
+process.env.DATABASE_URL =
+  process.env.TEST_DATABASE_URL ?? "mysql://eval:dev_password@127.0.0.1:3307/eval_maths_test";
 process.env.APP_ID = "test-app-id";
 process.env.APP_SECRET = "test-app-secret-min-32-chars-XXXXXXXXXXXXXXXXXX";
 process.env.TEACHER_SESSION_SECRET = "test-teacher-secret-min-32-chars-XXXXXXXXXX";
