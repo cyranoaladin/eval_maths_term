@@ -33,6 +33,8 @@ export const DOWNLOADABLE: Record<string, { label: string; type: string; genere?
   "catalog.pdf": { label: "Catalogue des questions", type: "application/pdf" },
   // Produit à la demande depuis la base, pas lu sur le disque.
   "resultats.pdf": { label: "Relevé de notes", type: "application/pdf", genere: true },
+  // Le PDF sert à remettre et archiver, le CSV à reprendre les notes ailleurs.
+  "resultats.csv": { label: "Notes (tableur)", type: "text/csv; charset=utf-8", genere: true },
 };
 
 export interface GenerateResult {

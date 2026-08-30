@@ -387,20 +387,26 @@ export default function Evaluation() {
       <div className={`sticky top-0 z-30 border-b ${
         isCritical ? "bg-red-600 text-white" : isWarning ? "bg-amber-500 text-white" : "bg-white"
       } shadow-sm transition-colors duration-300`}>
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Badge variant={isCritical ? "destructive" : "secondary"} className="text-lg px-3 py-1">
-              <Clock className="w-4 h-4 mr-2" />
+        {/*
+          Sur un téléphone, cette barre débordait de cinquante pixels : le
+          bouton « Terminer » sortait de l'écran et l'élève ne pouvait plus
+          rendre sa copie. Les espacements se resserrent et la barre se replie
+          sur deux lignes quand la largeur l'impose.
+        */}
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2 sm:py-3 flex flex-wrap items-center justify-between gap-y-2">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+            <Badge variant={isCritical ? "destructive" : "secondary"} className="text-base sm:text-lg px-2 sm:px-3 py-1 shrink-0">
+              <Clock className="w-4 h-4 mr-1 sm:mr-2" />
               {formattedTime}
             </Badge>
-            <span className={`text-sm font-medium ${isCritical ? "text-white" : "text-slate-600"}`}>
+            <span className={`text-sm font-medium whitespace-nowrap ${isCritical ? "text-white" : "text-slate-600"}`}>
               Question {currentQuestion + 1} / {questions.length}
             </span>
             {/* Phase 3 : heartbeat status */}
             <HeartbeatStatus isConnected={isConnected} remainingMs={remainingMs} />
           </div>
-          <div className="flex items-center gap-4">
-            <span className={`text-sm ${isCritical ? "text-white" : "text-slate-500"}`}>
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+            <span className={`text-sm whitespace-nowrap ${isCritical ? "text-white" : "text-slate-500"}`}>
               {answeredCount}/{questions.length} répondues
             </span>
             {cheatEventCount > 0 && (

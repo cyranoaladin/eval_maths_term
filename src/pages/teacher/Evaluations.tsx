@@ -92,12 +92,19 @@ export default function Evaluations() {
         </Card>
       )}
 
-      <div className="grid gap-3">
+      {/*
+        `min-w-0` sur chaque carte : un élément de grille a par défaut une
+        largeur minimale égale à celle de son contenu, et le titre en
+        `truncate` — donc en `nowrap` — impose la sienne. Sur une tablette, la
+        liste débordait de l'écran vers la droite. La troncature ne peut faire
+        son office que si la carte a le droit de rétrécir.
+      */}
+      <div className="grid gap-3 min-w-0">
         {evaluations?.map((e) => {
           const ModeIcon = MODE_LABELS[e.deliveryMode as DeliveryMode].icon;
           const verrouillee = e.sessionCount > 0;
           return (
-            <Card key={e.id}>
+            <Card key={e.id} className="min-w-0">
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">

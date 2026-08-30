@@ -118,7 +118,20 @@ app.get("/api/paper/:examId/:file", async (c) => {
   if (descriptor.genere) {
     const { buildReleve, renderRelevePdf } = await import("./paper/results-pdf");
     try {
-      const pdf = await renderRelevePdf(await buildReleve(examId));
+      const releve = await buildReleve(examId);
+
+      if (file.endsWith(".csv")) {
+        const { renderReleveCsv, nomFichierCsv } = await import("./paper/results-csv");
+        // Téléchargement et non affichage : un tableur n'a rien à faire dans
+        // un onglet de navigateur.
+        return c.body(renderReleveCsv(releve), 200, {
+          "Content-Type": descriptor.type,
+          "Content-Disposition": `attachment; filename="${nomFichierCsv(releve)}"`,
+          "Cache-Control": "private, no-store",
+        });
+      }
+
+      const pdf = await renderRelevePdf(releve);
       return c.body(pdf as unknown as ArrayBuffer, 200, {
         "Content-Type": descriptor.type,
         "Content-Disposition": `inline; filename="${file}"`,

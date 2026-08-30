@@ -212,8 +212,17 @@ export default function PaperEntry() {
                 <Download className="h-4 w-4 mr-1.5" /> Relevé de notes (PDF)
               </a>
             </Button>
-            <Button variant="outline" size="sm" onClick={() => exporterCsv(resultats)}>
-              <Download className="h-4 w-4 mr-1.5" /> Notes (CSV)
+            {/*
+              Le tableur est produit par le serveur, comme le PDF : même source
+              de données, même contrôle de propriété, même relevé. Une seconde
+              mise en forme côté navigateur finissait par diverger — il lui
+              manquait la moyenne, le contexte de l'évaluation et la mention des
+              reprises manuelles.
+            */}
+            <Button asChild variant="outline" size="sm">
+              <a href={`/api/paper/${paperExamId}/resultats.csv`}>
+                <Download className="h-4 w-4 mr-1.5" /> Notes (CSV)
+              </a>
             </Button>
           </div>
         </div>
@@ -400,57 +409,4 @@ export default function PaperEntry() {
   );
 }
 
-/**
- * Export des notes au format tableur.
- *
- * Séparateur point-virgule et virgule décimale : c'est ce qu'attend un Excel
- * en configuration française, où un fichier séparé par virgules atterrit tout
- * entier dans la première colonne. Le BOM force la lecture en UTF-8, sans quoi
- * les accents des noms sont abîmés.
- */
-type Resultats = {
-  exam: { label: string | null; className: string; evaluationTitle: string };
-  rows: Array<{
-    name: string;
-    copyNumber: number | null;
-    entered: boolean;
-    totalScore: number | null;
-    maxScore: number | null;
-    normalizedScore: number | null;
-  }>;
-};
 
-function exporterCsv(r: Resultats) {
-  const virgule = (n: number | null) => (n === null ? "" : String(n).replace(".", ","));
-  const lignes = [
-    ["Copie", "Élève", "Note /20", "Points", "Barème", "Saisie"].join(";"),
-    ...r.rows.map((l) =>
-      [
-        l.copyNumber ?? "",
-        l.name.replace(/;/g, " "),
-        virgule(l.normalizedScore),
-        virgule(l.totalScore),
-        virgule(l.maxScore),
-        l.entered ? "oui" : "non",
-      ].join(";"),
-    ),
-  ];
-
-  const blob = new Blob(["\uFEFF" + lignes.join("\r\n")], {
-    type: "text/csv;charset=utf-8",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  // Les accents sont translittérés plutôt que supprimés : « Contrôle du
-  // barème » donnerait sinon « Contr-le-du-bar-me ».
-  a.download =
-    `notes-${r.exam.className}-${r.exam.label ?? "tirage"}`
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-zA-Z0-9-_]+/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "") + ".csv";
-  a.click();
-  URL.revokeObjectURL(url);
-}

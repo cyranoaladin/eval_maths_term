@@ -244,7 +244,15 @@ function AuthLayoutContent({
         />
       </div>
 
-      <SidebarInset>
+      {/*
+        `min-w-0` : sans lui, la zone de contenu est un élément flex dont la
+        largeur minimale vaut celle de son contenu. Sur une tablette de 820
+        pixels, elle réclamait 575 pixels là où 540 restaient disponibles, et la
+        page débordait de trente-cinq pixels vers la droite — les commandes de
+        fin de ligne sortaient de l'écran. Le défaut n'apparaissait que sur le
+        bundle de production.
+      */}
+      <SidebarInset className="min-w-0">
         {isMobile && (
           <div className="flex border-b h-14 items-center justify-between bg-background/95 px-2 backdrop-blur supports-backdrop-filter:backdrop-blur sticky top-0 z-40">
             <div className="flex items-center gap-2">

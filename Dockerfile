@@ -38,6 +38,15 @@ COPY --from=builder --chown=evalapp:evalapp /app/package.json ./package.json
 COPY --from=builder --chown=evalapp:evalapp /app/db ./db
 COPY --from=builder --chown=evalapp:evalapp /app/drizzle.config.ts ./drizzle.config.ts
 
+# Le dossier des sujets imprimables est créé dans l'image et donné à
+# l'utilisateur applicatif. Sans cela, Docker crée le volume nommé avec les
+# droits de root : le processus, non privilégié, ne peut rien y écrire et la
+# génération des sujets échoue sur « EACCES: permission denied ». L'impression
+# — la raison d'être de l'atelier papier — était donc impossible dans le
+# déploiement documenté.
+RUN mkdir -p /data/paper-exams && chown -R evalapp:evalapp /data
+ENV PAPER_OUTPUT_DIR=/data/paper-exams
+
 USER evalapp
 EXPOSE 3000
 
