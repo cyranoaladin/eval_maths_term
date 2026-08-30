@@ -505,7 +505,23 @@ export const authoringRouter = createRouter({
         });
       }
 
+      /*
+        Deux passes, et ce n'est pas un excès de prudence.
+
+        Une place, une question : la contrainte d'unicité l'impose. Écrire les
+        rangs définitifs un par un traverse forcément un état où deux questions
+        se disputent la même place — intervertir les deux premières commence par
+        donner le rang 1 à celle qui suit celle qui l'occupe encore. La
+        transaction refusait alors l'écriture, et l'enseignant voyait son
+        glisser-déposer revenir à sa position de départ sans un mot.
+
+        Les rangs négatifs de la première passe ne peuvent croiser aucun rang
+        réel, qui commence à 1.
+      */
       await db.transaction(async (tx) => {
+        for (const [index, id] of input.orderedIds.entries()) {
+          await tx.update(questions).set({ order: -(index + 1) }).where(eq(questions.id, id));
+        }
         for (const [index, id] of input.orderedIds.entries()) {
           await tx.update(questions).set({ order: index + 1 }).where(eq(questions.id, id));
         }

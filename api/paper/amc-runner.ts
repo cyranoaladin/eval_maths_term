@@ -119,7 +119,9 @@ export async function runAmc(input: RunAmcInput): Promise<AmcResult> {
       journal.push(`$ ${AMC} ${etape.args.join(" ")}\n${stdout}${stderr}`);
     } catch (e) {
       const err = e as { stdout?: string; stderr?: string; message?: string };
-      const sortie = `${err.stdout ?? ""}${err.stderr ?? ""}${err.message ?? ""}`;
+      // Selon l'échec, AMC a parlé sur la sortie standard, sur la sortie
+      // d'erreur, ou pas du tout — et il ne reste alors que le message système.
+      const sortie = [err.stdout, err.stderr, err.message].filter(Boolean).join("");
       journal.push(`$ ${AMC} ${etape.args.join(" ")}\nÉCHEC\n${sortie}`);
       logger.error("[amc] Étape en échec", { etape: etape.nom, sortie: sortie.slice(-400) });
       throw new AmcFailedError(etape.nom, sortie);
