@@ -6,7 +6,7 @@
  * les vraies absences — un appel d'API mal orthographié répondrait 200 avec du
  * HTML, et le client tenterait d'en lire du JSON.
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { it, expect, beforeAll, afterAll } from "vitest";
 import { Hono } from "hono";
 import type { HttpBindings } from "@hono/node-server";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";

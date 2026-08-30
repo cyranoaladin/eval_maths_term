@@ -49,7 +49,16 @@ describe("answerToChoice", () => {
 
   it("ne devine rien d'une réponse illisible", () => {
     expect(answerToChoice("qcm", "pas un nombre")).toBeNull();
+    expect(answerToChoice("qcm", "")).toBeNull();
+    expect(answerToChoice("qcm", "B")).toBeNull();
     expect(answerToChoice("true_false", "peut-être")).toBeNull();
     expect(answerToChoice("short_answer", "2x")).toBeNull();
+  });
+
+  it("n'envoie jamais un index brut au correcteur pour un vrai/faux", () => {
+    // « 0 » n'est pas une valeur booléenne pour le moteur : la question serait
+    // comptée fausse quelle que soit la réponse de l'élève.
+    expect(choiceToAnswer("true_false", 0)).not.toBe("0");
+    expect(choiceToAnswer("true_false", 1)).not.toBe("1");
   });
 });

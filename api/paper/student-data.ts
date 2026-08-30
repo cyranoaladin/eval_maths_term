@@ -183,7 +183,8 @@ export async function exportStudentData(studentId: number): Promise<StudentDataE
 export interface AnonymizeResult {
   pseudonyme: string;
   copiesConservees: number;
-  sessionsEnLigneAnonymisees: number;
+  /** Copies papier et sessions en ligne confondues : toutes ont été anonymisées. */
+  sessionsAnonymisees: number;
 }
 
 /**
@@ -253,6 +254,6 @@ export async function anonymizeStudent(studentId: number): Promise<AnonymizeResu
   return {
     pseudonyme,
     copiesConservees: copies.length,
-    sessionsEnLigneAnonymisees: sessionsAnonymisees,
+    sessionsAnonymisees,
   };
 }
