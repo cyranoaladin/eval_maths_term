@@ -63,6 +63,17 @@ export const test = base.extend<{ enseignant: Page; surveillance: Surveillance }
    */
   surveillance: [
     async ({ page }, use) => {
+      /*
+        Chaque test commence en ligne.
+
+        Le test de coupure réseau coupe la connexion et la rétablit. Sous Gecko,
+        cet état déborde du contexte qui l'a posé : le test suivant héritait
+        d'un navigateur hors ligne, et sa navigation expirait au bout de
+        quatre-vingt-dix secondes — sur la CI, où l'ordre des fichiers les met
+        côte à côte.
+      */
+      await page.context().setOffline(false);
+
       const anomalies = collecterErreurs(page);
       const tolerances: Array<{ motif: RegExp; raison: string }> = [];
 
