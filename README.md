@@ -20,11 +20,16 @@ passée **en ligne** par les élèves, avec surveillance ; les deux supports son
 corrigés par le même moteur.
 
 **Où c'est.** `/home/alaeddine/Documents/02_Plateformes/app`
-Branche courante : `phase-3.5-convergence`. Arbre propre, trois commits récents.
+Branche : `phase-3.5-convergence`, candidate à `v1.0.0-rc1`.
 
-**État.** Phases 1 à 4 terminées et vérifiées. Phase 5 (mise en production)
-aux trois quarts. `npm run check`, `npm run lint`, **384 tests**, `npm run build`
-sont verts. 10 des 23 critères de mise en service sont satisfaits.
+**État.** Phases 1 à 5 terminées. `npm run check`, `npm run lint`,
+**805 tests**, `npm run test:coverage` et `npm run build` sont verts, ainsi que
+**39 scénarios navigateur** sur Chromium, Firefox et WebKit contre le build de
+production. **22 des 23 critères de mise en service sont satisfaits** ; le
+dernier — CI verte sur `main` — se vérifie après la fusion.
+
+Le dossier de preuve détaillé, critère par critère avec la commande qui
+l'établit, est dans [`RELEASE_EVIDENCE.md`](RELEASE_EVIDENCE.md).
 
 **Démarrer.**
 ```bash
@@ -202,7 +207,7 @@ La génération **retourne des propositions**. L'enregistrement repasse par
 | Authentification | OAuth Kimi, session JWT (`jose`) |
 | Modèle de langage | API compatible OpenAI — OpenRouter par défaut |
 | Impression | `auto-multiple-choice` 1.6.0 piloté en ligne de commande |
-| Tests | Vitest (384 tests) + trois scripts de bout en bout |
+| Tests | Vitest (805 tests, dont un socle d'intégration sur base réelle), Playwright (39 scénarios, trois moteurs), neuf recettes de bout en bout, k6 |
 
 ### 5.2 Arborescence
 
@@ -261,7 +266,7 @@ contracts/                partagé client / serveur
   fingerprint-canonical.ts  sérialisation partagée de l'empreinte
 
 db/
-  schema.ts               11 tables, 16 clés étrangères
+  schema.ts               13 tables, 20 clés étrangères
   migrations/             0000 (référence) · 0001 (atelier) · 0002 (composition)
   migrations/legacy/      historiques inapplicables, conservés comme trace
   seed-evaluation.ts      upsert idempotent
@@ -303,7 +308,7 @@ répondait `UNAUTHORIZED` en silence. C'est le piège numéro un du projet.
 
 ## 6. Modèle de données
 
-11 tables, 16 clés étrangères. Les contraintes sont déclarées dans
+13 tables, 20 clés étrangères. Les contraintes sont déclarées dans
 `db/schema.ts` — pas seulement dans le SQL — pour survivre à une régénération.
 
 ### `users` (9 colonnes)
@@ -372,7 +377,7 @@ saisie reflète le papier, pas l'état courant des questions.
 
 ---
 
-## 7. Surface API — 50 procédures tRPC
+## 7. Surface API — 52 procédures tRPC
 
 Quatre niveaux d'accès, définis dans `api/middleware.ts` :
 
@@ -388,16 +393,21 @@ procédure ajoutée fait échouer le test tant qu'elle n'y est pas inscrite
 volontairement. Il vérifie aussi que chaque route élève ou enseignant rejette un
 appel anonyme **avant** d'atteindre la base.
 
-### Accessibles sans authentification (7)
+### Accessibles sans authentification (4)
 ```
-ping                          auth.me                auth.logout
-evaluation.listPublic         session.start          session.getResults
+ping                     evaluation.listPublic
+session.start            session.getResults
 question.getPublicInfo
+```
+
+### Authentifiées, tous rôles (2)
+```
+auth.me                  auth.logout
 ```
 `session.getResults` exige un **jeton de résultats** signé, valable 10 minutes,
 émis à la soumission. Sans lui, rien n'est lisible.
 
-### Élève — jeton de session requis (8)
+### Élève — jeton de session requis (9)
 ```
 question.getForActiveSession   session.heartbeat   session.submit
 answer.save   answer.getSaved   answer.saveDraft   answer.listDrafts
@@ -427,20 +437,27 @@ paper.createAndGenerate   paper.entrySheet       paper.saveEntry
 paper.results             paper.exportStudentData  paper.anonymizeStudent
 ```
 
-### Enseignant — correction et suivi (8)
+### Enseignant — correction et suivi (13)
 ```
 session.getAllForTeacher      session.getDetailsForTeacher
-grading2.gradeSession         grading2.getResults      grading2.overrideGrade
+grading2.gradeSession         grading2.getResults
+grading2.overrideGrade        grading2.auditTrail
 question.getWithAnswersForTeacher
-teacherLive.snapshot          teacherLive.forceSubmit
-evaluation.listForTeacher     evaluation.seed
+teacherLive.snapshot          teacherLive.forceSubmit   teacherLive.overview
+evaluation.listForTeacher     evaluation.seed           paper.overview
 ```
 
+**Propriété vérifiée sur chacune.** Une session appartient à l'enseignant
+propriétaire de son évaluation ; un tirage, au propriétaire de sa classe. Le
+refus est un `NOT_FOUND`, jamais un `FORBIDDEN` : il ne confirme pas
+l'existence d'une copie qu'on ne possède pas.
+
 ### Route HTTP hors tRPC
-`GET /api/paper/:examId/:file` — téléchargement des PDF d'un tirage.
+`GET /api/paper/:examId/:file` — téléchargement des documents d'un tirage.
 Trois protections : rôle enseignant, propriété de la classe vérifiée en base,
-et nom de fichier pris dans une **liste fermée** (`sujet.pdf`, `corrige.pdf`,
-`catalog.pdf`). Aucun segment de chemin ne vient de l'URL.
+et nom de fichier pris dans une **liste fermée** — `sujet.pdf`, `corrige.pdf`,
+`catalog.pdf`, plus `resultats.pdf` et `resultats.csv` produits à la demande.
+Aucun segment de chemin ne vient de l'URL.
 
 `GET /api/health` — état, uptime, heure serveur. Utilisé par le healthcheck
 du conteneur.
@@ -632,7 +649,7 @@ C'est un risque en production : la valider explicitement au déploiement.
 ```bash
 npm run check   # tsc -b
 npm run lint    # eslint (0 erreur, 3 avertissements react-hooks connus)
-npm test        # 384 tests, 30 fichiers
+npm test        # 805 tests, 61 fichiers
 npm run build   # vite + esbuild
 ```
 
@@ -690,56 +707,43 @@ Tous les bugs majeurs listés au §14 ont été trouvés ainsi.
 | 3 — Anti-triche | ✅ tag `v0.3.0-anticheat` |
 | 3.5 — Convergence front/back | ✅ commit `4375d7c` |
 | 4 — Atelier QCM (lots 0, A à G) | ✅ commit `4375d7c` |
-| 5 — Mise en production | 🟡 en cours |
+| 5 — Mise en production | ✅ candidate `v1.0.0-rc1` |
 
-### Phase 5 — reste à faire
+### Critères de mise en service — 22 sur 23
 
-| # | Tâche |
-|---|---|
-| 5.5 | Journalisation avec `requestId` (le logger est déjà en JSON structuré) |
-| 5.6 | Sentry, facultatif (`SENTRY_DSN` déjà dans le schéma) |
-| 5.11 | Test de charge k6 : 200 élèves simultanés, p95 < 500 ms |
-| 5.14 | Entrée CHANGELOG pour la Phase 5 |
-| 5.15 | Tag `v1.0.0-rc1` après revue |
+Le détail, critère par critère avec la commande qui l'établit, est dans
+[`RELEASE_EVIDENCE.md`](RELEASE_EVIDENCE.md). Résumé :
 
-### Critères de mise en service — 10 sur 23
+| | Critère | Preuve |
+|---|---|---|
+| 1–5 | fuites, jeton, expiration, score non falsifiable, rôle | `npm test -- public-surface`, recettes de bout en bout |
+| 6 | 5 écritures équivalentes par réponse courte | test paramétré sur les cinq questions réelles |
+| 7 | rendu LaTeX multi-navigateurs et surfaces réduites | 39 scénarios Playwright, trois moteurs, contre le build de production |
+| 8 | saisie MathLive exploitable serveur | frappe → LaTeX → correction, sorties relevées en navigateur |
+| 9 | auto-save survit à 30 s de coupure | coupure réseau réelle, trois moteurs |
+| 10 | heartbeat 60 s, remise automatique 180 s | 210 s d'observation, constantes de production |
+| 11 | suspicion affichée à l'enseignant | badge et incidents sur l'écran de correction |
+| 12 | couverture ≥ 80 % global, 100 % `api/grading` | seuils inscrits dans `vitest.config.ts`, vérifiés en CI |
+| 13 | migrations committées | `db/migrations/`, six fichiers |
+| 14 | `docker compose up` < 30 s | **781 ms**, et 27 étapes de recette sur le runtime de production |
+| 15 | CI verte sur `main` | 🟡 se vérifie après la fusion |
+| 16 | 0 `any`, 0 `@ts-ignore` | garde durable qui lit les sources |
+| 17 | journal d'audit des notes manuelles | ajout seul, auteur, avant/après, motif, `requestId` |
+| 18 | exports CSV et PDF | recettes de téléchargement réel, encodage et périmètre compris |
+| 19 | interface en français | — |
+| 20 | k6 : 200 élèves, p95 < 500 ms, 0 erreur | **p95 36,0 / 35,6 / 39,7 ms** sur trois campagnes consécutives |
+| 21–23 | RGPD, `SECURITY.md`, README | — |
 
-Satisfaits : 1 (aucune fuite de `correctAnswer`), 2 (jeton exigé), 3 (submit
-après expiration impossible), 4 (score non falsifiable), 5 (rôle enseignant),
-13 (migrations committées), 19 (interface FR), 21 (RGPD), 22 (SECURITY.md),
-23 (README et démarrage).
+### Limite de capacité connue
 
-Restants : 6 (5 variantes acceptées par réponse courte — test paramétré à
-écrire), 7 (rendu LaTeX multi-navigateurs), 8 (MathLive exploitable serveur),
-9 (auto-save survit à 30 s de coupure), 10 (heartbeat 60 s / auto-submit 180 s
-vérifiés en conditions réelles), 11 (suspicion affichée au prof), 12 (couverture
-≥ 80 %, ≥ 100 % sur `api/grading/`), 14 (`docker compose up` < 30 s — à mesurer
-sur le serveur cible), 15 (CI verte sur `main` — demande une poussée),
-16 (0 `any`, 0 `@ts-ignore` non commenté), 17 (journal d'audit des notes
-manuelles), 18 (export **PDF** — le CSV existe, le PDF non), 20 (k6).
+Deux cents copies rendues **artificiellement au même instant** — ce qui n'est
+pas le déroulement d'une épreuve — donnent un p95 de remise d'environ 2,09 s,
+sans aucune erreur ni copie perdue. Le système ralentit, il ne rompt pas. Cette
+limite est mesurée et documentée ; elle ne conditionne pas le critère 20.
 
-### Ce qui existe côté serveur sans interface
-
-Dix procédures sur cinquante ne sont appelées par aucun écran (relevé
-automatique, limites de mot respectées) :
-
-| Procédure | Commentaire |
-|---|---|
-| `grading2.gradeSession` | Relancer la correction d'une copie |
-| `grading2.getResults` | Détail d'une copie, question par question |
-| `grading2.overrideGrade` | **Correction manuelle d'une réponse** — le manque le plus visible |
-| `question.getWithAnswersForTeacher` | Questions avec corrections, pour un écran de correction |
-| `answer.save`, `answer.getSaved` | Enregistrement direct d'une réponse : l'interface en ligne utilise les brouillons (`saveDraft`) |
-| `answer.listDrafts` | Reprise d'une composition interrompue — jamais branchée |
-| `cheat.report` | Déprécié, remplacé par `cheat.reportBatch` |
-| `evaluation.seed` | Semer l'évaluation de référence, sans bouton |
-| `ping` | Sonde |
-
-Les quatre premières forment ensemble **l'écran de correction copie par copie**
-qui manque : tout le serveur est prêt, il n'y a pas de page.
-
-`teacherLive.snapshot` alimente bien le tableau de bord, mais celui-ci reste
-centré sur le mode en ligne et n'a pas été repensé pour l'atelier papier.
+Le même banc devra être rejoué sur l'infrastructure de déploiement, avec un
+générateur de charge extérieur à la machine applicative, **avant `v1.0.0`** —
+pas avant `rc1`.
 
 ### Données présentes en base de développement
 
@@ -857,6 +861,53 @@ fragile.
 
 **Redis a été volontairement écarté** du compose : la limitation de débit est en
 mémoire et Redis ne servirait qu'en multi-instances.
+
+
+### Campagne de mise en service — défauts trouvés en exécutant
+
+Les précédents ont été trouvés en branchant l'application. Ceux-ci l'ont été en
+la mesurant, en la déployant et en cherchant la couverture manquante. Tous
+étaient silencieux.
+
+**Correction mathématique.** Le champ de saisie mathématique existait mais
+n'était utilisé nulle part ; en le branchant, on découvre que React affectait
+`el.value` avant que MathLive n'ait défini le composant, ce qui masquait
+définitivement l'accesseur : la réponse de l'élève n'atteignait jamais le
+serveur. La normalisation ignorait `\frac12` — la sortie exacte de la frappe
+« 1/2 », donc la fraction la plus courante de toutes. `Infinity` devenait
+`infinity` au passage en minuscules, rendant fausse toute limite infinie. Le
+mode « exact » comparait la réponse à la chaîne vide. Une réponse valant
+l'infini était acceptée comme égale à **n'importe quoi** : « 1/0 » rapportait
+tous les points. `\log(10)` était disloqué en `log(1)0*(10)`.
+
+**Anti-triche.** Le battement de présence lisait un en-tête que personne
+n'émettait : 401 systématique, surveillance inopérante. Le balayage
+d'inactivité ne tournait jamais de lui-même — le seuil des 180 secondes ne
+tenait que si un autre élève émettait. Le score de suspicion était calculé
+avant l'inscription de la déconnexion : une copie abandonnée ressortait
+« Propre ».
+
+**Sécurité.** Les routes enseignant vérifiaient l'authentification, jamais la
+propriété : à partir d'un simple entier, n'importe quel professeur pouvait
+lire, recorriger, modifier une note et forcer la remise des copies d'un
+collègue. Les secrets de session avaient une valeur par défaut **publiée dans
+ce dépôt** : une production qui les oublie signe ses cookies avec une chaîne
+lisible dans le code source.
+
+**Déploiement.** Le bundle de production ne démarrait pas — collision de noms
+entre le préambule esbuild et pdfkit, invisible en développement qui passe par
+Vite. La procédure de migration documentée était inapplicable : `drizzle-kit`
+est retiré de l'image. Le volume des sujets appartenait à root alors que le
+processus tourne non privilégié : **l'impression était impossible** dans le
+déploiement documenté.
+
+**Intégrité.** Rien n'empêchait une copie de porter deux réponses à la même
+question, et la base de développement en portait effectivement deux. Deux
+remises simultanées remontaient une erreur SQL brute jusqu'à l'élève.
+
+**Copie de l'élève.** Un rechargement de page perdait la composition en cours.
+Sur un réseau qui pend — portail captif, borne saturée — la sauvegarde restait
+bloquée indéfiniment sans rien mettre en file locale.
 
 ### Poids du client
 

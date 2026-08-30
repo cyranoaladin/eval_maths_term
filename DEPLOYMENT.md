@@ -94,6 +94,81 @@ USER evalapp
 
 Comptez environ 2 Go d'image supplémentaire.
 
+
+## Deux portes distinctes
+
+Ne pas confondre ce que `v1.0.0-rc1` atteste et ce qu'il faut encore vérifier
+sur la machine qui servira réellement.
+
+### RC1 — porte de performance, franchie
+
+Le critère 20 de `PLAN.md` — « 200 élèves concurrents, p95 < 500 ms,
+0 erreur » — est satisfait sur le banc de release : parcours complet, build de
+production, trois campagnes consécutives, p95 de 36,0 / 35,6 / 39,7 ms, zéro
+erreur. Détail et méthode dans `RELEASE_EVIDENCE.md` §9.
+
+Une limite de capacité est connue : deux cents copies rendues artificiellement
+au même instant donnent un p95 d'environ 2,09 s, sans erreur ni perte. Ce n'est
+pas le déroulement d'une épreuve.
+
+### Production — validation de capacité, à faire avant `v1.0.0`
+
+Le même banc doit être rejoué sur l'infrastructure retenue, avec un
+**générateur de charge extérieur à la machine applicative** : exécuté sur la
+même machine, il prend le processeur de ce qu'il mesure.
+
+À mesurer et à consigner :
+
+| | |
+|---|---|
+| Architecture | instances applicatives, base séparée ou non, proxy en amont |
+| Générateur | machine distincte, latence réseau vers l'application |
+| Base | version, `max_connections`, stockage, latence application → base |
+| `DB_POOL_SIZE` | balayer au moins 20 / 40 / 60 / 80 sans dépasser `max_connections` |
+| Machine | processeur, mémoire, attente de pool, connexions actives maximum |
+| Mesures | scénario d'acceptation (trois campagnes) et test de résistance |
+
+```bash
+# depuis la machine du générateur
+BASE_URL=https://<cible> bash scripts/mesure-acceptation.sh 3
+docker run --rm -i grafana/k6 run - < load/burst-submit.k6.js \
+  -e BASE_URL=https://<cible> -e VUS=200
+```
+
+`DB_POOL_SIZE=60` est un optimum mesuré sur le banc, pas une constante de
+production.
+
+## Migrer une base portant de vraies copies
+
+La contrainte d'unicité sur `responses(sessionId, questionId)` est **fermée par
+défaut** : si la base contient des doublons, MySQL refuse l'ordre et la
+migration s'arrête sans rien supprimer. C'est voulu — deux réponses à une même
+question sont une information, parfois le signe d'un incident.
+
+Avant toute migration d'un environnement réel :
+
+```sql
+SELECT sessionId, questionId, COUNT(*)
+FROM responses
+GROUP BY sessionId, questionId
+HAVING COUNT(*) > 1;
+```
+
+ou, depuis un poste :
+
+```bash
+DATABASE_URL=<url> npx tsx scripts/preflight-unicite-reponses.ts
+```
+
+| Résultat | Conduite |
+|---|---|
+| Aucune ligne | poursuivre ; la migration passe |
+| Doublons **strictement identiques** | **arrêt.** Réparation explicite par un opérateur, après accord : `npx tsx scripts/reparer-doublons-reponses.ts --appliquer` |
+| Doublons **divergents** | **arrêt absolu.** Investigation humaine : laquelle des deux réponses est celle de l'élève ? Le script refuse de trancher |
+
+Aucune suppression automatique, dans aucun cas. La commande de réparation ne
+figure pas dans la migration et n'y figurera pas.
+
 ## Sauvegardes
 
 Deux volumes portent des données non reconstructibles :

@@ -1,5 +1,114 @@
 # Changelog
 
+## [v1.0.0-rc1] — Mise en service
+
+Campagne de durcissement avant première mise en production. Rien n'y a été
+ajouté comme fonctionnalité : tout ce qui suit est ce qu'une exécution réelle a
+révélé de cassé, et ce qu'il a fallu pour pouvoir l'affirmer.
+
+### Corrections critiques
+
+**Le champ de saisie mathématique ne transmettait rien.** `MathInput` existait
+sans être utilisé nulle part. Une fois branché, trois défauts apparaissent :
+React affectait `el.value` avant que MathLive n'ait défini le composant, ce qui
+masquait définitivement l'accesseur du prototype — la réponse de l'élève
+n'atteignait jamais le serveur ; les polices étaient cherchées dans un
+répertoire jamais servi, en développement comme en production ; et la
+normalisation ignorait les opérateurs produits par l'éditeur.
+
+**Des réponses justes étaient comptées fausses.** `\frac12` — ce qu'écrit
+exactement la frappe « 1/2 », donc la fraction la plus courante — traversait la
+normalisation intacte et mathjs la refusait. `Infinity` devenait `infinity` au
+passage en minuscules : toute limite infinie était fausse. `\log(10)` était
+disloqué en `log(1)0*(10)`. Le mode de correction « exact » comparait la
+réponse à la chaîne vide. Les comparateurs de fraction et de valeur numérique
+ré-analysaient le texte brut au lieu de passer par la normalisation commune.
+
+**Une réponse valant l'infini était acceptée comme égale à n'importe quoi.** La
+tolérance, calculée relativement à la plus grande des deux valeurs, devenait
+infinie : « 1/0 » rapportait tous les points sur toute question symbolique.
+
+**Le crédit partiel était arrondi en base.** `responses.score` était un entier
+alors que le moteur produit des quarts de point : 1,5 était stocké 2. Colonnes
+passées en décimal, conversion faite à la frontière de l'API.
+
+**N'importe quel enseignant accédait aux copies de tous les autres.** Les
+routes vérifiaient l'authentification, jamais la propriété : à partir d'un
+simple identifiant, on pouvait lire, recorriger, modifier une note, forcer une
+remise et consulter le journal d'audit d'un collègue.
+
+**Les secrets de session avaient une valeur par défaut publiée dans ce dépôt.**
+Une production qui les oubliait signait ses cookies enseignant avec une chaîne
+lisible dans le code source. Le démarrage refuse désormais ces valeurs, les
+motifs de remplissage, et deux secrets identiques.
+
+**La surveillance anti-triche était inopérante.** Le battement de présence
+lisait un en-tête que personne n'émettait. Le balayage d'inactivité ne tournait
+jamais de lui-même : le seuil des 180 secondes ne tenait que si un autre élève
+émettait un signal. Le score de suspicion était calculé avant l'inscription de
+la déconnexion, si bien qu'une copie abandonnée ressortait « Propre ».
+
+**Le bundle de production ne démarrait pas** — collision de noms entre le
+préambule esbuild et pdfkit, invisible en développement qui passe par Vite. La
+procédure de migration documentée était inapplicable, `drizzle-kit` étant
+retiré de l'image ; un migrateur est désormais livré dans le bundle.
+**L'impression était impossible dans le déploiement documenté** : le volume des
+sujets appartenait à root alors que le processus tourne non privilégié.
+
+**Un rechargement de page perdait la copie en cours.** Le jeton ne vivait qu'en
+mémoire et les brouillons enregistrés côté serveur n'étaient jamais relus. Sur
+un réseau qui pend plutôt que de couper — portail captif, borne saturée — la
+sauvegarde restait bloquée indéfiniment sans rien mettre en file locale.
+
+**Une copie pouvait porter deux réponses à la même question.** Contrainte
+d'unicité posée sur `(sessionId, questionId)` ; la migration échoue plutôt que
+de supprimer une réponse. Deux remises simultanées remontaient une erreur SQL
+brute jusqu'à l'élève : la copie est désormais prise en un ordre atomique.
+
+### Ce qui a été ajouté pour pouvoir l'affirmer
+
+- Écran de correction copie par copie, journal d'audit des interventions
+  (ajout seul, auteur, avant/après, motif, identifiant de requête), relevé de
+  notes en PDF et en tableur, tableau de bord recentré sur l'atelier papier.
+- Champ mathématique adapté au mode de correction : clavier mathématique pour
+  les comparaisons numériques, clavier ordinaire pour une comparaison textuelle.
+- 805 tests, dont un socle d'intégration sur base réelle ; couverture 100 % sur
+  `api/grading`, 85 % globale, seuils inscrits et vérifiés en CI.
+- 39 scénarios navigateur sur Chromium, Firefox et WebKit, exécutés contre le
+  build de production — deux débordements d'affichage n'apparaissaient pas
+  autrement.
+- Recette Docker en 27 étapes sur le runtime de production, génération AMC
+  réelle comprise ; recettes de scores décimaux, de typographie du relevé,
+  d'export tableur, de cloisonnement entre enseignants et de seuils anti-triche
+  aux constantes réelles.
+
+### Performance
+
+Le profilage montre que le moteur de correction n'était pas en cause : sept
+pour cent du temps. Les écritures partaient une par une, la remise relisait
+chaque réponse avant de l'écrire, et le pool de connexions valait dix — la
+valeur par défaut du pilote, jamais écrite.
+
+| | Avant | Après |
+|---|---|---|
+| Requêtes SQL par remise | 82 | 25 |
+| Correction d'une copie | 165 ms | 34 ms |
+| p95 de la remise, 200 élèves | 6,73 s | 2,09 s |
+
+Critère de charge : deux cents élèves concurrents, p95 global de 36,0 / 35,6 /
+39,7 ms sur trois campagnes consécutives, zéro erreur. `DB_POOL_SIZE` est
+configurable ; la valeur 60 est un optimum de banc, à remesurer sur
+l'infrastructure de déploiement.
+
+### Migrations
+
+- `0003_decimal_scores` — scores en décimal.
+- `0004_grade_audit` — journal des interventions sur les notes.
+- `0005_unicite_reponses` — unicité `(sessionId, questionId)`, **fermée par
+  défaut** : une base contenant des doublons fait échouer la migration plutôt
+  que de perdre une réponse. La réparation est un script séparé, à lancer
+  délibérément, qui refuse les doublons divergents.
+
 ## [v0.4.0-atelier-qcm] — Phase 4 : atelier QCM enseignant
 
 L'application devient ce qu'elle devait être : un atelier où l'enseignant

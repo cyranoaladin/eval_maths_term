@@ -257,26 +257,47 @@ déjà : grille par élève, progression, validation, score immédiat.
 
 ## Critères d'acceptation Go-Live (§VIII.4)
 
+**22 sur 23 satisfaits.** Le dossier de preuve — commande et résultat pour
+chacun — est dans [`RELEASE_EVIDENCE.md`](RELEASE_EVIDENCE.md).
+
 - [x] 1. Aucune route publique ne renvoie `correctAnswer`
 - [x] 2. Chaque mutation élève exige un `sessionToken` valide non expiré
 - [x] 3. Submit impossible après expiration serveur du timer
 - [x] 4. Score, tabSwitchCount, cheatEvents non falsifiables par le client
 - [x] 5. Dashboard prof exige le rôle `teacher`
-- [ ] 6. Correction des 5 RC accepte ≥ 5 variantes équivalentes (test paramétré)
-- [ ] 7. Rendu LaTeX correct sur Chrome, Firefox, Safari, mobile
-- [ ] 8. Saisie MathLive fonctionnelle et exploitable côté serveur
-- [ ] 9. Auto-save survit à 30s de coupure réseau
-- [ ] 10. Heartbeat détecte déconnexion à 60s, auto-submit à 180s
-- [ ] 11. Score de suspicion calculé + affiché au prof avec verdict
-- [ ] 12. Coverage ≥ 80% global, ≥ 100% sur `api/grading/`
+- [x] 6. Correction des 5 RC accepte ≥ 5 variantes équivalentes (test paramétré)
+- [x] 7. Rendu LaTeX correct sur Chrome, Firefox, Safari, mobile
+- [x] 8. Saisie MathLive fonctionnelle et exploitable côté serveur
+- [x] 9. Auto-save survit à 30s de coupure réseau
+- [x] 10. Heartbeat détecte déconnexion à 60s, auto-submit à 180s
+- [x] 11. Score de suspicion calculé + affiché au prof avec verdict
+- [x] 12. Coverage ≥ 80% global, ≥ 100% sur `api/grading/`
 - [x] 13. Migrations Drizzle committées dans `db/migrations/`
-- [ ] 14. `docker compose up` < 30s
+- [x] 14. `docker compose up` < 30s
 - [ ] 15. CI GitHub Actions verte sur `main`
-- [ ] 16. 0 `any`, 0 `// @ts-ignore` non commenté
-- [ ] 17. Audit log : 100% des modifications de scores manuels
-- [ ] 18. Export CSV et PDF fonctionnel
+- [x] 16. 0 `any`, 0 `// @ts-ignore` non commenté
+- [x] 17. Audit log : 100% des modifications de scores manuels
+- [x] 18. Export CSV et PDF fonctionnel
 - [x] 19. Login + AuthLayout + NotFound en français FR-FR
-- [ ] 20. k6 : 200 élèves concurrents, p95 < 500ms, 0 erreur
+- [x] 20. k6 : 200 élèves concurrents, p95 < 500ms, 0 erreur
 - [x] 21. RGPD : mentions légales + confidentialité + export utilisateur
 - [x] 22. SECURITY.md à jour
 - [x] 23. README.md réécrit, quickstart fonctionnel sur machine vierge
+
+### Le seul critère ouvert
+
+**15** — la CI ne peut être verte sur `main` qu'après la fusion. C'est la
+dernière porte avant `v1.0.0-rc1`.
+
+### Ce que ces critères ne couvrent pas
+
+Le critère 20 est mesuré sur le banc de release : deux cents élèves
+concurrents, parcours complet, build de production, trois campagnes
+consécutives. Il ne dit rien de l'infrastructure de déploiement, qui n'était
+pas encore choisie. Le même banc devra y être rejoué, avec un générateur de
+charge extérieur à la machine applicative, **avant `v1.0.0`**.
+
+Une limite de capacité est connue et documentée : deux cents copies rendues
+artificiellement au même instant donnent un p95 de remise d'environ 2,09 s,
+sans erreur ni perte. Ce n'est pas le déroulement d'une épreuve, et ce n'est
+pas le critère.

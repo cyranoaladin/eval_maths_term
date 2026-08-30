@@ -99,3 +99,52 @@ décrivant une faille exploitable.
 - La limitation de débit est en mémoire : elle ne tient pas sur plusieurs
   instances. Un déploiement multi-instances demande Redis.
 - Pas de journal d'audit des modifications de notes (prévu, critère 17).
+
+## Ce que la campagne de mise en service a corrigé
+
+Quatre défauts de sécurité ont été trouvés en exécutant l'application, pas en
+la relisant. Ils sont consignés ici parce qu'ils indiquent où le projet était
+fragile.
+
+**Cloisonnement entre enseignants.** Les routes enseignant vérifiaient
+l'authentification, jamais la propriété : à partir d'un simple identifiant de
+session — un entier — n'importe quel professeur connecté pouvait lire une
+copie, la recorriger, changer une note, forcer une remise et consulter le
+journal d'audit d'un collègue. Une session appartient désormais à l'enseignant
+propriétaire de son évaluation, un tirage au propriétaire de sa classe. Le
+refus est un `NOT_FOUND`, jamais un `FORBIDDEN` : il ne confirme pas
+l'existence d'une copie qu'on ne possède pas.
+
+**Secrets de session.** `TEACHER_SESSION_SECRET` et `STUDENT_SESSION_SECRET`
+avaient une valeur par défaut, publiée dans ce dépôt. Un déploiement qui les
+oubliait démarrait normalement et signait ses cookies avec une chaîne lisible
+dans le code source : forger une session d'administration ne demandait que de
+savoir cloner le projet. Le démarrage refuse maintenant ces valeurs, les motifs
+de remplissage (`dev_`, `change_me`, `test_`) et deux secrets identiques —
+lesquels laisseraient un jeton élève passer pour un jeton enseignant.
+
+Générer un secret réel :
+
+```bash
+openssl rand -base64 48
+```
+
+**Identifiant de requête.** Il est repris de l'appelant seulement s'il
+correspond à une forme close ; toute autre valeur est remplacée par un
+identifiant fabriqué par le serveur. Recopier une chaîne arbitraire dans les
+journaux, c'est offrir une injection de contenu à qui les lit.
+
+**Intégrité des copies.** Rien n'empêchait une copie de porter deux réponses à
+la même question, et deux remises simultanées remontaient une erreur SQL brute
+jusqu'à l'élève. La règle est désormais tenue par la base, donc vraie sous
+concurrence, et la remise est prise en un ordre atomique.
+
+## Ce qui reste à la charge de l'exploitant
+
+- Secrets réels, distincts, générés — jamais ceux du dépôt.
+- HTTPS et `ALLOWED_ORIGINS` restreint aux origines réelles.
+- Base non exposée : seule l'application y accède.
+- Sauvegardes, et **restauration éprouvée** avant la mise en service.
+- Contrôle préalable d'unicité avant toute migration d'un environnement réel
+  (voir `DEPLOYMENT.md`).
+

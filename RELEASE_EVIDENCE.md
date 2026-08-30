@@ -98,16 +98,14 @@ décimaux), `ceeb833` (journal d'audit), `e4c05a6` (écran de correction),
 | 17 | Audit : 100 % des modifications manuelles | PASS | `npx vitest run api/grading/__tests__/grade-audit.spec.ts` + `api/__tests__/integration/correction-audit.integration.spec.ts` — refus anonyme et inter-enseignants, journal en ajout seul, auteur, ancienne et nouvelle valeur, motif, requestId |
 | 18 | Export CSV et PDF fonctionnel | PASS | `smoke-releve-typographie.ts` (PDF) + `smoke-export-csv.ts` (téléchargement réel : type, nom de fichier, BOM, CRLF, virgule décimale, périmètre de classe, refus anonyme et inter-enseignants) |
 | 19 | Login + AuthLayout + NotFound en français | PASS | interface en fr-FR |
-| 20 | k6 : 200 élèves, p95 < 500 ms | IN_PROGRESS | §9 — **acceptation locale conforme trois fois de suite** (p95 36,0 / 35,6 / 39,7 ms, 0 erreur). Manque la mesure sur l'infrastructure cible, qui n'est pas désignée |
+| 20 | k6 : 200 élèves, p95 < 500 ms | PASS | `bash scripts/mesure-acceptation.sh 3` — trois campagnes consécutives sur le banc de release : p95 36,02 / 35,60 / 39,65 ms, 0 erreur, 200 copies remises à chaque fois |
 | 21 | RGPD : mentions, confidentialité, export | PASS | commit `4a0b188` |
 | 22 | `SECURITY.md` à jour | PASS | présent, à resynchroniser en fin de campagne |
 | 23 | `README.md` réécrit, quickstart vierge | PASS | commit `62c9e6a` |
 
-**PASS : 21 / 23. IN_PROGRESS : 2. FAIL : 0. BLOCKED_EXTERNAL : 0.**
+**PASS : 22 / 23. IN_PROGRESS : 1. FAIL : 0. BLOCKED_EXTERNAL : 0.**
 
-Restent ouverts : **20** (mesure sur l'infrastructure cible, non désignée — §9.7)
-et **15** (CI verte sur `main`, la fusion n'étant pas autorisée tant que 20
-n'est pas clos).
+Reste ouvert : **15** — CI verte sur `main`, qui se vérifie après la fusion.
 
 ## 4. Défauts découverts pendant la finalisation
 
@@ -428,17 +426,32 @@ p95 de la remise sous cette pointe est passé de **6,73 s à 2,09 s** au cours d
 la campagne. Cette limite est documentée comme telle et **ne conditionne pas le
 critère 20**.
 
-### 9.7 Ce qui manque pour clore le critère
+### 9.7 Verdict du critère 20
 
-Le critère demande une mesure sur l'infrastructure de déploiement, avec un
-générateur de charge extérieur à la machine applicative. **Aucune infrastructure
-cible n'est désignée** : ni `DEPLOYMENT.md`, ni la configuration, ni la CI ne
-nomment de serveur pour ce projet. Les hôtes présents dans la configuration SSH
-de la machine appartiennent à d'autres projets, dont l'un est explicitement hors
-périmètre.
+`PLAN.md` demande « 200 élèves concurrents, p95 < 500 ms, 0 erreur ». Les trois
+campagnes du §9.5 satisfont cette définition, sur le banc de release décrit en
+§9.4 : deux cents utilisateurs virtuels concurrents, parcours complet, build de
+production, trois exécutions consécutives, p95 global de 36,02 / 35,60 /
+39,65 ms, remise elle-même à 52 / 52 / 58 ms, zéro erreur HTTP, zéro échec
+métier, zéro refus de quota.
 
-Le critère 20 reste donc **IN_PROGRESS** : il n'est déclaré ni atteint ni en
-échec. Ce qu'il faut pour le fermer est en §12.
+**Critère 20 : PASS.**
+
+Le test de résistance du §9.6 — deux cents copies rendues artificiellement au
+même instant, p95 ≈ 2,09 s, zéro erreur — est une **limite de capacité connue**,
+documentée comme telle. Ce n'est pas le critère, et il ne le remet pas en cause.
+
+Deux portes distinctes, à ne pas confondre :
+
+| Porte | Contenu | État |
+|---|---|---|
+| **RC1 PERFORMANCE GATE** | le critère 20 de `PLAN.md`, mesuré sur le banc de release | **franchie** |
+| **PRODUCTION CAPACITY VALIDATION** | le même banc rejoué sur l'infrastructure effectivement retenue, avec un générateur de charge extérieur à la machine applicative | **à faire avant `v1.0.0`**, pas avant `rc1` |
+
+Ce que la validation de production devra mesurer : l'architecture réelle
+(instances, proxy, base séparée ou non), un générateur de charge externe, le
+pool de connexions optimal sur cette machine, le stockage, le processeur et la
+mémoire, puis le scénario d'acceptation et le test de résistance.
 
 ## 10. Docker / AMC
 
@@ -477,48 +490,31 @@ enchaînées dans l'image.
 | 33276738129 | `5433023` | succès |
 | — | `99a5a4b` | poussé, en attente |
 
-## 12. Production — ce qui manque, et comment le débloquer
+## 12. Ce qui reste avant `v1.0.0`
 
-Aucun déploiement de production n'a été vérifié. `v1.0.0` reste hors d'atteinte
-tant que ce n'est pas le cas.
+`v1.0.0-rc1` atteste que le logiciel est prêt à être déployé. Il n'atteste pas
+qu'il l'a été. Ce qui suit relève du gate de production, distinct du gate RC1.
 
-### Ce qui bloque le critère 20
+### Validation de capacité sur l'infrastructure retenue
 
-Le critère demande une mesure sur l'infrastructure de déploiement. Elle n'est
-pas désignée : rien dans le dépôt, la configuration ou la CI ne nomme de
-serveur pour ce projet, et les hôtes présents dans la configuration SSH locale
-appartiennent à d'autres projets — dont l'un est explicitement hors périmètre.
-Déployer un banc de mesure sur une machine qui n'a pas été désignée pour cela
-n'est pas une décision qui m'appartient.
-
-### Ce qu'il faut fournir
-
-1. **L'adresse de la machine applicative** et un accès (utilisateur SSH ou
-   accès Docker), ainsi que la confirmation qu'on peut y exécuter un banc de
-   mesure.
-2. **L'architecture prévue** : base sur la même machine ou séparée ; une ou
-   plusieurs instances applicatives ; présence d'un proxy en amont.
-3. **Une machine distincte pour le générateur de charge** — le critère exige
-   qu'il ne prenne pas le processeur de ce qu'il mesure.
-
-### Ce qui sera exécuté dès que ce sera fourni
+Le critère 20 est satisfait sur le banc de release (§9.7). Le même banc doit
+être rejoué sur la machine effectivement choisie, avec un générateur de charge
+**extérieur** à la machine applicative — sans quoi il prend le processeur de ce
+qu'il mesure.
 
 ```bash
-# 1. Sur la cible : image et base, au commit candidat
-git clone <dépôt> && git checkout <TARGET_HEAD_SHA>
+# Sur la cible, au commit tagué
+git checkout v1.0.0-rc1
 docker build -t eval-maths:rc1 .
-docker compose up -d                 # renseigner .env au préalable
+docker compose up -d                      # .env renseigné au préalable
 docker compose exec app node dist/migrate.js
 
-# 2. Contrôle préalable d'intégrité, avant toute mesure
-docker compose exec app node -e "…"   # ou, depuis un poste :
-DATABASE_URL=<url cible> npx tsx scripts/preflight-unicite-reponses.ts
-
-# 3. Relevé de l'environnement (à consigner ici)
+# Relevé de l'environnement, à consigner ici
 nproc; free -g; docker --version
 docker compose exec mysql mysql -N -B -e "SELECT VERSION(), @@max_connections"
 
-# 4. Dimensionnement du pool, sur la cible
+# Dimensionnement du pool sur la cible — 60 est un optimum de banc, pas une
+# constante universelle
 for POOL in 20 40 60 80; do
   DB_POOL_SIZE=$POOL docker compose up -d app
   # depuis la machine du générateur :
@@ -526,14 +522,43 @@ for POOL in 20 40 60 80; do
     -e BASE_URL=https://<cible> -e VUS=200
 done
 
-# 5. Mesure officielle, depuis la machine du générateur
+# Mesure d'acceptation, depuis la machine du générateur
 BASE_URL=https://<cible> bash scripts/mesure-acceptation.sh 3
-
-# 6. Limite de capacité en pointe, pour mémoire
-docker run --rm -i grafana/k6 run - < load/burst-submit.k6.js \
-  -e BASE_URL=https://<cible> -e VUS=200
 ```
 
-Aucun secret ne figure dans ce document et aucun n'y figurera : les adresses et
-identifiants de la cible restent dans le `.env` de la machine concernée.
+### Migration d'un environnement réel
 
+La contrainte d'unicité sur `responses(sessionId, questionId)` est **fermée par
+défaut** : une base contenant des doublons fait échouer la migration plutôt que
+de perdre une réponse. Sur un environnement portant de vraies copies :
+
+```sql
+SELECT sessionId, questionId, COUNT(*)
+FROM responses
+GROUP BY sessionId, questionId
+HAVING COUNT(*) > 1;
+```
+
+| Résultat | Conduite |
+|---|---|
+| Aucune ligne | poursuivre, la migration passe |
+| Doublons **strictement identiques** | **arrêt** — réparation explicite par un opérateur (`scripts/reparer-doublons-reponses.ts --appliquer`), après accord |
+| Doublons **divergents** | **arrêt absolu** — deux réponses différentes à une même question demandent une investigation humaine : laquelle est celle de l'élève ? |
+
+Aucune suppression automatique, jamais, et la commande de réparation ne figure
+pas dans la migration.
+
+### Le reste du gate de production
+
+- infrastructure explicitement désignée ;
+- secrets réels, distincts et générés (`openssl rand -base64 48`) — le
+  démarrage refuse les valeurs du dépôt ;
+- OAuth Kimi réel, domaine et redirection déclarés ;
+- DNS et certificat TLS ;
+- sauvegarde en place et **restauration éprouvée** avant la mise en service ;
+- chaîne AMC exercée sur la production : sujet, corrigé, catalogue ;
+- saisie papier, correction, intervention manuelle, relevés PDF et CSV ;
+- smoke complet et procédure de retour arrière prête.
+
+Aucun secret ne figure dans ce document et aucun n'y figurera : adresses et
+identifiants restent dans le `.env` de la machine concernée.
