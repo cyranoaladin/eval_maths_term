@@ -13,11 +13,11 @@ observée. Un critère non vérifié reste `IN_PROGRESS`, jamais `PASS`.
 
 | | |
 |---|---|
-| Branche | `phase-3.5-convergence` |
-| HEAD | `91c09d3` |
+| Branche | `main` |
+| HEAD | `f0922fc` — commit de fusion de la PR #1 |
 | Base de la finalisation | `5a24b63` (`feat(dashboard)`) |
 | Worktree | propre |
-| Dernière mise à jour | 2026-08-30 (unicité, écriture groupée, mesure d'acceptation) |
+| Dernière mise à jour | 2026-08-30 — candidate `v1.0.0-rc1` |
 
 ## 1 bis. Incident de procédure — force-push
 
@@ -93,7 +93,7 @@ décimaux), `ceeb833` (journal d'audit), `e4c05a6` (écran de correction),
 | 12 | Couverture ≥ 80 % global, 100 % `api/grading/` | PASS | `npm run test:coverage` — seuils inscrits dans `vitest.config.ts`, vérifiés en CI |
 | 13 | Migrations Drizzle committées | PASS | `db/migrations/` suivi par Git |
 | 14 | `docker compose up` < 30 s | PASS | `bash scripts/recette-docker.sh` — **27/27**, démarrage 781 ms, génération AMC réelle déclenchée par l'application dans le conteneur |
-| 15 | CI GitHub Actions verte sur `main` | IN_PROGRESS | verte sur la branche ; fusion non autorisée à ce stade |
+| 15 | CI GitHub Actions verte sur `main` | PASS | run `33307711115` sur `f0922fc` — types, style, tests, couverture, build, base créée depuis le dépôt, image de production |
 | 16 | 0 `any`, 0 `@ts-ignore` non commenté | PASS | `npx vitest run api/__tests__/typage-strict.spec.ts` — garde durable, 2 suppressions recensées nominativement |
 | 17 | Audit : 100 % des modifications manuelles | PASS | `npx vitest run api/grading/__tests__/grade-audit.spec.ts` + `api/__tests__/integration/correction-audit.integration.spec.ts` — refus anonyme et inter-enseignants, journal en ajout seul, auteur, ancienne et nouvelle valeur, motif, requestId |
 | 18 | Export CSV et PDF fonctionnel | PASS | `smoke-releve-typographie.ts` (PDF) + `smoke-export-csv.ts` (téléchargement réel : type, nom de fichier, BOM, CRLF, virgule décimale, périmètre de classe, refus anonyme et inter-enseignants) |
@@ -103,9 +103,11 @@ décimaux), `ceeb833` (journal d'audit), `e4c05a6` (écran de correction),
 | 22 | `SECURITY.md` à jour | PASS | présent, à resynchroniser en fin de campagne |
 | 23 | `README.md` réécrit, quickstart vierge | PASS | commit `62c9e6a` |
 
-**PASS : 22 / 23. IN_PROGRESS : 1. FAIL : 0. BLOCKED_EXTERNAL : 0.**
+**PASS : 23 / 23. IN_PROGRESS : 0. FAIL : 0. BLOCKED_EXTERNAL : 0.**
 
-Reste ouvert : **15** — CI verte sur `main`, qui se vérifie après la fusion.
+Tous les critères d'acceptation de `PLAN.md` sont satisfaits. La branche est
+fusionnée dans `main` par un commit de fusion — l'historique de la campagne est
+conservé — et la CI est verte sur le SHA effectivement présent sur `main`.
 
 ## 4. Défauts découverts pendant la finalisation
 

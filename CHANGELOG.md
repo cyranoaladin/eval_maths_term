@@ -1,6 +1,6 @@
 # Changelog
 
-## [v1.0.0-rc1] — Mise en service
+## [v1.0.0-rc1] — Mise en service — 2026-08-30
 
 Campagne de durcissement avant première mise en production. Rien n'y a été
 ajouté comme fonctionnalité : tout ce qui suit est ce qu'une exécution réelle a
@@ -99,6 +99,17 @@ Critère de charge : deux cents élèves concurrents, p95 global de 36,0 / 35,6 
 39,7 ms sur trois campagnes consécutives, zéro erreur. `DB_POOL_SIZE` est
 configurable ; la valeur 60 est un optimum de banc, à remesurer sur
 l'infrastructure de déploiement.
+
+### État
+
+23 critères d'acceptation sur 23. Fusion dans `main` par commit de fusion
+(PR #1), CI verte sur `f0922fc`.
+
+`v1.0.0-rc1` atteste que le logiciel est prêt à être déployé — pas qu'il l'a
+été. Le gate de production reste entier : infrastructure désignée, secrets
+réels, OAuth réel, DNS et TLS, sauvegarde et restauration éprouvée, contrôle
+préalable de migration, benchmark de capacité sur la cible, chaîne AMC sur la
+production, smoke complet et retour arrière prêt.
 
 ### Migrations
 
@@ -384,6 +395,17 @@ correction de la Phase 2 ne tournait jamais.
 - **MathLatex.tsx** : rendu KaTeX (modes inline / display / auto avec parsing `$...$` et `$$...$$`), gestion d'erreur gracieuse
 - **MathInput.tsx** : champ de saisie MathLive (web component), import lazy, valeur contrôlée, accessibilité ARIA
 - **MathPalette.tsx** : palette de symboles groupés (fractions, exposants, fonctions, ensembles, intégrales)
+
+### État
+
+23 critères d'acceptation sur 23. Fusion dans `main` par commit de fusion
+(PR #1), CI verte sur `f0922fc`.
+
+`v1.0.0-rc1` atteste que le logiciel est prêt à être déployé — pas qu'il l'a
+été. Le gate de production reste entier : infrastructure désignée, secrets
+réels, OAuth réel, DNS et TLS, sauvegarde et restauration éprouvée, contrôle
+préalable de migration, benchmark de capacité sur la cible, chaîne AMC sur la
+production, smoke complet et retour arrière prêt.
 
 ### Migrations DB (Phase 2)
 

@@ -20,13 +20,12 @@ passée **en ligne** par les élèves, avec surveillance ; les deux supports son
 corrigés par le même moteur.
 
 **Où c'est.** `/home/alaeddine/Documents/02_Plateformes/app`
-Branche : `phase-3.5-convergence`, candidate à `v1.0.0-rc1`.
+Branche : `main`, taguée `v1.0.0-rc1`.
 
 **État.** Phases 1 à 5 terminées. `npm run check`, `npm run lint`,
 **805 tests**, `npm run test:coverage` et `npm run build` sont verts, ainsi que
 **39 scénarios navigateur** sur Chromium, Firefox et WebKit contre le build de
-production. **22 des 23 critères de mise en service sont satisfaits** ; le
-dernier — CI verte sur `main` — se vérifie après la fusion.
+production. **Les 23 critères de mise en service sont satisfaits.**
 
 Le dossier de preuve détaillé, critère par critère avec la commande qui
 l'établit, est dans [`RELEASE_EVIDENCE.md`](RELEASE_EVIDENCE.md).
@@ -711,9 +710,9 @@ Tous les bugs majeurs listés au §14 ont été trouvés ainsi.
 | 3 — Anti-triche | ✅ tag `v0.3.0-anticheat` |
 | 3.5 — Convergence front/back | ✅ commit `4375d7c` |
 | 4 — Atelier QCM (lots 0, A à G) | ✅ commit `4375d7c` |
-| 5 — Mise en production | ✅ candidate `v1.0.0-rc1` |
+| 5 — Mise en production | ✅ `v1.0.0-rc1` |
 
-### Critères de mise en service — 22 sur 23
+### Critères de mise en service — 23 sur 23
 
 Le détail, critère par critère avec la commande qui l'établit, est dans
 [`RELEASE_EVIDENCE.md`](RELEASE_EVIDENCE.md). Résumé :
@@ -730,7 +729,7 @@ Le détail, critère par critère avec la commande qui l'établit, est dans
 | 12 | couverture ≥ 80 % global, 100 % `api/grading` | seuils inscrits dans `vitest.config.ts`, vérifiés en CI |
 | 13 | migrations committées | `db/migrations/`, six fichiers |
 | 14 | `docker compose up` < 30 s | **781 ms**, et 27 étapes de recette sur le runtime de production |
-| 15 | CI verte sur `main` | 🟡 se vérifie après la fusion |
+| 15 | CI verte sur `main` | run `33307711115` sur `f0922fc` |
 | 16 | 0 `any`, 0 `@ts-ignore` | garde durable qui lit les sources |
 | 17 | journal d'audit des notes manuelles | ajout seul, auteur, avant/après, motif, `requestId` |
 | 18 | exports CSV et PDF | recettes de téléchargement réel, encodage et périmètre compris |

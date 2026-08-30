@@ -257,7 +257,7 @@ déjà : grille par élève, progression, validation, score immédiat.
 
 ## Critères d'acceptation Go-Live (§VIII.4)
 
-**22 sur 23 satisfaits.** Le dossier de preuve — commande et résultat pour
+**23 sur 23 satisfaits.** Le dossier de preuve — commande et résultat pour
 chacun — est dans [`RELEASE_EVIDENCE.md`](RELEASE_EVIDENCE.md).
 
 - [x] 1. Aucune route publique ne renvoie `correctAnswer`
@@ -274,7 +274,7 @@ chacun — est dans [`RELEASE_EVIDENCE.md`](RELEASE_EVIDENCE.md).
 - [x] 12. Coverage ≥ 80% global, ≥ 100% sur `api/grading/`
 - [x] 13. Migrations Drizzle committées dans `db/migrations/`
 - [x] 14. `docker compose up` < 30s
-- [ ] 15. CI GitHub Actions verte sur `main`
+- [x] 15. CI GitHub Actions verte sur `main`
 - [x] 16. 0 `any`, 0 `// @ts-ignore` non commenté
 - [x] 17. Audit log : 100% des modifications de scores manuels
 - [x] 18. Export CSV et PDF fonctionnel
@@ -284,10 +284,11 @@ chacun — est dans [`RELEASE_EVIDENCE.md`](RELEASE_EVIDENCE.md).
 - [x] 22. SECURITY.md à jour
 - [x] 23. README.md réécrit, quickstart fonctionnel sur machine vierge
 
-### Le seul critère ouvert
+### Tous les critères sont satisfaits
 
-**15** — la CI ne peut être verte sur `main` qu'après la fusion. C'est la
-dernière porte avant `v1.0.0-rc1`.
+La branche est fusionnée dans `main` par un commit de fusion, et la CI est
+verte sur le SHA effectivement présent sur `main` (run `33307711115`). Le tag
+`v1.0.0-rc1` est posé.
 
 ### Ce que ces critères ne couvrent pas
 
