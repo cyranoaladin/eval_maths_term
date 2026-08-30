@@ -112,12 +112,30 @@ jobs:
           done
           echo "Le serveur n'est pas devenu disponible :"; cat serveur.log; exit 1
 
+      # Un moteur à la fois, chacun dans son étape.
+      #
+      # Enchaînés dans une seule exécution, les trois navigateurs finissaient par
+      # épuiser la mémoire du runner : Firefox s'est fermé au milieu de la
+      # vingt-cinquième page, et les tests suivants ont échoué sur un navigateur
+      # mort. Ce n'est pas une instabilité du produit, et la masquer par une
+      # reprise l'aurait fait passer pour telle.
+      #
       # `retries` reste à zéro : une instabilité masquée par une reprise est une
       # instabilité qu'on retrouvera un jour d'épreuve.
-      - name: Chromium, Firefox, WebKit
+      - name: Chromium
         env:
           E2E_BASE_URL: http://127.0.0.1:3200
-        run: npx playwright test --retries=0
+        run: npx playwright test --project=chromium --retries=0
+
+      - name: Firefox
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3200
+        run: npx playwright test --project=firefox --retries=0
+
+      - name: WebKit
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3200
+        run: npx playwright test --project=webkit --retries=0
 
       - uses: actions/upload-artifact@v4
         if: failure()

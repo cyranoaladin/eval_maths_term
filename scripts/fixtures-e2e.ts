@@ -29,6 +29,22 @@ const UNION_ID = "dev-teacher";
 const NOM_CLASSE = "Terminale Démonstration";
 const LIBELLE_TIRAGE = "Tirage de démonstration";
 
+/**
+ * Une évaluation au titre volontairement long.
+ *
+ * Les écrans se testaient sur des libellés courts, et débordaient sur les vrais.
+ * Un enseignant nomme ses évaluations comme il les annonce à sa classe :
+ * « Devoir surveillé n° 3 — suites, limites et raisonnement par récurrence ».
+ * C'est ce cas-là qui doit tenir dans une tablette, pas « Test ».
+ */
+const TITRE_LONG =
+  "Devoir surveillé n° 3 — suites numériques, limites, " +
+  "et raisonnement par récurrence (Terminale spécialité)";
+const DESCRIPTION_LONGUE =
+  "Épreuve de deux heures portant sur l'ensemble du chapitre : convergence, " +
+  "théorème des gendarmes, suites définies par récurrence, et rédaction complète " +
+  "d'une démonstration par récurrence avec initialisation et hérédité.";
+
 /** Élèves fictifs. Accents, apostrophe et particule : de quoi éprouver l'affichage. */
 const ELEVES = [
   { lastName: "Durand", firstName: "Léa" },
@@ -161,7 +177,25 @@ async function main() {
     copiesCreees++;
   }
 
+  // ── Une évaluation au libellé long ────────────────────────────────────────
+  let [longue] = await db
+    .select({ id: evaluations.id })
+    .from(evaluations)
+    .where(eq(evaluations.title, TITRE_LONG))
+    .limit(1);
+  if (!longue) {
+    const [insere] = await db.insert(evaluations).values({
+      title: TITRE_LONG,
+      description: DESCRIPTION_LONGUE,
+      duration: 120,
+      isActive: true,
+      ownerId: enseignant.id,
+    });
+    longue = { id: Number(insere.insertId) };
+  }
+
   console.log(`Classe « ${NOM_CLASSE} » — ${idsEleves.length} élèves`);
+  console.log(`Évaluation au libellé long #${longue.id}`);
   console.log(
     `Tirage #${tirage.id} — ${imprimees.length} questions imprimées, ${copiesCreees} copie(s) créée(s)`,
   );

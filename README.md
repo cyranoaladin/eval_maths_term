@@ -892,8 +892,8 @@ fragile.
 - `.github/workflows/ci.yml` — cinq travaux, aucun tolérant l'échec, aucune
   étape en `continue-on-error` : **Qualité** (types, style, 878 tests,
   couverture, build), **Parcours navigateur** (build de production, base isolée,
-  migrations, jeu de données déterministe, serveur de production, trois moteurs,
-  `retries=0`), **Migrations** (base vierge montée depuis le dépôt, rejeu sans
+  migrations, jeu de données déterministe, serveur de production, un moteur par
+  étape, `retries=0`), **Migrations** (base vierge montée depuis le dépôt, rejeu sans
   effet, cohérence des barèmes), **Image de production** (construction puis les
   27 étapes de la recette sur cette image-là), **Sécurité** (analyse de secrets
   sur tout l'historique, vulnérabilités de production, nomenclature CycloneDX,

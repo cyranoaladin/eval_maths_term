@@ -20,7 +20,15 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-header"
       className={cn(
-        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
+        /*
+          `grid-cols-[minmax(0,1fr)]` : sans colonne explicite, une grille se
+          dimensionne sur son contenu et non sur son conteneur. Un titre long —
+          « Évaluation de Mathématiques — Terminale Spécialité » — poussait
+          l'en-tête à 871 px dans une tablette de 820, malgré le `min-w-0` et le
+          `truncate` posés à l'intérieur : ils ne servent à rien tant que la
+          colonne, elle, a le droit de grandir.
+        */
+        "@container/card-header grid grid-cols-[minmax(0,1fr)] auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 has-data-[slot=card-action]:grid-cols-[minmax(0,1fr)_auto] [.border-b]:pb-6",
         className
       )}
       {...props}
