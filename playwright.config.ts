@@ -26,7 +26,29 @@ export default defineConfig({
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
+    {
+      name: "firefox",
+      use: {
+        ...devices["Desktop Firefox"],
+        /*
+          Un seul processus de contenu.
+          
+          Gecko se fermait au milieu d'une page sur les machines de la CI —
+          « Target page, context or browser has been closed » —, et les tests
+          suivants échouaient sur un navigateur mort. Les pages de cette
+          application chargent KaTeX et MathLive ; multipliées par les processus
+          que Firefox ouvre par défaut, elles dépassent ce dont dispose un
+          runner. Ce n'est pas une instabilité du produit, et la masquer par une
+          reprise l'aurait fait passer pour telle.
+        */
+        launchOptions: {
+          firefoxUserPrefs: {
+            "dom.ipc.processCount": 1,
+            "browser.tabs.remote.autostart": false,
+          },
+        },
+      },
+    },
     { name: "webkit", use: { ...devices["Desktop Safari"] } },
   ],
 });
