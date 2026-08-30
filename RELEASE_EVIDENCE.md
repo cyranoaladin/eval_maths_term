@@ -516,15 +516,34 @@ l'historique de la branche : aucune clé d'API, aucun jeton, aucune clé privée
 La clef du fournisseur de modèle vit dans `.env`, ignoré par Git, et n'apparaît
 dans aucun fichier suivi ni dans aucun commit.
 
-### Ce qui est demandé
+### Instruction des incidents
 
-Ces relevés se résolvent sur le tableau de bord GitGuardian — marquer les
-incidents comme faux positifs ou identifiants de bac à sable — ce qui relève du
-compte du propriétaire du dépôt. Le contournement n'est ni fait ni proposé :
-l'alerte reste rouge tant qu'elle n'a pas été instruite par une personne.
+Les relevés ont été examinés par le propriétaire du dépôt et classés :
 
-Les contrôles GitHub Actions de la demande de fusion, eux, sont **verts** :
-types, style, tests, couverture, build, base créée depuis le dépôt, image de
+| Incident | Classification |
+|---|---|
+| **36709420** | Faux positif — substitutions de variables d'environnement dans Docker Compose. Aucune valeur de secret n'est versionnée. |
+| **36709419** | Identifiant de développement local, volontairement non secret — MySQL local publié sur la boucle locale, jamais utilisé en production. |
+
+**Conclusion : aucun identifiant vivant n'est exposé.** Aucune rotation n'est
+nécessaire. Aucune réécriture d'historique n'a été faite ni autorisée, et
+aucune exception globale n'a été posée sur l'analyseur : les incidents ont été
+instruits un par un.
+
+Les valeurs relevées ne sont pas recopiées ici : les nommer une seconde fois
+n'apporterait rien et multiplierait les endroits où elles figurent.
+
+### Ce qui reste identifié comme réservé aux tests
+
+Les identifiants du conteneur MySQL jetable du travail de CI et les secrets
+`NODE_ENV=test` ne donnent accès à aucune infrastructure persistante. Ils ne
+sont pas déplacés vers un coffre pour satisfaire un analyseur — cela
+donnerait l'illusion d'un secret là où il n'y en a pas — mais ils restent
+nommés de façon à ce que leur nature saute aux yeux : préfixe `ci_`, base
+`eval_maths_test`, conteneur détruit à la fin du travail.
+
+Les contrôles GitHub Actions de la demande de fusion sont **verts** : types,
+style, tests, couverture, build, base créée depuis le dépôt, image de
 production.
 
 ## 11. CI distante
