@@ -11,7 +11,7 @@ import {
   appelAnonyme, appelEleve, appelEnseignant, creerEnseignant, creerEvaluation,
   db, nettoyer, ouvrirSession, unique,
 } from "./harnais";
-import { responses, sessions } from "@db/schema";
+import { questions, responses, sessions } from "@db/schema";
 import { withRequestId } from "../../lib/request-id";
 import type { User } from "@db/schema";
 
@@ -198,6 +198,65 @@ describe("intervention manuelle", () => {
         responseId: 99_999_999, score: 1, reason: "Réponse fantôme",
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe("ce que la correction inscrit réellement sur chaque réponse", () => {
+  it("porte le mode, la note et le retour de chaque question", async () => {
+    // Le moteur écrit toute la copie en un seul ordre : c'est ici, contre une
+    // vraie base, que se vérifie ce que chaque ligne reçoit.
+    const { sessionId } = await copieRemise();
+    const lignes = await db.select().from(responses).where(eq(responses.sessionId, sessionId));
+    expect(lignes).toHaveLength(3);
+
+    for (const l of lignes) {
+      expect(l.gradedAt, "chaque réponse porte sa date de correction").not.toBeNull();
+      expect(l.gradingMode).toBeTruthy();
+      expect(l.score).not.toBeNull();
+      expect(l.gradingReason).toBeTruthy();
+      // Correction déterministe : aucune confiance de correcteur assisté.
+      expect(l.llmConfidence).toBeNull();
+    }
+
+    const modes = lignes.map((l) => l.gradingMode).sort();
+    expect(modes).toEqual(["qcm", "symbolic:numeric", "true_false"].sort());
+
+    // Chaque ligne reçoit sa propre note, pas celle de sa voisine.
+    const parMode = new Map(lignes.map((l) => [l.gradingMode, Number(l.score)]));
+    expect(parMode.get("qcm")).toBe(2);
+    expect(parMode.get("true_false")).toBe(0);
+  });
+
+  it("laisse à l'enseignant une question dont le barème est illisible", async () => {
+    const { sessionId } = await copieRemise();
+    const detail = await appelEnseignant(prof).session.getDetailsForTeacher({ sessionId });
+    const cible = detail.responses.find((r) => r.question?.type === "short_answer")!;
+
+    // Un barème corrompu en base : la correction doit le dire, pas deviner.
+    await db
+      .update(questions)
+      .set({ gradingRubric: { mode: { kind: "inconnu" } } as never })
+      .where(eq(questions.id, cible.questionId));
+
+    const r = await appelEnseignant(prof).grading2.gradeSession({ sessionId });
+    expect(r.needsManualReview).toBeGreaterThanOrEqual(1);
+
+    const [ligne] = await db.select().from(responses).where(eq(responses.id, cible.id));
+    expect(ligne.gradingMode).toBe("invalid_rubric");
+    expect(ligne.llmFeedback).toMatch(/manuellement/i);
+    expect(Number(ligne.score)).toBe(0);
+
+    // On remet le barème en place : les autres cas en dépendent.
+    await db
+      .update(questions)
+      .set({
+        gradingRubric: {
+          mode: { kind: "symbolic", canonical: "2*x", variables: ["x"] },
+          llmReviewRequired: false,
+          weight: 3,
+        },
+      })
+      .where(eq(questions.id, cible.questionId));
   });
 });
 

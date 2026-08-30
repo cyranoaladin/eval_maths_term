@@ -10,7 +10,7 @@ import {
   responses,
   cheatEvents as cheatEventsTable,
 } from "@db/schema";
-import { eq, isNull, or } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { assertSessionAccessible } from "../queries/ownership";
 import { gradeSessionResponses } from "../grading/grade-session";
 import { signStudentToken, signResultsToken, verifyResultsToken } from "../anticheat/session-token";
@@ -258,114 +258,156 @@ export const sessionRouter = createRouter({
       const session = await assertSessionActive(sessionId);
       const db = getDb();
 
-      // Seules les questions de l'évaluation de la session sont acceptées :
-      // un client malveillant ne peut pas injecter la réponse d'une autre copie.
-      const qs = await db
-        .select({ id: questions.id })
-        .from(questions)
-        .where(eq(questions.evaluationId, session.evaluationId));
-      const allowedIds = new Set(qs.map((q) => q.id));
-
-      // 1. Enregistrement brut des réponses — aucun score n'est calculé ici,
-      //    et surtout aucun score n'est accepté depuis le client.
-      //
-      // L'écriture se faisait réponse par réponse, avec une lecture préalable
-      // pour chacune : quarante-deux allers-retours pour une copie de vingt et
-      // une questions. Deux cents copies remises dans la même seconde — la fin
-      // d'une épreuve — saturaient la base pour ce seul travail. L'état
-      // existant est maintenant lu une fois, les nouvelles réponses insérées en
-      // un seul ordre, et seules les réponses réellement modifiées sont mises à
-      // jour.
-      const aEcrire = input.answers.filter((a) => allowedIds.has(a.questionId));
-
-      const dejaLa = await db
-        .select({
-          id: responses.id,
-          questionId: responses.questionId,
-          answer: responses.answer,
-          justification: responses.justification,
-        })
-        .from(responses)
-        .where(eq(responses.sessionId, sessionId));
-      const parQuestion = new Map(dejaLa.map((r) => [r.questionId, r]));
-
-      const nouvelles = aEcrire
-        .filter((a) => !parQuestion.has(a.questionId))
-        .map((a) => ({
-          sessionId,
-          questionId: a.questionId,
-          answer: a.answer,
-          justification: a.justification ?? null,
-          maxScore: 0,
-          partialCreditApplied: false,
-        }));
-
-      const aModifier = aEcrire
-        .map((a) => ({ a, existante: parQuestion.get(a.questionId) }))
-        .filter(
-          ({ a, existante }) =>
-            existante !== undefined &&
-            (existante.answer !== a.answer ||
-              (existante.justification ?? null) !== (a.justification ?? null)),
+      /**
+       * Prise de la copie, en un seul ordre atomique.
+       *
+       * Deux remises simultanées — un double-clic, une requête rejouée après
+       * une coupure — passaient toutes deux la vérification d'état, puis
+       * écrivaient les mêmes réponses : la seconde butait sur la contrainte
+       * d'unicité et remontait une erreur SQL brute jusqu'à l'élève. C'est la
+       * base qui tranche désormais, avant tout travail : la première remise
+       * qui pose sa date de fin emporte la copie, la seconde est refusée avec
+       * le message qui convient.
+       */
+      const [prise] = await db
+        .update(sessions)
+        .set({ endedAt: new Date() })
+        .where(
+          and(
+            eq(sessions.id, sessionId),
+            eq(sessions.status, "in_progress"),
+            isNull(sessions.endedAt),
+          ),
         );
 
-      if (nouvelles.length > 0 || aModifier.length > 0) {
-        await db.transaction(async (tx) => {
-          if (nouvelles.length > 0) {
-            await tx.insert(responses).values(nouvelles);
-          }
-          for (const { a, existante } of aModifier) {
-            await tx
-              .update(responses)
-              .set({ answer: a.answer, justification: a.justification ?? null })
-              .where(eq(responses.id, existante!.id));
-          }
+      if (prise.affectedRows === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cette session est déjà terminée",
         });
       }
 
-      // 2. Correction par le moteur Phase 2 (déterministe puis LLM).
-      const grading = await gradeSessionResponses(sessionId);
+      /**
+       * La prise est un bail, pas un verrou définitif : si la remise échoue en
+       * cours de route, la copie doit pouvoir être rendue à nouveau plutôt que
+       * de rester bloquée jusqu'au balayage d'inactivité.
+       */
+      const rendreLaCopie = async () => {
+        await db
+          .update(sessions)
+          .set({ endedAt: null })
+          .where(and(eq(sessions.id, sessionId), eq(sessions.status, "in_progress")));
+      };
 
-      // 3. Score de suspicion et statut final — calculés serveur, jamais reçus.
-      const events = await db
-        .select()
-        .from(cheatEventsTable)
-        .where(eq(cheatEventsTable.sessionId, sessionId));
+      try {
+        // Seules les questions de l'évaluation de la session sont acceptées :
+        // un client malveillant ne peut pas injecter la réponse d'une autre copie.
+        const qs = await db
+          .select({ id: questions.id })
+          .from(questions)
+          .where(eq(questions.evaluationId, session.evaluationId));
+        const allowedIds = new Set(qs.map((q) => q.id));
 
-      const suspicion = computeSuspicionScore(
-        events.map((e) => ({
-          type: e.type as CheatEventType,
-          count: (e.metadata as { count?: number })?.count ?? 1,
-        })),
-      );
+        // 1. Enregistrement brut des réponses — aucun score n'est calculé ici,
+        //    et surtout aucun score n'est accepté depuis le client.
+        //
+        // L'écriture se faisait réponse par réponse, avec une lecture préalable
+        // pour chacune : quarante-deux allers-retours pour une copie de vingt et
+        // une questions. Deux cents copies remises dans la même seconde — la fin
+        // d'une épreuve — saturaient la base pour ce seul travail. L'état
+        // existant est maintenant lu une fois, les nouvelles réponses insérées en
+        // un seul ordre, et seules les réponses réellement modifiées sont mises à
+        // jour.
+        const aEcrire = input.answers.filter((a) => allowedIds.has(a.questionId));
 
-      const finalStatus = input.isTimeout
-        ? "timed_out"
-        : suspicion.verdict === "severe"
-          ? "cheating_detected"
-          : "completed";
+        const dejaLa = await db
+          .select({
+            id: responses.id,
+            questionId: responses.questionId,
+            answer: responses.answer,
+            justification: responses.justification,
+          })
+          .from(responses)
+          .where(eq(responses.sessionId, sessionId));
+        const parQuestion = new Map(dejaLa.map((r) => [r.questionId, r]));
 
-      const resultsToken = await signResultsToken(sessionId);
+        const nouvelles = aEcrire
+          .filter((a) => !parQuestion.has(a.questionId))
+          .map((a) => ({
+            sessionId,
+            questionId: a.questionId,
+            answer: a.answer,
+            justification: a.justification ?? null,
+            maxScore: 0,
+            partialCreditApplied: false,
+          }));
 
-      await db
-        .update(sessions)
-        .set({
-          status: finalStatus,
-          timeSpent: input.timeSpent ?? null,
-          endedAt: new Date(),
-          resultsToken,
+        const aModifier = aEcrire
+          .map((a) => ({ a, existante: parQuestion.get(a.questionId) }))
+          .filter(
+            ({ a, existante }) =>
+              existante !== undefined &&
+              (existante.answer !== a.answer ||
+                (existante.justification ?? null) !== (a.justification ?? null)),
+          );
+
+        if (nouvelles.length > 0 || aModifier.length > 0) {
+          await db.transaction(async (tx) => {
+            if (nouvelles.length > 0) {
+              await tx.insert(responses).values(nouvelles);
+            }
+            for (const { a, existante } of aModifier) {
+              await tx
+                .update(responses)
+                .set({ answer: a.answer, justification: a.justification ?? null })
+                .where(eq(responses.id, existante!.id));
+            }
+          });
+        }
+
+        // 2. Correction par le moteur Phase 2 (déterministe puis LLM).
+        const grading = await gradeSessionResponses(sessionId);
+
+        // 3. Score de suspicion et statut final — calculés serveur, jamais reçus.
+        const events = await db
+          .select()
+          .from(cheatEventsTable)
+          .where(eq(cheatEventsTable.sessionId, sessionId));
+
+        const suspicion = computeSuspicionScore(
+          events.map((e) => ({
+            type: e.type as CheatEventType,
+            count: (e.metadata as { count?: number })?.count ?? 1,
+          })),
+        );
+
+        const finalStatus = input.isTimeout
+          ? "timed_out"
+          : suspicion.verdict === "severe"
+            ? "cheating_detected"
+            : "completed";
+
+        const resultsToken = await signResultsToken(sessionId);
+
+        await db
+          .update(sessions)
+          .set({
+            status: finalStatus,
+            timeSpent: input.timeSpent ?? null,
+            endedAt: new Date(),
+            resultsToken,
+            suspicionScore: suspicion.score,
+            suspicionVerdict: suspicion.verdict,
+          })
+          .where(eq(sessions.id, sessionId));
+
+        logger.info("[session] Session soumise", {
+          sessionId,
+          totalScore: grading.totalScore,
+          normalizedScore: grading.normalizedScore,
+          finalStatus,
           suspicionScore: suspicion.score,
-          suspicionVerdict: suspicion.verdict,
-        })
-        .where(eq(sessions.id, sessionId));
-
-      logger.info("[session] Session soumise", {
-        sessionId,
-        totalScore: grading.totalScore,
-        normalizedScore: grading.normalizedScore,
-        finalStatus,
-        suspicionScore: suspicion.score,
-      });
+        });
 
       return {
         success: true,
@@ -375,6 +417,13 @@ export const sessionRouter = createRouter({
         needsManualReview: grading.needsManualReview,
         resultsToken,
       };
+      } catch (e) {
+        // La remise a échoué après la prise : on relâche le bail pour que
+        // l'élève puisse rendre à nouveau, plutôt que de laisser sa copie dans
+        // un état où plus personne ne peut agir.
+        await rendreLaCopie();
+        throw e;
+      }
     }),
 
   /**

@@ -15,7 +15,7 @@
  * - Idempotent : relancer la correction met à jour les scores existants.
  * - normalizedScore = round(totalScore/maxScore*20*4)/4 → sur 20 au quart de point.
  */
-import { eq } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { questions, responses, sessions } from "@db/schema";
 import { GradingRubricSchema } from "../../contracts/grading-rubric";
@@ -119,6 +119,38 @@ export interface GradeSessionOptions {
   questionIds?: number[];
 }
 
+/** Une correction calculée, prête à être écrite. */
+interface Correction {
+  responseId: number;
+  score: string;
+  maxScore: number;
+  isCorrect: boolean;
+  llmFeedback: string;
+  gradingMode: string;
+  llmConfidence: string | null;
+  gradingReason: string;
+  partialCreditApplied: boolean;
+}
+
+/**
+ * Construit la valeur d'une colonne pour l'ensemble des réponses corrigées.
+ *
+ * Toute la copie s'écrit ainsi en un seul ordre, là où il en fallait un par
+ * réponse. Une mise à jour ne prend que les verrous des lignes visées : un
+ * `INSERT … ON DUPLICATE KEY UPDATE` aurait posé des verrous d'intervalle sur
+ * l'index unique et produit des interblocages dès que deux copies se corrigent
+ * en même temps — ce qui est précisément le cas d'une fin d'épreuve.
+ */
+function selonLaReponse<K extends keyof Correction>(
+  corrections: Correction[],
+  colonne: K,
+) {
+  return sql`case ${responses.id} ${sql.join(
+    corrections.map((c) => sql`when ${c.responseId} then ${c[colonne]}`),
+    sql` `,
+  )} end`;
+}
+
 export interface GradeSessionResult {
   totalScore: number;
   maxScore: number;
@@ -177,15 +209,21 @@ export async function gradeSessionResponses(
   let needsManualReview = 0;
 
   /**
-   * Les écritures sont rassemblées puis appliquées en une seule transaction.
+   * Les corrections sont rassemblées puis écrites en un seul ordre.
    *
    * Émises une par une, elles coûtaient un aller-retour et une écriture disque
    * chacune : sur une copie de vingt et une questions, cent cinquante des cent
    * soixante-cinq millisecondes de correction s'y perdaient, contre douze pour
-   * le calcul lui-même. Elles gagnent au passage l'atomicité : une interruption
-   * en cours de route laissait jusqu'ici une copie à moitié corrigée.
+   * le calcul lui-même. Elles sont maintenant appliquées en un seul
+   * `INSERT … ON DUPLICATE KEY UPDATE`, ce que rend possible la contrainte
+   * d'unicité sur (session, question), et à l'intérieur d'une transaction :
+   * une interruption en cours de route laissait jusqu'ici une copie à moitié
+   * corrigée.
+   *
+   * Les réponses déjà notées à la main n'entrent jamais dans cette liste :
+   * elles sont écartées plus haut, avant tout calcul.
    */
-  const ecritures: Array<{ responseId: number; valeurs: Record<string, unknown> }> = [];
+  const ecritures: Correction[] = [];
 
   for (const resp of resps) {
     const q = questionMap.get(resp.questionId);
@@ -210,14 +248,14 @@ export async function gradeSessionResponses(
       });
       ecritures.push({
         responseId: resp.id,
-        valeurs: {
-          score: toDecimal(0),
-          maxScore: q.points,
-          isCorrect: false,
-          llmFeedback: "À corriger manuellement par l'enseignant.",
-          gradingMode: q.gradingRubric ? "invalid_rubric" : "missing_rubric",
-          gradedAt: new Date(),
-        },
+        score: toDecimal(0),
+        maxScore: q.points,
+        isCorrect: false,
+        llmFeedback: "À corriger manuellement par l'enseignant.",
+        gradingMode: q.gradingRubric ? "invalid_rubric" : "missing_rubric",
+        llmConfidence: null,
+        gradingReason: "À corriger manuellement par l'enseignant.",
+        partialCreditApplied: false,
       });
       needsManualReview++;
       continue;
@@ -250,22 +288,17 @@ export async function gradeSessionResponses(
 
       ecritures.push({
         responseId: resp.id,
-        valeurs: {
-          score: toDecimal(result.score),
-          maxScore: result.maxPoints,
-          isCorrect: result.isCorrect,
-          llmFeedback: result.needsLLM
-            ? "À corriger manuellement par l'enseignant."
-            : result.feedback,
-          gradingMode: result.gradingMode,
-          llmConfidence:
-            result.llmConfidence != null
-              ? result.llmConfidence.toFixed(2)
-              : null,
-          gradingReason: result.feedback,
-          partialCreditApplied: result.partialCreditApplied,
-          gradedAt: new Date(),
-        },
+        score: toDecimal(result.score),
+        maxScore: result.maxPoints,
+        isCorrect: result.isCorrect,
+        llmFeedback: result.needsLLM
+          ? "À corriger manuellement par l'enseignant."
+          : result.feedback,
+        gradingMode: result.gradingMode,
+        llmConfidence:
+          result.llmConfidence != null ? result.llmConfidence.toFixed(2) : null,
+        gradingReason: result.feedback,
+        partialCreditApplied: result.partialCreditApplied,
       });
 
       totalScore += result.score;
@@ -288,8 +321,26 @@ export async function gradeSessionResponses(
   // Une seule transaction : la copie passe d'un coup de l'état non corrigé à
   // l'état corrigé, totaux compris.
   await db.transaction(async (tx) => {
-    for (const e of ecritures) {
-      await tx.update(responses).set(e.valeurs).where(eq(responses.id, e.responseId));
+    if (ecritures.length > 0) {
+      // Un seul ordre pour toute la copie, et les lignes verrouillées dans un
+      // ordre déterministe. `answer` et `justification` n'y figurent pas : ce
+      // que l'élève a écrit ne se réécrit pas à la correction.
+      const parIdCroissant = [...ecritures].sort((a, b) => a.responseId - b.responseId);
+      const maintenant = new Date();
+      await tx
+        .update(responses)
+        .set({
+          score: selonLaReponse(parIdCroissant, "score"),
+          maxScore: selonLaReponse(parIdCroissant, "maxScore"),
+          isCorrect: selonLaReponse(parIdCroissant, "isCorrect"),
+          llmFeedback: selonLaReponse(parIdCroissant, "llmFeedback"),
+          gradingMode: selonLaReponse(parIdCroissant, "gradingMode"),
+          llmConfidence: selonLaReponse(parIdCroissant, "llmConfidence"),
+          gradingReason: selonLaReponse(parIdCroissant, "gradingReason"),
+          partialCreditApplied: selonLaReponse(parIdCroissant, "partialCreditApplied"),
+          gradedAt: maintenant,
+        })
+        .where(inArray(responses.id, parIdCroissant.map((c) => c.responseId)));
     }
     await tx
       .update(sessions)

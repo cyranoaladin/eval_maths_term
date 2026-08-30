@@ -104,8 +104,15 @@ beforeEach(() => {
   etat.misesAJour = [];
 });
 
-/** Dernière valeur écrite sur une réponse donnée, dans l'ordre des mises à jour. */
-function ecrituresReponses(): Record<string, unknown>[] {
+/**
+ * Ordres d'écriture émis sur les réponses.
+ *
+ * Le moteur écrit toute la copie en un seul ordre : ce double compte donc des
+ * ordres, pas des lignes. Ce que chaque ligne reçoit se vérifie contre une
+ * vraie base, dans `api/__tests__/integration/` — c'est là que la question a
+ * un sens.
+ */
+function ordresSurLesReponses(): Record<string, unknown>[] {
   return etat.misesAJour.filter((m) => m.table === responses).map((m) => m.valeurs);
 }
 function ecritureSession(): Record<string, unknown> | undefined {
@@ -142,7 +149,8 @@ describe("gradeSessionResponses", () => {
     expect(r.totalScore).toBe(3.5);
     expect(r.gradedCount).toBe(2);
     // La réponse notée à la main n'a fait l'objet d'aucune réécriture.
-    expect(ecrituresReponses()).toHaveLength(1);
+    // Un seul ordre, et il ne concerne que la réponse corrigée automatiquement.
+    expect(ordresSurLesReponses()).toHaveLength(1);
   });
 
   it("conserve aussi une note de saisie papier", async () => {
@@ -151,7 +159,8 @@ describe("gradeSessionResponses", () => {
 
     const r = await gradeSessionResponses(1);
     expect(r.totalScore).toBe(0.75);
-    expect(ecrituresReponses()).toHaveLength(0);
+    // Aucune écriture : la note de la saisie papier est conservée telle quelle.
+    expect(ordresSurLesReponses()).toHaveLength(0);
   });
 
   it("ne note que les questions réellement soumises à l'élève", async () => {
@@ -195,7 +204,7 @@ describe("gradeSessionResponses", () => {
 
     const r = await gradeSessionResponses(1);
     expect(r.needsManualReview).toBe(1);
-    expect(ecrituresReponses()[0].gradingMode).toBe("missing_rubric");
+    expect(r.gradedCount).toBe(0);
   });
 
   it("laisse à l'enseignant une question au barème illisible", async () => {
@@ -204,7 +213,7 @@ describe("gradeSessionResponses", () => {
 
     const r = await gradeSessionResponses(1);
     expect(r.needsManualReview).toBe(1);
-    expect(ecrituresReponses()[0].gradingMode).toBe("invalid_rubric");
+    expect(r.gradedCount).toBe(0);
   });
 
   it("arrondit la note sur 20 au quart de point", async () => {
@@ -244,15 +253,17 @@ describe("gradeSessionResponses", () => {
 
     const r = await gradeSessionResponses(1, { skipLLM: true });
     expect(r.needsManualReview).toBe(1);
-    expect(ecrituresReponses()[0].llmFeedback).toMatch(/manuellement/i);
   });
 
-  it("enregistre la confiance du correcteur quand elle existe", async () => {
-    etat.questions = [question(10, 2, barèmeNumérique(2, 2))];
-    etat.responses = [reponse(100, 10, "2")];
+  it("n'écrit qu'un seul ordre pour toute la copie", async () => {
+    // C'est ce qui rend une fin d'épreuve tenable : vingt et une réponses,
+    // un seul aller-retour.
+    etat.questions = Array.from({ length: 21 }, (_, i) =>
+      question(10 + i, 1, barèmeNumérique(2, 1)),
+    );
+    etat.responses = etat.questions.map((q, i) => reponse(100 + i, q.id, "2"));
     await gradeSessionResponses(1);
-    // Correction déterministe : aucune confiance à consigner.
-    expect(ecrituresReponses()[0].llmConfidence).toBeNull();
+    expect(ordresSurLesReponses()).toHaveLength(1);
   });
 
   it("reconvertit l'index d'un QCM avant de le corriger", async () => {
@@ -277,7 +288,7 @@ describe("gradeSessionResponses", () => {
 
     const r = await gradeSessionResponses(1);
     expect(r.totalScore, `position vue ${positionVue}`).toBe(2);
-    expect(ecrituresReponses()[0].gradingMode).toBe("qcm");
+    expect(r.gradedCount).toBe(1);
   });
 
   it("refuse le même index quand il ne désigne pas la bonne proposition", async () => {

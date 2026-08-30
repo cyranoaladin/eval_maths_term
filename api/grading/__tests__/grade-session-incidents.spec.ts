@@ -104,17 +104,17 @@ describe("gradeSessionResponses — réponse en échec", () => {
     expect(r.needsManualReview).toBeGreaterThan(0);
   });
 
-  it("consigne la confiance quand le correcteur en donne une", async () => {
-    comportement.confiance = 0.87;
+  it("écrit toute la copie en un seul ordre", async () => {
     await gradeSessionResponses(1);
-    const ecritures = etat.misesAJour.filter((m) => m.table === responses);
-    expect(ecritures[0].valeurs.llmConfidence).toBe("0.87");
+    expect(etat.misesAJour.filter((m) => m.table === responses)).toHaveLength(1);
   });
 
-  it("n'inscrit aucune confiance quand la correction est déterministe", async () => {
-    comportement.confiance = null;
+  it("n'écrit rien sur les réponses quand aucune n'a pu être corrigée", async () => {
+    // Les totaux de la session sont tout de même mis à jour : la copie existe,
+    // elle vaut ce qu'elle valait.
+    comportement.echoue = true;
     await gradeSessionResponses(1);
-    const ecritures = etat.misesAJour.filter((m) => m.table === responses);
-    expect(ecritures[0].valeurs.llmConfidence).toBeNull();
+    expect(etat.misesAJour.filter((m) => m.table === responses)).toHaveLength(0);
+    expect(etat.misesAJour.filter((m) => m.table === sessions)).toHaveLength(1);
   });
 });

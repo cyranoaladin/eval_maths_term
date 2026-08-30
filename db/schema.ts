@@ -13,6 +13,7 @@ import {
   decimal,
   tinyint,
   foreignKey,
+  unique,
   primaryKey,
 } from "drizzle-orm/mysql-core";
 
@@ -168,6 +169,16 @@ export const responses = mysqlTable("responses", {
   gradedAt: timestamp("gradedAt"),
 }, (t) => [
   index("idx_responses_session").on(t.sessionId),
+  /**
+   * Une copie ne peut pas porter deux réponses à la même question.
+   *
+   * Rien ne l'empêchait : la remise relisait chaque réponse avant d'écrire, et
+   * deux appels concurrents pouvaient tous deux conclure à l'absence puis
+   * insérer. Une copie de la base de développement en portait effectivement
+   * deux, strictement identiques. La règle est désormais tenue par la base
+   * elle-même, ce qui la rend aussi vraie sous concurrence.
+   */
+  unique("uq_responses_session_question").on(t.sessionId, t.questionId),
   foreignKey({
     columns: [t.sessionId],
     foreignColumns: [sessions.id],
