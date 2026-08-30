@@ -8,7 +8,6 @@ import { getSessionCookieOptions } from "../lib/cookies";
 import { baseUrlPublique } from "../lib/base-url";
 import { logger } from "../lib/logger";
 import { Session, OAuthState, Paths } from "@contracts/constants";
-import { Errors } from "@contracts/errors";
 import { signSessionToken, verifySessionToken } from "./session";
 import { users as kimiUsers } from "./platform";
 import { enregistrerConnexion, findUserByUnionId } from "../queries/users";
@@ -96,15 +95,15 @@ export async function authenticateRequest(headers: Headers) {
   const cookies = cookie.parse(headers.get("cookie") || "");
   const token = cookies[Session.cookieName];
   if (!token) {
-    throw Errors.forbidden("Invalid authentication token.");
+    throw new Error("Jeton d'authentification invalide.");
   }
   const claim = await verifySessionToken(token);
   if (!claim) {
-    throw Errors.forbidden("Invalid authentication token.");
+    throw new Error("Jeton d'authentification invalide.");
   }
   const user = await findUserByUnionId(claim.unionId);
   if (!user) {
-    throw Errors.forbidden("User not found. Please re-login.");
+    throw new Error("Compte introuvable : reconnectez-vous.");
   }
   return user;
 }

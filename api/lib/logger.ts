@@ -11,7 +11,9 @@ const LEVELS: Record<LogLevel, number> = {
   error: 3,
 };
 
-const currentLevel = LEVELS[env.logLevel as LogLevel] ?? LEVELS.info;
+// `logLevel` est validé par le contrat de configuration : un niveau inconnu
+// est refusé au démarrage, pas rattrapé ici.
+const currentLevel = LEVELS[env.logLevel];
 
 function shouldLog(level: LogLevel): boolean {
   return LEVELS[level] >= currentLevel;

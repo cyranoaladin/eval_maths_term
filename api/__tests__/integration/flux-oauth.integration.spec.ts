@@ -249,20 +249,20 @@ describe("reconnaissance d'une requête déjà authentifiée", () => {
 
   it("refuse une requête sans cookie", async () => {
     await expect(authenticateRequest(new Headers())).rejects.toMatchObject({
-      message: expect.stringContaining("Invalid authentication token"),
+      message: expect.stringContaining("Jeton d'authentification invalide"),
     });
   });
 
   it("refuse un jeton illisible", async () => {
     await expect(
       authenticateRequest(new Headers({ cookie: `${Session.cookieName}=pas-un-jeton` })),
-    ).rejects.toMatchObject({ message: expect.stringContaining("Invalid authentication token") });
+    ).rejects.toMatchObject({ message: expect.stringContaining("Jeton d'authentification invalide") });
   });
 
   it("refuse un jeton valide dont le compte a disparu", async () => {
     const jeton = await signSessionToken({ unionId: "compte-efface", clientId: env.appId });
     await expect(
       authenticateRequest(new Headers({ cookie: `${Session.cookieName}=${jeton}` })),
-    ).rejects.toMatchObject({ message: expect.stringContaining("User not found") });
+    ).rejects.toMatchObject({ message: expect.stringContaining("Compte introuvable") });
   });
 });

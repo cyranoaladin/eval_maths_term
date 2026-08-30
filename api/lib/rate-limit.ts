@@ -14,15 +14,27 @@ interface RateEntry {
 
 const store = new Map<string, RateEntry>();
 
-// Nettoyage périodique pour éviter les fuites mémoire
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of store) {
-    if (now > entry.resetAt) {
-      store.delete(key);
+/**
+ * Oublie les compteurs dont la fenêtre est passée, et rend leurs clés.
+ *
+ * Sans ce balayage, chaque nom d'élève entré une fois occupe une entrée pour la
+ * durée de vie du serveur. Exporté pour être éprouvable : le minuteur ne
+ * s'observe pas.
+ */
+export function purgerCompteursExpires(): string[] {
+  const maintenant = Date.now();
+  const oubliees: string[] = [];
+  for (const [cle, entree] of store) {
+    if (maintenant > entree.resetAt) {
+      store.delete(cle);
+      oubliees.push(cle);
     }
   }
-}, 60_000);
+  return oubliees;
+}
+
+// `unref` : ce minuteur ne doit pas, à lui seul, tenir un processus en vie.
+setInterval(purgerCompteursExpires, 60_000).unref();
 
 /**
  * Vérifie et incrémente le compteur de requêtes pour une clé donnée.

@@ -15,7 +15,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { mkdtemp, mkdir, writeFile, chmod, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { db, creerEnseignant, nettoyer, unique } from "./harnais";
+import { appelEnseignant, db, creerEnseignant, nettoyer, unique } from "./harnais";
 import { classes, evaluations, paperCopies, paperExams, questions, students } from "@db/schema";
 import type { User } from "@db/schema";
 import { generatePaperExam, paperRoot, workdirFor, DOWNLOADABLE } from "../../paper/paper-service";
@@ -319,5 +319,163 @@ describe("ce qu'un tirage refuse", () => {
       .from(paperCopies)
       .where(and(eq(paperCopies.paperExamId, examId)));
     expect(copies).toHaveLength(0);
+  });
+});
+
+
+describe("le tirage vu depuis l'atelier", () => {
+  it("annonce un tableau de bord vide plutôt que rien", async () => {
+    const debutant = await creerEnseignant("Enseignant sans tirage");
+
+    const vue = await appelEnseignant(debutant).paper.overview();
+
+    expect(vue).toEqual({ tirages: [], derniersResultats: [] });
+    await nettoyer([], [debutant.id]);
+  });
+
+  it("crée le tirage et rend les liens de téléchargement", async () => {
+    const evaluationId = await creerEvaluationPapier([qcm()]);
+    const { classId } = await creerClasse([{ nom: "Traoré", prenom: "Fatou" }]);
+
+    const resultat = await appelEnseignant(prof).paper.createAndGenerate({
+      evaluationId,
+      classId,
+      label: "Tirage du conseil",
+    });
+    dossiers.push(workdirFor(resultat.paperExamId));
+
+    expect(resultat.studentCount).toBe(1);
+    const sujet = resultat.downloads.find((d) => d.file === "sujet.pdf")!;
+    expect(sujet.url).toBe(`/api/paper/${resultat.paperExamId}/sujet.pdf`);
+    expect(sujet.label).toBe("Sujet à imprimer");
+    expect(sujet.bytes).toBeGreaterThan(0);
+
+    const vue = await appelEnseignant(prof).paper.overview();
+    expect(vue.tirages.some((t) => t.id === resultat.paperExamId)).toBe(true);
+  });
+
+  it("ne laisse pas un tirage vide derrière un échec", async () => {
+    const evaluationId = await creerEvaluationPapier([qcm()]);
+    const { classId } = await creerClasse([{ nom: "Radié", prenom: "Paul", actif: false }]);
+    const avant = await db.select().from(paperExams).where(eq(paperExams.classId, classId));
+
+    await expect(
+      appelEnseignant(prof).paper.createAndGenerate({ evaluationId, classId }),
+    ).rejects.toThrow(/aucun élève actif/);
+
+    // Un tirage qui n'a rien produit ne doit pas rester en base : il
+    // apparaîtrait au tableau de bord comme un brouillon qu'on ne peut pas
+    // reprendre.
+    const apres = await db.select().from(paperExams).where(eq(paperExams.classId, classId));
+    expect(apres.length).toBe(avant.length);
+  });
+
+  it("refuse d'imprimer l'évaluation d'un collègue pour sa propre classe", async () => {
+    const collegue = await creerEnseignant("Enseignant voisin");
+    const [ev] = await db.insert(evaluations).values({
+      title: unique("Évaluation du voisin"),
+      duration: 30,
+      ownerId: collegue.id,
+    });
+    const evaluationId = Number(ev.insertId);
+    evaluationsCreees.push(evaluationId);
+    const { classId } = await creerClasse([{ nom: "Moreau", prenom: "Jean" }]);
+
+    await expect(
+      appelEnseignant(prof).paper.createAndGenerate({ evaluationId, classId }),
+    ).rejects.toThrow();
+
+    await nettoyer([], [collegue.id]);
+  });
+});
+
+describe("la grille de saisie", () => {
+  it("sépare ce qui se grille de ce qui se corrige à la main", async () => {
+    const evaluationId = await creerEvaluationPapier([
+      qcm(),
+      {
+        type: "short_answer",
+        question: "Démontrer que la suite converge.",
+        correctAnswer: "récurrence",
+        points: 5,
+        gradingRubric: {
+          mode: { kind: "text", expected: ["récurrence"] },
+          llmReviewRequired: true,
+          weight: 5,
+        },
+      },
+    ]);
+    const { classId, studentIds } = await creerClasse([{ nom: "Aubry", prenom: "Chloé" }]);
+    const examId = await creerTirage(evaluationId, classId, null);
+    await generatePaperExam({ paperExamId: examId, userId: prof.id });
+    const api = appelEnseignant(prof);
+
+    const grille = await api.paper.entrySheet({ paperExamId: examId });
+
+    expect(grille.questions).toHaveLength(1);
+    expect(grille.questions[0]).toMatchObject({ position: 1, choiceCount: 4 });
+    // La question rédigée n'est pas sur la feuille-réponses, mais elle se note.
+    expect(grille.openQuestions).toEqual([
+      { id: expect.any(Number), text: "Démontrer que la suite converge.", points: 5 },
+    ]);
+
+    await api.paper.saveEntry({
+      paperExamId: examId,
+      studentId: studentIds[0],
+      answers: [{ questionId: grille.questions[0].id, choiceIndex: 1 }],
+      openMarks: [{ questionId: grille.openQuestions[0].id, score: 4 }],
+    });
+
+    // Rouvrir la grille rend la saisie telle qu'elle a été enregistrée : la
+    // note d'une question rédigée est une note, pas un choix de case.
+    const reprise = await api.paper.entrySheet({ paperExamId: examId });
+    const copie = reprise.copies[0];
+    expect(copie.entered).toBe(true);
+    expect(copie.answers[grille.questions[0].id]).toBe(1);
+    expect(copie.openMarks[grille.openQuestions[0].id]).toBe(4);
+    expect(copie.totalScore).toBe(6);
+  });
+
+  it("passe sans broncher une question imprimée puis supprimée", async () => {
+    const evaluationId = await creerEvaluationPapier([qcm(), qcm({ question: "Seconde ?" })]);
+    const { classId } = await creerClasse([{ nom: "Bernard", prenom: "Léa" }]);
+    const examId = await creerTirage(evaluationId, classId, null);
+    const { includedQuestionIds } = await generatePaperExam({
+      paperExamId: examId,
+      userId: prof.id,
+    });
+    // Elle reste dans la composition figée du tirage : le papier existe.
+    await db.delete(questions).where(eq(questions.id, includedQuestionIds[1]));
+
+    const grille = await appelEnseignant(prof).paper.entrySheet({ paperExamId: examId });
+
+    expect(grille.questions.map((q) => q.id)).toEqual([includedQuestionIds[0]]);
+    // La place de celle qui reste ne bouge pas : c'est celle du papier.
+    expect(grille.questions[0].position).toBe(1);
+  });
+
+  it("refuse la grille d'un tirage jamais généré", async () => {
+    const evaluationId = await creerEvaluationPapier([qcm()]);
+    const { classId } = await creerClasse([{ nom: "Klein", prenom: "Théo" }]);
+    const examId = await creerTirage(evaluationId, classId, null);
+
+    await expect(
+      appelEnseignant(prof).paper.entrySheet({ paperExamId: examId }),
+    ).rejects.toThrow(/n'a pas encore été généré/);
+  });
+
+  it("refuse une saisie pour un élève qui n'existe pas", async () => {
+    const evaluationId = await creerEvaluationPapier([qcm()]);
+    const { classId } = await creerClasse([{ nom: "Nguyen", prenom: "Minh" }]);
+    const examId = await creerTirage(evaluationId, classId, null);
+    await generatePaperExam({ paperExamId: examId, userId: prof.id });
+
+    await expect(
+      appelEnseignant(prof).paper.saveEntry({
+        paperExamId: examId,
+        studentId: 999_999_999,
+        answers: [],
+      }),
+    ).rejects.toThrow(/Élève introuvable/);
   });
 });
