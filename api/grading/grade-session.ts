@@ -176,6 +176,17 @@ export async function gradeSessionResponses(
   let gradedCount = 0;
   let needsManualReview = 0;
 
+  /**
+   * Les écritures sont rassemblées puis appliquées en une seule transaction.
+   *
+   * Émises une par une, elles coûtaient un aller-retour et une écriture disque
+   * chacune : sur une copie de vingt et une questions, cent cinquante des cent
+   * soixante-cinq millisecondes de correction s'y perdaient, contre douze pour
+   * le calcul lui-même. Elles gagnent au passage l'atomicité : une interruption
+   * en cours de route laissait jusqu'ici une copie à moitié corrigée.
+   */
+  const ecritures: Array<{ responseId: number; valeurs: Record<string, unknown> }> = [];
+
   for (const resp of resps) {
     const q = questionMap.get(resp.questionId);
     if (!q) continue;
@@ -197,17 +208,17 @@ export async function gradeSessionResponses(
         questionId: q.id,
         sessionId,
       });
-      await db
-        .update(responses)
-        .set({
+      ecritures.push({
+        responseId: resp.id,
+        valeurs: {
           score: toDecimal(0),
           maxScore: q.points,
           isCorrect: false,
           llmFeedback: "À corriger manuellement par l'enseignant.",
           gradingMode: q.gradingRubric ? "invalid_rubric" : "missing_rubric",
           gradedAt: new Date(),
-        })
-        .where(eq(responses.id, resp.id));
+        },
+      });
       needsManualReview++;
       continue;
     }
@@ -237,9 +248,9 @@ export async function gradeSessionResponses(
 
       if (result.needsLLM) needsManualReview++;
 
-      await db
-        .update(responses)
-        .set({
+      ecritures.push({
+        responseId: resp.id,
+        valeurs: {
           score: toDecimal(result.score),
           maxScore: result.maxPoints,
           isCorrect: result.isCorrect,
@@ -254,8 +265,8 @@ export async function gradeSessionResponses(
           gradingReason: result.feedback,
           partialCreditApplied: result.partialCreditApplied,
           gradedAt: new Date(),
-        })
-        .where(eq(responses.id, resp.id));
+        },
+      });
 
       totalScore += result.score;
       gradedCount++;
@@ -274,14 +285,21 @@ export async function gradeSessionResponses(
   const normalizedScore =
     maxScore > 0 ? Math.round((totalScore / maxScore) * 20 * 4) / 4 : 0;
 
-  await db
-    .update(sessions)
-    .set({
-      totalScore: toDecimal(totalScore),
-      maxScore,
-      normalizedScore: toDecimal(normalizedScore),
-    })
-    .where(eq(sessions.id, sessionId));
+  // Une seule transaction : la copie passe d'un coup de l'état non corrigé à
+  // l'état corrigé, totaux compris.
+  await db.transaction(async (tx) => {
+    for (const e of ecritures) {
+      await tx.update(responses).set(e.valeurs).where(eq(responses.id, e.responseId));
+    }
+    await tx
+      .update(sessions)
+      .set({
+        totalScore: toDecimal(totalScore),
+        maxScore,
+        normalizedScore: toDecimal(normalizedScore),
+      })
+      .where(eq(sessions.id, sessionId));
+  });
 
   logger.info("Session corrigée", {
     sessionId,

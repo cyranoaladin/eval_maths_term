@@ -76,6 +76,12 @@ const envSchema = z.object({
   STUDENT_SESSION_SECRET: z.string().min(32, "STUDENT_SESSION_SECRET doit faire au moins 32 caractères").default(SECRET_ELEVE_DEV),
 
   DATABASE_URL: z.string().min(1, "DATABASE_URL est requise"),
+  /**
+   * Taille du pool de connexions. Le pilote en retient dix par défaut, ce qui
+   * suffit à un usage courant mais devient le point de contention quand une
+   * classe entière remet sa copie dans la même seconde.
+   */
+  DB_POOL_SIZE: z.coerce.number().int().min(1).max(200).default(20),
   REDIS_URL: z.string().optional(),
 
   KIMI_AUTH_URL: z.string().min(1, "KIMI_AUTH_URL est requise"),
@@ -137,6 +143,7 @@ export const env = {
   nodeEnv: _env.NODE_ENV,
   port: _env.PORT,
   databaseUrl: _env.DATABASE_URL,
+  dbPoolSize: _env.DB_POOL_SIZE,
   redisUrl: _env.REDIS_URL,
   kimiAuthUrl: _env.KIMI_AUTH_URL,
   kimiOpenUrl: _env.KIMI_OPEN_URL,

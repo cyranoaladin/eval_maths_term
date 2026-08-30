@@ -62,6 +62,9 @@ function fauxDb() {
         },
       }),
     }),
+    // Le moteur applique désormais ses écritures en une transaction : le double
+    // doit l'offrir, sans quoi il ne représenterait plus la base.
+    transaction: async <T>(fn: (tx: unknown) => Promise<T>): Promise<T> => fn(fauxDb()),
   };
 }
 

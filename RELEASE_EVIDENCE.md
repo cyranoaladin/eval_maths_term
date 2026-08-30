@@ -14,10 +14,10 @@ observée. Un critère non vérifié reste `IN_PROGRESS`, jamais `PASS`.
 | | |
 |---|---|
 | Branche | `phase-3.5-convergence` |
-| HEAD | `075ce17` |
+| HEAD | `593c4d0` |
 | Base de la finalisation | `5a24b63` (`feat(dashboard)`) |
 | Worktree | propre |
-| Dernière mise à jour | 2026-08-29 (lot déploiement) |
+| Dernière mise à jour | 2026-08-30 (lots critères 7, 12, 14, 17, 18) |
 
 ## 1 bis. Incident de procédure — force-push
 
@@ -60,6 +60,10 @@ Aucun force-push ni amend d'un commit publié ne sera fait à partir d'ici.
 | `5b9b357` | Charge / build | Le quota de démarrage rendait une salle d'examen impossible ; le bundle de production ne démarrait pas |
 | `1c91d3c` | Recettes | Scores décimaux et typographie du relevé |
 | `075ce17` | Déploiement | Secrets du dépôt en production ; migration impossible depuis l'image |
+| `260ae02` | Critères 7, 14, 17, 18 | Impression en conteneur, export tableur, surfaces réduites, journal d'audit |
+| `81fe8b3` | Correction | `api/grading` à 100 %, trois défauts de correction de plus |
+| `bf2c365` | Couverture | Tests d'intégration sur base réelle, seuils inscrits |
+| `593c4d0` | Style | Rapports générés hors périmètre |
 
 Commits antérieurs de la même campagne, déjà poussés : `864ec4a` (scores
 décimaux), `ceeb833` (journal d'audit), `e4c05a6` (écran de correction),
@@ -75,30 +79,29 @@ décimaux), `ceeb833` (journal d'audit), `e4c05a6` (écran de correction),
 | 4 | Score et incidents non falsifiables par le client | PASS | `scripts/smoke-parcours-eleve.ts` §5–6 |
 | 5 | Dashboard prof exige le rôle `teacher` | PASS | `npm test -- public-surface` |
 | 6 | Réponses courtes : ≥ 5 variantes équivalentes | PASS | `npx vitest run api/grading/__tests__/reponses-courtes-variantes.spec.ts` — 5 questions réelles, 5 à 7 écritures acceptées chacune, fausses toujours refusées |
-| 7 | Rendu LaTeX sur Chrome, Firefox, Safari, mobile | IN_PROGRESS | 3 moteurs verts ; viewport mobile non couvert |
+| 7 | Rendu LaTeX sur Chrome, Firefox, Safari, mobile | PASS | `npx playwright test` — 3 moteurs + `e2e/mobile.spec.ts` (téléphone 390×844, tablette 820×1180), contre le **build de production** |
 | 8 | Saisie MathLive fonctionnelle et exploitable serveur | PASS | `npx playwright test parcours-eleve` (frappe → LaTeX → serveur) + `npx vitest run api/grading` (sorties MathLive réelles relevées en navigateur, évaluables par mathjs, valeur conservée) |
 | 9 | Auto-save survit à 30 s de coupure réseau | PASS | `npx playwright test parcours-eleve` — coupure réelle, 3 moteurs |
 | 10 | Heartbeat 60 s / auto-submit 180 s | PASS | `npx tsx scripts/smoke-anticheat-temps-reels.ts` — 210 s d'observation réelle, sans accélération |
 | 11 | Score de suspicion affiché au prof avec verdict | PASS | badge et incidents sur l'écran de correction (`src/pages/teacher/Correction.tsx`) ; verdict « mineur » 20/100 constaté sur copie abandonnée |
-| 12 | Couverture ≥ 80 % global, 100 % `api/grading/` | IN_PROGRESS | — |
+| 12 | Couverture ≥ 80 % global, 100 % `api/grading/` | PASS | `npm run test:coverage` — seuils inscrits dans `vitest.config.ts`, vérifiés en CI |
 | 13 | Migrations Drizzle committées | PASS | `db/migrations/` suivi par Git |
-| 14 | `docker compose up` < 30 s | IN_PROGRESS | `bash scripts/recette-docker.sh` — 18/18 sur le runtime de production, démarrage 781 ms. **Reste** : une génération AMC réelle (sujet, corrigé, catalogue) depuis le conteneur |
+| 14 | `docker compose up` < 30 s | PASS | `bash scripts/recette-docker.sh` — **27/27**, démarrage 781 ms, génération AMC réelle déclenchée par l'application dans le conteneur |
 | 15 | CI GitHub Actions verte sur `main` | IN_PROGRESS | verte sur la branche ; fusion non autorisée à ce stade |
 | 16 | 0 `any`, 0 `@ts-ignore` non commenté | PASS | `npx vitest run api/__tests__/typage-strict.spec.ts` — garde durable, 2 suppressions recensées nominativement |
-| 17 | Audit : 100 % des modifications manuelles | IN_PROGRESS | `npx tsx scripts/smoke-correction-audit.ts <cookie>` (auteur, ancienne/nouvelle valeur, motif, requestId, survie au regrade) + `smoke-cloisonnement-enseignants.ts` (refus sans propriété). **Reste** : refus d'un override anonyme en test automatisé, second override créant une seconde entrée |
-| 18 | Export CSV et PDF fonctionnel | IN_PROGRESS | `npx tsx scripts/smoke-releve-typographie.ts` — accents, apostrophes, noms longs, 60 élèves, pagination, virgule décimale, colonne « Reprise ». **Reste** : la recette CSV |
+| 17 | Audit : 100 % des modifications manuelles | PASS | `npx vitest run api/grading/__tests__/grade-audit.spec.ts` + `api/__tests__/integration/correction-audit.integration.spec.ts` — refus anonyme et inter-enseignants, journal en ajout seul, auteur, ancienne et nouvelle valeur, motif, requestId |
+| 18 | Export CSV et PDF fonctionnel | PASS | `smoke-releve-typographie.ts` (PDF) + `smoke-export-csv.ts` (téléchargement réel : type, nom de fichier, BOM, CRLF, virgule décimale, périmètre de classe, refus anonyme et inter-enseignants) |
 | 19 | Login + AuthLayout + NotFound en français | PASS | interface en fr-FR |
 | 20 | k6 : 200 élèves, p95 < 500 ms | **FAIL** | mesuré, voir §9 : tout ce que fait un élève en composition passe sous 500 ms ; la remise simultanée de 200 copies ne passe pas (p95 6,73 s) |
 | 21 | RGPD : mentions, confidentialité, export | PASS | commit `4a0b188` |
 | 22 | `SECURITY.md` à jour | PASS | présent, à resynchroniser en fin de campagne |
 | 23 | `README.md` réécrit, quickstart vierge | PASS | commit `62c9e6a` |
 
-**PASS : 16 / 23. IN_PROGRESS : 6. FAIL : 1. BLOCKED_EXTERNAL : 0.**
+**PASS : 21 / 23. IN_PROGRESS : 1. FAIL : 1. BLOCKED_EXTERNAL : 0.**
 
-Restent ouverts : 7 (viewport mobile), 12 (couverture), 14 (génération AMC en
-conteneur), 15 (CI sur `main`, fusion non autorisée à ce stade), 17 (deux cas
-d'audit), 18 (recette CSV). Le critère 20 est **en échec mesuré**, pas en
-attente : voir §9.
+Reste ouvert : **15** (CI verte sur `main`) — la fusion n'est pas autorisée
+tant que le critère 20 n'est pas clos. Le critère **20** est en échec mesuré,
+pas en attente : voir §9.
 
 ## 4. Défauts découverts pendant la finalisation
 
@@ -126,6 +129,10 @@ attente : voir §9.
 | 20 | Le mode de correction « exact » confrontait la réponse à la chaîne vide : il ne reconnaissait jamais rien | critique | `5433023` |
 | 21 | Le score de suspicion était calculé avant l'inscription de la déconnexion : copie abandonnée = « Propre » 0/100 | majeur | `5433023` |
 | 22 | **Aucun contrôle de propriété sur les routes enseignant** : lecture, recorrection, modification de note, remise forcée et journal d'audit des copies de n'importe quel collègue | critique (sécurité) | `99a5a4b` |
+| 28 | **L'impression était impossible dans le déploiement documenté** : le volume `/data/paper-exams` appartenait à root alors que le processus tourne en utilisateur non privilégié | bloquant | `260ae02` |
+| 29 | Débordement horizontal sur téléphone : le bouton « Terminer » sortait de l'écran ; et sur tablette côté enseignant, 35 px de trop. Invisibles en développement, présents dans le bundle | majeur | `260ae02` |
+| 30 | **Une réponse valant l'infini était acceptée comme égale à n'importe quoi** : « 1/0 » rapportait tous les points sur toute question symbolique | critique | `81fe8b3` |
+| 31 | **Tout logarithme décimal était corrompu** : `\log(10)` devenait `log(1)0*(10)`, illisible pour mathjs | critique | `81fe8b3` |
 | 23 | **Le bundle de production ne démarrait pas** : collision `createRequire` entre le banner esbuild et pdfkit. Le développement passe par Vite, jamais par le bundle | bloquant | `5b9b357` |
 | 24 | Le quota de démarrage (5/min/IP) rendait une salle d'examen impossible derrière un NAT d'établissement | bloquant | `5b9b357` |
 | 25 | Un nom d'élève trop long était coupé net et sans marque sur le relevé remis aux familles | majeur | `1c91d3c` |
@@ -184,30 +191,31 @@ Dont, sur les trois moteurs :
 Aucun `429` observé sur `session.start` : le quota de production (5/min/IP)
 n'a pas été touché, et le test échoue bruyamment si un refus survient.
 
-## 8. Couverture
+## 8. Couverture — critère 12 **PASS**
 
-Mesure sans aucune exclusion artificielle, sur le code que la suite unitaire
-cible (`api/`, `contracts/`, `db/*.ts`) :
+Commande : `npm run test:coverage`. Les seuils sont inscrits dans
+`vitest.config.ts` : le critère ne dépend plus d'une mesure ponctuelle, et la
+CI monte une base MySQL pour que la garde tienne à distance.
 
 | Périmètre | Lignes | Branches | Fonctions | Instructions |
 |---|---|---|---|---|
-| `api/grading/` | 85,9 % | 77,4 % | 89,7 % | 85,4 % |
-| Global mesuré | 41,7 % | 38,2 % | 35,5 % | 41,7 % — **avant** les lots de tests ci-dessus ; à remesurer |
+| `api/grading/` | **100 %** | **100 %** | **100 %** | **100 %** |
+| Global | 85,00 % | 80,00 % | 85,46 % | 84,91 % |
+| Global mesuré en CI | 85,20 % | 80,21 % | 85,46 % | 85,09 % |
 
-Le critère 12 exige 100 % sur `api/grading/` et 80 % global : **non atteint**,
-et il ne sera pas déclaré atteint tant qu'il ne le sera pas. Ce qui manque est
-identifié : `grade-audit.ts` et les branches restantes de `grade-session.ts`
-côté correction, et surtout les routeurs (`paper-router`, `authoring-router`,
-`session-router`) qui pèsent l'essentiel du global et exigent une base de test.
-Le front est couvert par Playwright, non instrumenté.
+`PLAN.md` ne nomme pas de métrique : les quatre sont retenues, lecture la plus
+stricte. **Aucune exclusion n'a été posée pour arranger le chiffre.** Le code
+que rien ne pouvait atteindre a été supprimé plutôt que contourné : un client
+HTTP de 78 lignes sans le moindre appelant, une garde de dénominateur nul déjà
+traitée en amont, un test de correction rejoué après un retour anticipé.
 
-Commande :
+Le passage de 41,7 % à 85 % vient d'un socle de tests d'intégration sur une
+base réelle (`vitest.global-setup.ts` + `api/__tests__/integration/`) : les
+routeurs portent la moitié de la logique métier — propriété des données,
+transactions, invariants — et rien de cela ne s'éprouve avec une base simulée.
 
-```
-npx vitest run --coverage.enabled --coverage.provider=v8 --coverage.all \
-  --coverage.include='api/**/*.ts' --coverage.include='contracts/**/*.ts' \
-  --coverage.include='db/*.ts' --coverage.exclude='**/__tests__/**'
-```
+Le front n'est pas dans le périmètre instrumenté : il est couvert par les
+24 scénarios Playwright, exécutés contre le build de production.
 
 ## 9. Charge (k6)
 

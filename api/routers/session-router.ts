@@ -10,7 +10,7 @@ import {
   responses,
   cheatEvents as cheatEventsTable,
 } from "@db/schema";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { eq, isNull, or } from "drizzle-orm";
 import { assertSessionAccessible } from "../queries/ownership";
 import { gradeSessionResponses } from "../grading/grade-session";
 import { signStudentToken, signResultsToken, verifyResultsToken } from "../anticheat/session-token";
@@ -268,41 +268,60 @@ export const sessionRouter = createRouter({
 
       // 1. Enregistrement brut des réponses — aucun score n'est calculé ici,
       //    et surtout aucun score n'est accepté depuis le client.
-      await db.transaction(async (tx) => {
-        for (const ans of input.answers) {
-          if (!allowedIds.has(ans.questionId)) continue;
+      //
+      // L'écriture se faisait réponse par réponse, avec une lecture préalable
+      // pour chacune : quarante-deux allers-retours pour une copie de vingt et
+      // une questions. Deux cents copies remises dans la même seconde — la fin
+      // d'une épreuve — saturaient la base pour ce seul travail. L'état
+      // existant est maintenant lu une fois, les nouvelles réponses insérées en
+      // un seul ordre, et seules les réponses réellement modifiées sont mises à
+      // jour.
+      const aEcrire = input.answers.filter((a) => allowedIds.has(a.questionId));
 
-          const [existing] = await tx
-            .select({ id: responses.id })
-            .from(responses)
-            .where(
-              and(
-                eq(responses.sessionId, sessionId),
-                eq(responses.questionId, ans.questionId),
-              ),
-            )
-            .limit(1);
+      const dejaLa = await db
+        .select({
+          id: responses.id,
+          questionId: responses.questionId,
+          answer: responses.answer,
+          justification: responses.justification,
+        })
+        .from(responses)
+        .where(eq(responses.sessionId, sessionId));
+      const parQuestion = new Map(dejaLa.map((r) => [r.questionId, r]));
 
-          if (existing) {
+      const nouvelles = aEcrire
+        .filter((a) => !parQuestion.has(a.questionId))
+        .map((a) => ({
+          sessionId,
+          questionId: a.questionId,
+          answer: a.answer,
+          justification: a.justification ?? null,
+          maxScore: 0,
+          partialCreditApplied: false,
+        }));
+
+      const aModifier = aEcrire
+        .map((a) => ({ a, existante: parQuestion.get(a.questionId) }))
+        .filter(
+          ({ a, existante }) =>
+            existante !== undefined &&
+            (existante.answer !== a.answer ||
+              (existante.justification ?? null) !== (a.justification ?? null)),
+        );
+
+      if (nouvelles.length > 0 || aModifier.length > 0) {
+        await db.transaction(async (tx) => {
+          if (nouvelles.length > 0) {
+            await tx.insert(responses).values(nouvelles);
+          }
+          for (const { a, existante } of aModifier) {
             await tx
               .update(responses)
-              .set({
-                answer: ans.answer,
-                justification: ans.justification ?? null,
-              })
-              .where(eq(responses.id, existing.id));
-          } else {
-            await tx.insert(responses).values({
-              sessionId,
-              questionId: ans.questionId,
-              answer: ans.answer,
-              justification: ans.justification ?? null,
-              maxScore: 0,
-              partialCreditApplied: false,
-            });
+              .set({ answer: a.answer, justification: a.justification ?? null })
+              .where(eq(responses.id, existante!.id));
           }
-        }
-      });
+        });
+      }
 
       // 2. Correction par le moteur Phase 2 (déterministe puis LLM).
       const grading = await gradeSessionResponses(sessionId);
