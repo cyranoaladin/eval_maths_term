@@ -481,6 +481,52 @@ intervention manuelle et relevé PDF. Les briques sont vérifiées séparément 
 la machine de développement (`scripts/smoke-chaine-papier.ts`), pas encore
 enchaînées dans l'image.
 
+## 10 bis. Analyse de secrets sur la demande de fusion
+
+L'analyse automatique de la PR (GitGuardian) est **rouge** : « 3 secrets
+uncovered ». Elle a été prise au sérieux et instruite, pas contournée.
+
+### Ce qui a été corrigé
+
+Cette branche avait introduit des chaînes de connexion complètes — utilisateur
+et mot de passe — dans l'amorçage des tests (`vitest.setup.ts`,
+`vitest.global-setup.ts`) et dans une recette (`scripts/smoke-scores-decimaux.ts`).
+Ce sont des identifiants de bac à sable local, mais les laisser en clair est
+l'habitude qui finit par masquer une vraie fuite. L'adresse de la base
+d'intégration vient désormais de `TEST_DATABASE_URL` et de nulle part ailleurs ;
+la recette exige son mot de passe d'administration par l'environnement.
+
+### Ce qui reste, et pourquoi l'analyse reste rouge
+
+L'analyse porte sur **l'ensemble des commits de la demande de fusion**, pas sur
+l'état final : retirer une chaîne dans un commit ultérieur ne l'efface pas de
+l'historique, et réécrire l'historique publié est exclu.
+
+Inventaire exhaustif de ce qu'un analyseur voit dans cette branche :
+
+| Chaîne | Nature |
+|---|---|
+| `MYSQL_ROOT_PASSWORD: root`, `mysql://ci:ci@127.0.0.1:3306/ci` | conteneur MySQL éphémère du travail de CI, déclaré dans le workflow lui-même |
+| `MYSQL_ROOT_PASSWORD: dev_root`, `mysql://eval:dev_password@…:3307/…` | conteneur de développement de `docker-compose.dev.yml`, lié à `127.0.0.1` |
+| `mysql://test:test@localhost:3306/test` | adresse factice des tests unitaires, présente sur `main` avant cette branche |
+| `mysql://user:pass@host:port/db` | gabarit de `.env.example` |
+
+**Aucune n'est un identifiant vivant.** Recherche exhaustive dans tout
+l'historique de la branche : aucune clé d'API, aucun jeton, aucune clé privée.
+La clef du fournisseur de modèle vit dans `.env`, ignoré par Git, et n'apparaît
+dans aucun fichier suivi ni dans aucun commit.
+
+### Ce qui est demandé
+
+Ces relevés se résolvent sur le tableau de bord GitGuardian — marquer les
+incidents comme faux positifs ou identifiants de bac à sable — ce qui relève du
+compte du propriétaire du dépôt. Le contournement n'est ni fait ni proposé :
+l'alerte reste rouge tant qu'elle n'a pas été instruite par une personne.
+
+Les contrôles GitHub Actions de la demande de fusion, eux, sont **verts** :
+types, style, tests, couverture, build, base créée depuis le dépôt, image de
+production.
+
 ## 11. CI distante
 
 | Run | Commit | Résultat |
