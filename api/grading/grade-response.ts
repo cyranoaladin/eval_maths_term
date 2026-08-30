@@ -142,20 +142,19 @@ async function gradeTrueFalse(args: GradeResponseArgs): Promise<GradingResult> {
     };
   }
 
-  // Réponse correcte (1 pt) + justification via LLM si requise
+  // À partir d'ici la réponse est nécessairement correcte : le cas contraire
+  // est retourné juste au-dessus. Les branches qui rejouaient ce test étaient
+  // du code que rien ne pouvait atteindre.
   const answerPts = Math.round(maxPoints / 2);
 
   if (!rubric.llmReviewRequired || !justification) {
-    const score = answerCorrect ? maxPoints : 0;
     return {
-      score,
+      score: maxPoints,
       maxPoints,
-      isCorrect: answerCorrect,
-      feedback: answerCorrect
-        ? justification
-          ? "Réponse correcte. Justification non évaluée automatiquement."
-          : "Réponse correcte. Aucune justification fournie."
-        : "Réponse incorrecte.",
+      isCorrect: true,
+      feedback: justification
+        ? "Réponse correcte. Justification non évaluée automatiquement."
+        : "Réponse correcte. Aucune justification fournie.",
       gradingMode: "true_false",
       llmConfidence: null,
       partialCreditApplied: false,

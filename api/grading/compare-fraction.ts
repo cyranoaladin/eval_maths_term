@@ -73,9 +73,10 @@ function parseFraction(s: string): FractionParsed | null {
 
 function parseDecimalFR(s: string): number | null {
   const cleaned = normalizeExpression(s);
+  // Le motif n'accepte que des chiffres et un point : `parseFloat` ne peut
+  // en tirer ni infini ni NaN.
   if (!/^-?\d*\.?\d+$/.test(cleaned)) return null;
-  const n = parseFloat(cleaned);
-  return isFinite(n) ? n : null;
+  return parseFloat(cleaned);
 }
 
 export interface FractionResult {
@@ -91,11 +92,10 @@ export function compareFraction(
   const expVal = expected.numerator / expected.denominator;
 
   // 1. Forme fraction
+  // `parseFraction` refuse déjà un dénominateur nul : une seconde garde ici
+  // serait du code que rien ne peut atteindre.
   const frac = parseFraction(given);
   if (frac) {
-    if (frac.den === 0) {
-      return { equal: false, reason: "Division par zéro", penalty: 0 };
-    }
     const givenVal = frac.num / frac.den;
     if (Math.abs(givenVal - expVal) > 1e-12) {
       return { equal: false, reason: `Valeur incorrecte : ${frac.num}/${frac.den} ≠ ${expected.numerator}/${expected.denominator}`, penalty: 0 };

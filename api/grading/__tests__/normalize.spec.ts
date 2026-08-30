@@ -302,3 +302,41 @@ describe("normalizeExpression — sorties réelles de MathLive", () => {
     expect(evaluate(normalizeExpression("x^{\\left(\\frac12\\right)}"), { x: 9 })).toBeCloseTo(3, 12);
   });
 });
+
+/**
+ * Le logarithme décimal.
+ *
+ * `\log` désigne le logarithme décimal dans l'usage français, et la
+ * normalisation le traduit en `log10`. Une règle destinée à parenthéser
+ * « log 2 » coupait ensuite ce nom de fonction en deux : `\log(10)` devenait
+ * `log(1)0*(10)`, que mathjs refuse. Toute réponse écrite en logarithme
+ * décimal était donc comptée fausse.
+ */
+describe("normalizeExpression — logarithme décimal", () => {
+  it("préserve le nom de la fonction", () => {
+    expect(normalizeExpression("\\log(10)")).toBe("log10(10)");
+    expect(normalizeExpression("log10(10)")).toBe("log10(10)");
+    expect(normalizeExpression("\\log(100)")).toBe("log10(100)");
+  });
+
+  it("parenthèse un logarithme écrit sans parenthèses", () => {
+    expect(normalizeExpression("log2")).toBe("log(2)");
+    expect(normalizeExpression("\\log 100")).toBe("log10(100)");
+  });
+
+  it("distingue le logarithme népérien du décimal", () => {
+    expect(normalizeExpression("\\ln(2)")).toBe("log(2)");
+    expect(evaluate(normalizeExpression("\\log(10)"))).toBe(1);
+    expect(evaluate(normalizeExpression("\\ln(1)"))).toBe(0);
+  });
+
+  it("ne casse pas la multiplication implicite", () => {
+    // La garde qui protège le nom de fonction ne doit pas empêcher `2x` de
+    // devenir `2*x`.
+    expect(normalizeExpression("2x")).toBe("2*x");
+    expect(normalizeExpression("12x")).toBe("12*x");
+    expect(normalizeExpression("3(x+1)")).toBe("3*(x+1)");
+    expect(normalizeExpression("exp(2x)")).toBe("exp(2*x)");
+    expect(normalizeExpression("x^2(3)")).toBe("x^2*(3)");
+  });
+});

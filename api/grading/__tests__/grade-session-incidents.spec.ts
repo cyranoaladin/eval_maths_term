@@ -1,0 +1,117 @@
+/**
+ * Ce que le moteur fait quand une réponse le met en échec.
+ *
+ * Une seule réponse qui fait échouer un comparateur ne doit pas emporter la
+ * copie entière : les autres restent notées, la note déjà acquise sur celle-ci
+ * est conservée, et l'enseignant est averti qu'il reste quelque chose à
+ * regarder.
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { responses, sessions } from "@db/schema";
+import type { GradingRubric } from "@contracts/grading-rubric";
+
+const etat: {
+  sessions: Array<{ id: number; evaluationId: number; shuffleSeed: string; mode: string }>;
+  questions: Array<Record<string, unknown>>;
+  responses: Array<Record<string, unknown>>;
+  misesAJour: Array<{ table: unknown; valeurs: Record<string, unknown> }>;
+} = { sessions: [], questions: [], responses: [], misesAJour: [] };
+
+function fauxDb() {
+  const lignesDe = (table: unknown) =>
+    table === sessions ? etat.sessions : table === responses ? etat.responses : etat.questions;
+  return {
+    select: () => ({
+      from: (table: unknown) => ({
+        where: () => {
+          const p = Promise.resolve(lignesDe(table));
+          return Object.assign(p, { limit: () => p });
+        },
+      }),
+    }),
+    update: (table: unknown) => ({
+      set: (valeurs: Record<string, unknown>) => ({
+        where: () => {
+          etat.misesAJour.push({ table, valeurs });
+          return Promise.resolve();
+        },
+      }),
+    }),
+  };
+}
+
+vi.mock("../../queries/connection", () => ({ getDb: () => fauxDb() }));
+
+const comportement = vi.hoisted(() => ({
+  echoue: false,
+  confiance: null as number | null,
+}));
+
+vi.mock("../grade-response", () => ({
+  gradeResponse: async ({ maxPoints }: { maxPoints: number }) => {
+    if (comportement.echoue) throw new Error("comparateur en échec");
+    return {
+      score: maxPoints,
+      maxPoints,
+      isCorrect: true,
+      feedback: "Correct.",
+      gradingMode: "llm",
+      llmConfidence: comportement.confiance,
+      partialCreditApplied: false,
+    };
+  },
+}));
+
+const { gradeSessionResponses } = await import("../grade-session");
+
+const barème: GradingRubric = {
+  mode: { kind: "numeric", value: 2, tolerance: 1e-9, relative: false },
+  llmReviewRequired: false,
+  weight: 2,
+};
+
+beforeEach(() => {
+  comportement.echoue = false;
+  comportement.confiance = null;
+  etat.sessions = [{ id: 1, evaluationId: 1, shuffleSeed: "graine", mode: "online" }];
+  etat.questions = [
+    { id: 10, evaluationId: 1, type: "short_answer", question: "Q1", options: null, points: 2, gradingRubric: barème, order: 1 },
+    { id: 11, evaluationId: 1, type: "short_answer", question: "Q2", options: null, points: 2, gradingRubric: barème, order: 2 },
+  ];
+  etat.responses = [
+    { id: 100, sessionId: 1, questionId: 10, answer: "2", justification: null, score: "1.25", gradingMode: null },
+    { id: 101, sessionId: 1, questionId: 11, answer: "2", justification: null, score: null, gradingMode: null },
+  ];
+  etat.misesAJour = [];
+});
+
+describe("gradeSessionResponses — réponse en échec", () => {
+  it("ne perd pas la copie entière", async () => {
+    comportement.echoue = true;
+    const r = await gradeSessionResponses(1);
+    expect(r.needsManualReview).toBe(2);
+    // La note déjà inscrite sur chaque réponse est conservée telle quelle.
+    expect(r.totalScore).toBe(1.25);
+  });
+
+  it("signale à l'enseignant ce qui reste à regarder", async () => {
+    comportement.echoue = true;
+    const r = await gradeSessionResponses(1);
+    expect(r.gradedCount).toBe(0);
+    expect(r.needsManualReview).toBeGreaterThan(0);
+  });
+
+  it("consigne la confiance quand le correcteur en donne une", async () => {
+    comportement.confiance = 0.87;
+    await gradeSessionResponses(1);
+    const ecritures = etat.misesAJour.filter((m) => m.table === responses);
+    expect(ecritures[0].valeurs.llmConfidence).toBe("0.87");
+  });
+
+  it("n'inscrit aucune confiance quand la correction est déterministe", async () => {
+    comportement.confiance = null;
+    await gradeSessionResponses(1);
+    const ecritures = etat.misesAJour.filter((m) => m.table === responses);
+    expect(ecritures[0].valeurs.llmConfidence).toBeNull();
+  });
+});

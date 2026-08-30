@@ -48,7 +48,7 @@ export interface SetResult {
  * Parse une réponse sous forme d'ensemble :
  * "{1, 2, 3}", "[1; 2; 3]", "1, 2, 3", "∅", "{}", "empty"
  */
-function parseSet(s: string): string[] | null {
+function parseSet(s: string): string[] {
   // MathLive écrit les accolades d'un ensemble en délimiteurs extensibles
   // échappés : `\left\{1,2\right\}`. Sans cette remise à plat, le découpage
   // rendait « \left\{1 » et « 2\right\} », deux éléments qui ne
@@ -85,11 +85,9 @@ export function compareSet(
   expected: { values: string[]; ordered: boolean },
   given: string,
 ): SetResult {
+  // `parseSet` rend toujours une liste — vide au pire. Le test d'échec qui
+  // figurait ici ne pouvait pas se déclencher.
   const givenValues = parseSet(given);
-
-  if (givenValues === null) {
-    return { equal: false, reason: `Format non reconnu pour l'ensemble : "${given}"` };
-  }
 
   // Normaliser toutes les valeurs
   const normExpected = expected.values.map(normalizeExpression);

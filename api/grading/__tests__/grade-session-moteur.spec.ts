@@ -12,6 +12,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { responses, sessions } from "@db/schema";
+import { shuffleDeterministic } from "../shuffle";
+import { optionShuffleSeed } from "../grade-session";
 import type { GradingRubric } from "@contracts/grading-rubric";
 
 interface LigneSession {
@@ -66,6 +68,11 @@ function fauxDb() {
 vi.mock("../../queries/connection", () => ({ getDb: () => fauxDb() }));
 
 const { gradeSessionResponses } = await import("../grade-session");
+
+/** Reproduit l'ordre des propositions tel que l'élève les voit. */
+function optionsVuesParEleve(options: string[], graine: string, questionId: number): string[] {
+  return shuffleDeterministic(options, optionShuffleSeed(graine, questionId));
+}
 
 function question(id: number, points: number, rubric: GradingRubric | null, type = "short_answer"): LigneQuestion {
   return {
@@ -243,5 +250,118 @@ describe("gradeSessionResponses", () => {
     await gradeSessionResponses(1);
     // Correction déterministe : aucune confiance à consigner.
     expect(ecrituresReponses()[0].llmConfidence).toBeNull();
+  });
+
+  it("reconvertit l'index d'un QCM avant de le corriger", async () => {
+    // L'élève voit les propositions mélangées et soumet une position dans
+    // l'ordre qu'il a sous les yeux ; le barème, lui, désigne l'ordre
+    // d'origine. Sans reconversion, la note d'un QCM serait arbitraire.
+    const options = ["$0$", "$1$", "$2$", "$4$"];
+    const qcm: LigneQuestion = {
+      id: 20, evaluationId: 1, type: "qcm", question: "Combien ?",
+      options, points: 2, order: 1,
+      gradingRubric: {
+        mode: { kind: "qcm", correctIndex: 2 },
+        llmReviewRequired: false,
+        weight: 2,
+      } satisfies GradingRubric,
+    };
+    etat.questions = [qcm];
+
+    const vues = optionsVuesParEleve(options, "graine-test", 20);
+    const positionVue = vues.indexOf(options[2]);
+    etat.responses = [reponse(200, 20, String(positionVue))];
+
+    const r = await gradeSessionResponses(1);
+    expect(r.totalScore, `position vue ${positionVue}`).toBe(2);
+    expect(ecrituresReponses()[0].gradingMode).toBe("qcm");
+  });
+
+  it("refuse le même index quand il ne désigne pas la bonne proposition", async () => {
+    const options = ["$0$", "$1$", "$2$", "$4$"];
+    etat.questions = [{
+      id: 20, evaluationId: 1, type: "qcm", question: "Combien ?",
+      options, points: 2, order: 1,
+      gradingRubric: {
+        mode: { kind: "qcm", correctIndex: 2 },
+        llmReviewRequired: false,
+        weight: 2,
+      } satisfies GradingRubric,
+    }];
+    const vues = optionsVuesParEleve(options, "graine-test", 20);
+    const mauvaise = (vues.indexOf(options[2]) + 1) % options.length;
+    etat.responses = [reponse(200, 20, String(mauvaise))];
+
+    const r = await gradeSessionResponses(1);
+    expect(r.totalScore).toBe(0);
+  });
+
+  it("ne s'effondre pas sur des propositions illisibles", async () => {
+    // Les propositions sont stockées en JSON : une valeur corrompue ne doit
+    // pas faire échouer la correction de toute la copie.
+    etat.questions = [{
+      id: 20, evaluationId: 1, type: "qcm", question: "Combien ?",
+      options: "{ ceci n'est pas du JSON", points: 2, order: 1,
+      gradingRubric: {
+        mode: { kind: "qcm", correctIndex: 0 },
+        llmReviewRequired: false,
+        weight: 2,
+      } satisfies GradingRubric,
+    }];
+    etat.responses = [reponse(200, 20, "0")];
+    const r = await gradeSessionResponses(1);
+    expect(r.gradedCount).toBe(1);
+  });
+
+  it("ne s'effondre pas sur du JSON valide qui n'est pas une liste", async () => {
+    // Le champ est lisible mais ne contient pas ce qu'on attend : mieux vaut
+    // une correction sans propositions qu'une exception au milieu d'une copie.
+    etat.questions = [{
+      id: 20, evaluationId: 1, type: "qcm", question: "Combien ?",
+      options: '{"a": 1}', points: 2, order: 1,
+      gradingRubric: {
+        mode: { kind: "qcm", correctIndex: 0 },
+        llmReviewRequired: false,
+        weight: 2,
+      } satisfies GradingRubric,
+    }];
+    etat.responses = [reponse(200, 20, "0")];
+    const r = await gradeSessionResponses(1);
+    expect(r.gradedCount).toBe(1);
+  });
+
+  it("ne s'effondre pas sur des propositions qui ne sont pas une liste", async () => {
+    etat.questions = [{
+      id: 20, evaluationId: 1, type: "qcm", question: "Combien ?",
+      options: { a: 1 }, points: 2, order: 1,
+      gradingRubric: {
+        mode: { kind: "qcm", correctIndex: 0 },
+        llmReviewRequired: false,
+        weight: 2,
+      } satisfies GradingRubric,
+    }];
+    etat.responses = [reponse(200, 20, "0")];
+    const r = await gradeSessionResponses(1);
+    expect(r.gradedCount).toBe(1);
+  });
+
+  it("corrige un QCM sur papier sans reconvertir", async () => {
+    // Sur papier, l'ordre imprimé est l'ordre d'origine : la position saisie
+    // par l'enseignant désigne directement la proposition.
+    etat.sessions = [{ id: 1, evaluationId: 1, shuffleSeed: "graine-test", mode: "paper" }];
+    const options = ["$0$", "$1$", "$2$", "$4$"];
+    etat.questions = [{
+      id: 20, evaluationId: 1, type: "qcm", question: "Combien ?",
+      options, points: 2, order: 1,
+      gradingRubric: {
+        mode: { kind: "qcm", correctIndex: 2 },
+        llmReviewRequired: false,
+        weight: 2,
+      } satisfies GradingRubric,
+    }];
+    etat.responses = [reponse(200, 20, "2")];
+
+    const r = await gradeSessionResponses(1);
+    expect(r.totalScore).toBe(2);
   });
 });
