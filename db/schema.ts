@@ -103,6 +103,15 @@ export const questions = mysqlTable("questions", {
     foreignColumns: [evaluations.id],
     name: "fk_questions_evaluation",
   }).onDelete("cascade"),
+  /**
+   * Une place, une question.
+   *
+   * L'ordre décide de la numérotation imprimée et de la grille de saisie : deux
+   * questions à la même place rendent la copie papier illisible. C'est aussi la
+   * clé par laquelle le semis reconnaît ce qu'il a déjà écrit — sans contrainte,
+   * deux semis concurrents dupliquent l'évaluation de référence.
+   */
+  unique("uq_questions_evaluation_ordre").on(t.evaluationId, t.order),
 ]);
 
 export type Question = typeof questions.$inferSelect;
@@ -409,6 +418,20 @@ export const paperCopies = mysqlTable("paper_copies", {
     foreignColumns: [sessions.id],
     name: "fk_paper_copies_session",
   }).onDelete("set null"),
+  /**
+   * Un élève n'a qu'une copie par tirage.
+   *
+   * Deux saisies concurrentes de la même copie — l'enseignant qui valide deux
+   * fois, deux surveillants qui saisissent le même paquet — produisaient deux
+   * lignes, donc deux notes pour un même élève sur une même épreuve. Le relevé
+   * en comptait deux, la moyenne s'en trouvait faussée, et rien ne le disait.
+   */
+  unique("uq_paper_copies_exam_eleve").on(t.paperExamId, t.studentId),
+  /**
+   * Une session corrigée n'appartient qu'à une copie. Sans cela, la même note
+   * pourrait être rattachée à deux élèves.
+   */
+  unique("uq_paper_copies_session").on(t.sessionId),
 ]);
 
 export type PaperCopy = typeof paperCopies.$inferSelect;

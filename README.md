@@ -23,7 +23,7 @@ corrigés par le même moteur.
 Branche : `main`, taguée `v1.0.0-rc1`.
 
 **État.** Phases 1 à 5 terminées. `npm run check`, `npm run lint`,
-**878 tests**, `npm run test:coverage` et `npm run build` sont verts, ainsi que
+**884 tests**, `npm run test:coverage` et `npm run build` sont verts, ainsi que
 **39 scénarios navigateur** sur Chromium, Firefox et WebKit contre le build de
 production. **Les 23 critères de mise en service sont satisfaits.**
 
@@ -208,7 +208,7 @@ La génération **retourne des propositions**. L'enregistrement repasse par
 | Authentification | OAuth Kimi, session JWT (`jose`) |
 | Modèle de langage | API compatible OpenAI — OpenRouter par défaut |
 | Impression | `auto-multiple-choice` 1.6.0 piloté en ligne de commande |
-| Tests | Vitest (878 tests, dont un socle d'intégration sur base réelle), Playwright (39 scénarios, trois moteurs), neuf recettes de bout en bout, k6 |
+| Tests | Vitest (884 tests, dont un socle d'intégration sur base réelle), Playwright (39 scénarios, trois moteurs), neuf recettes de bout en bout, k6 |
 
 ### 5.2 Arborescence
 
@@ -687,7 +687,7 @@ npm run check   # tsc -b
 npm run lint    # eslint (0 erreur, 3 avertissements react-hooks connus)
 # Les tests d'intégration parlent à une vraie base. `scripts/bootstrap-dev.sh`
 # a écrit TEST_DATABASE_URL dans `.env` ; la base est créée si elle manque.
-npm test        # 878 tests, 68 fichiers
+npm test        # 884 tests, 69 fichiers
 npm run build   # vite + esbuild
 ```
 

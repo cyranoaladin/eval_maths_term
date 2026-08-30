@@ -130,7 +130,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P5 | 0 double source de vérité (`correctAnswer` / `gradingRubric`) | **PASS** | `api/authoring/__tests__/coherence-bareme.spec.ts` ; `scripts/audit-coherence-questions.ts` sur la base réelle |
 | P6 | 0 dette anti-triche | **PASS** | migration 0007 + `migration-incidents.integration.spec.ts` ; une seule route d'ingestion |
 | P7 | 0 route orpheline | **PASS** | 52 → 45 procédures ; `public-surface.spec.ts` fige l'inventaire |
-| P8 | Invariants d'intégrité des 13 tables, contraintes en base | IN_PROGRESS | — |
+| P8 | Invariants d'intégrité des 13 tables, contraintes en base | **PASS** | migration 0009 + `preflight-invariants.ts` ; `invariants-base.integration.spec.ts` écrit en base sans passer par l'application — voir §6 |
 | P9 | Provisionnement enseignant explicite, aucun accès automatique | **PASS** | migration 0006 + `acces-comptes.integration.spec.ts` (11 cas sur la vraie base) |
 | P10 | OAuth durci — `PUBLIC_BASE_URL`, cookie `Secure`, validation du jeton | **PASS** | `api/__tests__/security/oauth-durcissement.spec.ts` — 18 cas |
 | P11 | En-têtes de sécurité HTTP, CSP sans `unsafe-eval` | **PASS** | `surface-http.integration.spec.ts` sur du vrai HTTP + 39 parcours sur le build de production, trois moteurs |
@@ -158,7 +158,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 18 / 34. IN_PROGRESS : 14. BLOCKED_EXTERNAL : 2.**
+**PASS : 19 / 34. IN_PROGRESS : 13. BLOCKED_EXTERNAL : 2.**
 
 ---
 
@@ -222,3 +222,47 @@ le pire cas honnête avec une marge du simple au double.
 se perd, le client réessaie : il reçoit mot pour mot ce que la première remise
 avait rendu — mêmes points, même jeton de résultats, même date de fin. Le client
 réessaie donc deux fois de lui-même avant d'afficher un échec.
+
+
+---
+
+## 6. Intégrité : les treize tables
+
+Un invariant que seule l'application vérifie n'est pas un invariant. Entre le
+`SELECT` qui constate et l'`INSERT` qui écrit, une seconde requête passe — et sur
+une salle d'examen, cette seconde requête existe : deux surveillants sur le même
+paquet, un enseignant qui valide deux fois, un client qui rejoue après une
+coupure.
+
+| Table | Ce que la base garantit | Depuis |
+|---|---|---|
+| `users` | `unionId` unique | origine |
+| `evaluations` | clé étrangère vers le propriétaire, `set null` | origine |
+| `questions` | clé étrangère vers l'évaluation, `cascade` | origine |
+| `questions` | **une place unique par évaluation** | 0009 |
+| `sessions` | clé étrangère vers l'évaluation | origine |
+| `responses` | **une réponse par (copie, question)** | 0005 |
+| `responses` | clés étrangères vers la copie et la question, `restrict` | origine |
+| `answer_drafts` | clé primaire (copie, question) | origine |
+| `cheat_events` | clé étrangère vers la copie, `cascade` | origine |
+| `classes` | clé étrangère vers le propriétaire | origine |
+| `students` | clé étrangère vers la classe, `cascade` | origine |
+| `paper_exams` | clés étrangères vers évaluation, classe et auteur | origine |
+| `paper_copies` | **un élève, une copie par tirage** | 0009 |
+| `paper_copies` | **une session corrigée, une seule copie** | 0009 |
+| `grade_audit` | clés étrangères vers copie, réponse, question, auteur | 0004 |
+
+Les trois contraintes de la migration 0009 ferment des trous qui produisaient
+des notes fausses sans rien signaler : deux copies pour un même élève sur une
+même épreuve — le relevé en comptait deux, la moyenne était faussée ; une même
+note rattachée à deux élèves ; deux questions à la même place, rendant la
+numérotation imprimée et la grille de saisie illisibles.
+
+Aucune n'efface quoi que ce soit. Sur une base contenant des doublons, MySQL
+refuse l'ordre et la migration s'arrête : deux copies pour un même élève sont
+une information, probablement le signe d'un incident de saisie, et leur sort se
+décide avec l'enseignant. `scripts/preflight-invariants.ts` les énumère avant,
+avec les noms et les notes, et signale par ailleurs quatre états anormaux qui
+n'entraînent pas de contrainte — notes hors barème, notes sur 20 hors bornes,
+copies finies avant d'avoir commencé, copies rendues dont les réponses n'ont pas
+de date de correction.
