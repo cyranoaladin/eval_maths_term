@@ -19,7 +19,7 @@
  * Aucune de ces réponses ne contient de secret : ni adresse de base, ni
  * identifiant, ni chemin absolu. On y lit ce qui va et ce qui ne va pas.
  */
-import { access, constants, statfs } from "node:fs/promises";
+import { access, constants, mkdir, statfs } from "node:fs/promises";
 import { sql } from "drizzle-orm";
 import { getDb, getPool } from "../queries/connection";
 import { isAmcAvailable } from "../paper/amc-runner";
@@ -59,12 +59,25 @@ async function mesurer(
     return {
       nom,
       etat: "hs",
-      // Le message d'une erreur de pilote peut contenir l'adresse de la base :
-      // on ne garde que sa nature.
-      detail: e instanceof Error ? e.name : "erreur inconnue",
+      // Le message d'une erreur de pilote peut contenir l'adresse de la base,
+      // et celui d'une erreur de système de fichiers un chemin absolu : on ne
+      // garde que le code, qui dit ce qui ne va pas sans dire où.
+      detail: codeDErreur(e),
       dureeMs: Date.now() - depart,
     };
   }
+}
+
+/**
+ * Ce qu'on peut dire d'une erreur sans en divulguer le contexte.
+ *
+ * « Error » ne renseignait personne. Le code — `ENOENT`, `EACCES`,
+ * `ER_ACCESS_DENIED_ERROR` — dit ce qui ne va pas, et rien d'autre.
+ */
+export function codeDErreur(e: unknown): string {
+  const code = (e as { code?: unknown })?.code;
+  if (typeof code === "string" && code !== "") return code;
+  return e instanceof Error ? e.name : "erreur inconnue";
 }
 
 async function baseDeDonnees(): Promise<Omit<Controle, "nom" | "dureeMs">> {
@@ -123,9 +136,17 @@ async function pool(): Promise<Omit<Controle, "nom" | "dureeMs">> {
   };
 }
 
-/** Le dossier des tirages est-il écrivable ? Sans lui, aucun sujet n'est imprimé. */
+/**
+ * Le dossier des tirages est-il écrivable ? Sans lui, aucun sujet n'est imprimé.
+ *
+ * On le crée s'il manque : c'est le dossier de l'application, elle le crée de
+ * toute façon au premier tirage. Le contrôle échouait sur son absence, si bien
+ * qu'un déploiement neuf — ou un volume monté par-dessus — restait
+ * indisponible pour toujours, sans que rien n'ait de raison de le réparer.
+ */
 async function dossierDesTirages(): Promise<Omit<Controle, "nom" | "dureeMs">> {
   const racine = paperRoot();
+  await mkdir(racine, { recursive: true });
   await access(racine, constants.W_OK);
   return { etat: "ok", detail: "accessible en écriture" };
 }
