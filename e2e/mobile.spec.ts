@@ -21,7 +21,7 @@
  * le corps de page qui ne doit pas déborder.
  */
 import { test, expect, type Page } from "@playwright/test";
-import { collecterErreurs, cookieEnseignant } from "./fixtures";
+import { collecterErreurs, cookieEnseignant, focaliserMath } from "./fixtures";
 
 /** Surfaces réellement rencontrées, du téléphone à la tablette. */
 const SURFACES = [
@@ -109,7 +109,7 @@ for (const surface of SURFACES) {
       }
       const champ = page.locator("math-field");
       await expect(champ).toBeVisible();
-      await champ.click();
+      await focaliserMath(page);
       await page.keyboard.type("1/2");
       await expect
         .poll(() => champ.evaluate((el: HTMLElement & { value: string }) => el.value))

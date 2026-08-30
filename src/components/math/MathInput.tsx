@@ -1,7 +1,7 @@
 /**
  * src/components/math/MathInput.tsx
  *
- * Champ de saisie mathématique basé sur MathLive (mathlive@0.105).
+ * Champ de saisie mathématique basé sur MathLive (mathlive@0.110).
  * Rend un <math-field> web component qui affiche une saisie LaTeX interactive.
  *
  * Props :

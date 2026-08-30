@@ -7,7 +7,7 @@
  * avec le secret de session, comme le fait `scripts/dev-session.ts`. Le test
  * n'emprunte donc aucun chemin détourné dans l'application.
  */
-import { test as base, type Page } from "@playwright/test";
+import { test as base, expect, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 
 let cookieCache: string | null = null;
@@ -57,3 +57,27 @@ export const test = base.extend<{ enseignant: Page }>({
 });
 
 export { expect } from "@playwright/test";
+
+/**
+ * Donne le focus au champ mathématique et attend qu'il le détienne réellement.
+ *
+ * MathLive ne prend pas le focus au moment du clic : il le déplace ensuite vers
+ * un puits de saisie caché dans son shadow DOM. Pendant ce court intervalle,
+ * `document.activeElement` reste l'élément précédent — le bouton « Suivant » —
+ * et toute frappe y est perdue. Un élève ne peut pas frapper en moins de dix
+ * millisecondes après un clic ; un robot, si. On attend donc la condition
+ * observable plutôt qu'une temporisation arbitraire.
+ */
+export async function focaliserMath(page: Page): Promise<void> {
+  const champ = page.locator("math-field");
+  await champ.click();
+  await expect
+    .poll(
+      () =>
+        champ.evaluate(
+          (el) => el.contains(document.activeElement) || document.activeElement === el,
+        ),
+      { message: "le champ mathématique n'a jamais reçu le focus" },
+    )
+    .toBe(true);
+}

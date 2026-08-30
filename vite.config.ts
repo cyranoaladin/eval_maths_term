@@ -35,7 +35,6 @@ export default defineConfig({
         manualChunks: {
           "vendor-react": ["react", "react-dom", "react-router"],
           "vendor-math": ["katex", "mathlive", "mathjs"],
-          "vendor-charts": ["recharts"],
         },
       },
     },

@@ -22,7 +22,9 @@ export default defineConfig({
     globalSetup: ["./vitest.global-setup.ts"],
     // Les tests d'intégration partagent une base : les faire tourner en
     // parallèle produirait des interférences que personne ne saurait relire.
-    poolOptions: { forks: { singleFork: true } },
+    // (Vitest 4 : `poolOptions.forks.singleFork` a été remplacé par cette
+    // option de premier niveau, qui exécute les fichiers l'un après l'autre.)
+    fileParallelism: false,
     /**
      * Seuils de couverture — critère 12 de PLAN.md.
      *

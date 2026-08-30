@@ -11,7 +11,7 @@
  * dont ils disposent.
  */
 import { test, expect, type Page } from "@playwright/test";
-import { collecterErreurs } from "./fixtures";
+import { collecterErreurs, focaliserMath } from "./fixtures";
 
 const EVALUATION_ID = 1;
 
@@ -61,7 +61,7 @@ function lireMath(page: Page): Promise<string> {
 async function saisirMath(page: Page, frappes: string, attendu: RegExp) {
   const champ = page.locator("math-field");
   await expect(champ).toBeVisible();
-  await champ.click();
+  await focaliserMath(page);
   await page.keyboard.type(frappes);
   await expect.poll(() => lireMath(page)).toMatch(attendu);
 }
