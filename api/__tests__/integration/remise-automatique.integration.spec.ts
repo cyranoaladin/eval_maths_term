@@ -120,7 +120,13 @@ describe("données personnelles d'un élève", () => {
   async function eleveAvecCopie() {
     const api = appelEnseignant(prof);
     const { id: classId } = await api.paper.createClass({ name: unique("Classe RGPD") });
-    await api.paper.importStudents({ classId, csv: "nom;prenom\nDurand;Léa\n" });
+    // Nom unique : le rapprochement des sessions en ligne se fait par le nom,
+    // et un homonyme créé par une autre suite fausserait la mesure — c'est
+    // précisément la limite que la méthode documente.
+    await api.paper.importStudents({
+      classId,
+      csv: `nom;prenom\n${unique("Durand")};Léa\n`,
+    });
     const [eleve] = await api.paper.listStudents({ classId });
 
     const [row] = await db.insert(paperExams).values({
@@ -171,6 +177,23 @@ describe("données personnelles d'un élève", () => {
 
     const resultats = await appelEnseignant(prof).paper.results({ paperExamId });
     expect(resultats.stats.average).toBe(moyenneAvant);
+  });
+
+  it("rassemble aussi les sessions en ligne rapprochées par le nom", async () => {
+    // Une session en ligne n'est pas liée à la fiche élève : le rapprochement
+    // se fait par le nom, et l'export doit le dire — homonymes compris.
+    const { eleve } = await eleveAvecCopie();
+    const [fiche] = await db.select().from(students).where(eq(students.id, eleve.id));
+    // Le rapprochement compare « Nom Prénom », dans cet ordre.
+    const { jeton, sessionId } = await ouvrirSession(
+      evaluationId, `${fiche.lastName} ${fiche.firstName}`,
+    );
+    await appelEleve(jeton).session.submit({ answers: [], timeSpent: 30 });
+
+    const donnees = await exportStudentData(eleve.id);
+    expect(donnees.sessionsEnLigne.sessions.length).toBeGreaterThanOrEqual(1);
+    expect(donnees.sessionsEnLigne.methodeDeRapprochement).toMatch(/homonymes/i);
+    await effacer(sessionId);
   });
 
   it("refuse d'anonymiser un élève inexistant", async () => {

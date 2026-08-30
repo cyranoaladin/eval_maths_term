@@ -158,6 +158,39 @@ describe("remise d'une copie déjà commencée", () => {
     await effacer(sessionId);
   });
 
+  it("n'écrit rien quand la remise ne change rien", async () => {
+    // Une remise qui répète ce qui est déjà en base ne doit pas produire
+    // d'écriture : c'est ce qui évite de saturer la base en fin d'épreuve.
+    const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève"));
+    const eleve = appelEleve(jeton);
+    await eleve.answer.save({ questionId: questionIds[0], answer: "1" });
+    const [avant] = await db.select().from(responses).where(eq(responses.sessionId, sessionId));
+
+    await eleve.session.submit({
+      answers: [{ questionId: questionIds[0], answer: "1" }],
+      timeSpent: 60,
+    });
+
+    const apres = await db.select().from(responses).where(eq(responses.sessionId, sessionId));
+    expect(apres).toHaveLength(1);
+    expect(apres[0].id).toBe(avant.id);
+    expect(apres[0].answer).toBe("1");
+    await effacer(sessionId);
+  });
+
+  it("ne remet que les questions effectivement traitées", async () => {
+    // Un élève peut rendre une copie partielle : les questions absentes de la
+    // remise ne doivent pas apparaître comme répondues.
+    const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève"));
+    await appelEleve(jeton).session.submit({
+      answers: [{ questionId: questionIds[0], answer: "1" }],
+      timeSpent: 60,
+    });
+    const apres = await db.select().from(responses).where(eq(responses.sessionId, sessionId));
+    expect(apres).toHaveLength(1);
+    await effacer(sessionId);
+  });
+
   it("conserve la justification remise avec la réponse", async () => {
     const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève"));
     await appelEleve(jeton).session.submit({
