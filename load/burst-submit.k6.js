@@ -1,11 +1,16 @@
 /**
- * load/courbe-contention.k6.js
+ * load/burst-submit.k6.js
  *
- * Courbe de contention de la remise de copie.
+ * Test de résistance : deux cents copies rendues au même instant.
  *
- * Un seul chiffre à deux cents élèves ne dit pas si le système sature
- * progressivement ou s'effondre à un palier. On mesure donc le même geste — une
- * copie complète remise — à des niveaux croissants de simultanéité.
+ * Ce n'est **pas** le test d'acceptation du critère 20 — celui-ci est
+ * `load/acceptance-200.k6.js`. Une salle d'examen ne rend pas deux cents copies
+ * dans la même milliseconde ; ce scénario mesure une limite de capacité en
+ * pointe extrême, utile à connaître et documentée comme telle.
+ *
+ * Il sert aussi de courbe de contention : le même geste à des niveaux
+ * croissants de simultanéité dit si le système sature progressivement ou
+ * s'effondre à un palier.
  *
  *   docker run --rm -i --network host -e VUS=50 -e ETALEMENT=0 \
  *     grafana/k6 run - < load/courbe-contention.k6.js

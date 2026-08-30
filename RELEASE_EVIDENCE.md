@@ -144,11 +144,82 @@ pas en attente : voir §9.
 
 ## 5. Migrations ajoutées
 
-- Scores décimaux : `responses.score` → `decimal(6,2)`, `sessions.totalScore` → `decimal(7,2)`.
-- Table `grade_audit` : journal append-only des interventions sur les notes.
+- **`0003_decimal_scores`** — `responses.score` → `decimal(6,2)`,
+  `sessions.totalScore` → `decimal(7,2)`.
+- **`0004_grade_audit`** — table `grade_audit`, journal en ajout seul des
+  interventions sur les notes.
+- **`0005_unicite_reponses`** — `UNIQUE (sessionId, questionId)` sur
+  `responses`.
 
-Recette complète §I (base vierge / base existante / valeurs fractionnaires)
-**non encore exécutée**.
+### La contrainte d'unicité, pas à pas
+
+**Contrôle préalable** — `npx tsx scripts/preflight-unicite-reponses.ts`
+
+| Base | Réponses | Doublons |
+|---|---|---|
+| `eval_maths` (développement, peuplée) | 315 | **1 couple** : session 42, question 14, deux lignes strictement identiques |
+| `eval_maths_test` (intégration) | 12 | aucun |
+
+Le doublon n'est pas un accident de manipulation : c'est la trace de l'ancien
+chemin d'écriture, qui relisait chaque réponse puis insérait. Deux appels
+concurrents pouvaient tous deux conclure à l'absence.
+
+**La migration ne supprime rien.** Elle a d'abord été jouée telle quelle sur la
+base peuplée : MySQL a refusé l'ordre, la migration s'est arrêtée, et les
+315 réponses étaient toujours là. C'est le comportement voulu — deux réponses à
+une même question sont une information, et leur sort se décide avec
+l'enseignant. Un script séparé, `scripts/reparer-doublons-reponses.ts`, ne
+traite que les doublons **strictement identiques**, refuse les divergents, et
+n'agit qu'avec `--appliquer`.
+
+**Preuves :**
+
+| | Vérification | Résultat |
+|---|---|---|
+| A | migrations sur base vierge | contrainte présente, `NON_UNIQUE = 0` sur (sessionId, questionId) |
+| B | base peuplée, avant réparation | migration refusée, 315 réponses intactes |
+| B | base peuplée, après réparation explicite | 314 réponses, somme des notes **inchangée** (206,25), 4 notes non entières conservées, `score` toujours `decimal(6,2)` |
+| C | deux réponses, même session, même question | `ERROR 1062 … Duplicate entry '1-1' for key 'responses.uq_responses_session_question'` |
+| D | même question dans deux sessions | accepté |
+| E | deux questions dans une même session | accepté |
+
+Preuve d'intégration contre une vraie base :
+`api/__tests__/integration/unicite-reponses.integration.spec.ts` — la
+contrainte est lue dans `information_schema`, puis exercée sur les quatre cas.
+
+### Ce que la contrainte a permis, et ce qu'elle a fermé
+
+**Écriture groupée.** La correction écrit désormais toute la copie en un seul
+ordre. Un `INSERT … ON DUPLICATE KEY UPDATE` a été essayé puis **écarté** : il
+pose des verrous d'intervalle sur l'index unique et produit des interblocages
+dès que deux copies se corrigent en même temps — c'est-à-dire précisément en
+fin d'épreuve. Le symptôme a été observé, pas supposé :
+`ER_LOCK_DEADLOCK` dans la suite d'intégration. La mise à jour groupée par
+`CASE`, sur des lignes verrouillées dans un ordre déterministe, n'a pas ce
+défaut.
+
+| | Avant | Après |
+|---|---|---|
+| Requêtes SQL par correction | 30 | **10** |
+| Requêtes SQL par remise | 43 | **25** |
+| Correction (hors charge) | 41,3 ms | **34,1 ms** |
+| dont calcul | 8,7 ms | 7,4 ms |
+| dont base | 32,9 ms | **26,7 ms** |
+| Remise complète (hors charge) | 44,9 ms | **39,6 ms** |
+
+**Remise concurrente.** Deux remises simultanées de la même copie — un
+double-clic, une requête rejouée après une coupure — passaient toutes deux la
+vérification d'état puis écrivaient les mêmes réponses : la seconde butait sur
+la contrainte et **remontait une erreur SQL brute jusqu'à l'élève**. La copie
+est désormais prise en un ordre atomique : la première remise qui pose sa date
+de fin l'emporte, la seconde est refusée avec « Cette session est déjà
+terminée ». La prise est un bail, relâché si la remise échoue en cours de
+route, pour qu'une copie ne reste jamais bloquée.
+
+`api/__tests__/integration/remise-concurrente.integration.spec.ts` vérifie
+qu'après deux remises simultanées : une seule réponse par question, note non
+comptée deux fois, aucun audit inventé, statut cohérent — et que la reprise
+réseau ne change ni la note ni la date de remise.
 
 ## 6. Tests ajoutés
 
