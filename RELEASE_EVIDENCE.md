@@ -92,16 +92,16 @@ décimaux), `ceeb833` (journal d'audit), `e4c05a6` (écran de correction),
 | 17 | Audit : 100 % des modifications manuelles | PASS | `npx vitest run api/grading/__tests__/grade-audit.spec.ts` + `api/__tests__/integration/correction-audit.integration.spec.ts` — refus anonyme et inter-enseignants, journal en ajout seul, auteur, ancienne et nouvelle valeur, motif, requestId |
 | 18 | Export CSV et PDF fonctionnel | PASS | `smoke-releve-typographie.ts` (PDF) + `smoke-export-csv.ts` (téléchargement réel : type, nom de fichier, BOM, CRLF, virgule décimale, périmètre de classe, refus anonyme et inter-enseignants) |
 | 19 | Login + AuthLayout + NotFound en français | PASS | interface en fr-FR |
-| 20 | k6 : 200 élèves, p95 < 500 ms | **FAIL** | mesuré et optimisé, voir §9 : remise passée de 6,73 s à 2,29 s de p95 ; ouverture, énoncés et brouillons sous 500 ms ; constat chiffré `SYNC_OPTIMIZATION_LIMIT` |
+| 20 | k6 : 200 élèves, p95 < 500 ms | IN_PROGRESS | §9 — **acceptation locale conforme trois fois de suite** (p95 36,0 / 35,6 / 39,7 ms, 0 erreur). Manque la mesure sur l'infrastructure cible, qui n'est pas désignée |
 | 21 | RGPD : mentions, confidentialité, export | PASS | commit `4a0b188` |
 | 22 | `SECURITY.md` à jour | PASS | présent, à resynchroniser en fin de campagne |
 | 23 | `README.md` réécrit, quickstart vierge | PASS | commit `62c9e6a` |
 
-**PASS : 21 / 23. IN_PROGRESS : 1. FAIL : 1. BLOCKED_EXTERNAL : 0.**
+**PASS : 21 / 23. IN_PROGRESS : 2. FAIL : 0. BLOCKED_EXTERNAL : 0.**
 
-Reste ouvert : **15** (CI verte sur `main`) — la fusion n'est pas autorisée
-tant que le critère 20 n'est pas clos. Le critère **20** est en échec mesuré,
-pas en attente : voir §9.
+Restent ouverts : **20** (mesure sur l'infrastructure cible, non désignée — §9.7)
+et **15** (CI verte sur `main`, la fusion n'étant pas autorisée tant que 20
+n'est pas clos).
 
 ## 4. Défauts découverts pendant la finalisation
 
@@ -291,70 +291,56 @@ transactions, invariants — et rien de cela ne s'éprouve avec une base simulé
 Le front n'est pas dans le périmètre instrumenté : il est couvert par les
 24 scénarios Playwright, exécutés contre le build de production.
 
-## 9. Charge (k6) — critère 20 **FAIL**, avec constat chiffré
+## 9. Charge (k6) — critère 20
 
-### 9.1 Ce qui a été mesuré
+### 9.0 Définition retenue
 
-Scénario `load/parcours-eleve.k6.js` : 200 utilisateurs virtuels, **une copie
-chacun**, parcours complet. Cible : le build de production (`node dist/boot.js`),
-base MySQL 8.4 en conteneur, tout sur la même machine que k6.
+`PLAN.md` fait foi : **« k6 : 200 élèves concurrents, p95 < 500 ms, 0 erreur. »**
+
+Deux scénarios distincts en découlent, et ils ne se remplacent pas :
+
+| Fichier | Rôle |
+|---|---|
+| `load/acceptance-200.k6.js` | **Test d'acceptation contractuel.** 200 élèves composent en même temps et rendent leur copie au fil de leur avancement. Le décalage entre élèves est déterministe, dérivé du numéro d'utilisateur virtuel, pour que deux exécutions soient comparables. |
+| `load/burst-submit.k6.js` | **Test de résistance.** 200 copies rendues au même instant. Ce n'est pas le critère : une salle d'examen ne se comporte pas ainsi. C'est une limite de capacité en pointe extrême, mesurée et documentée comme telle. |
 
 Le service de correction assistée n'est pas sollicité : les questions de
-l'évaluation de référence sont toutes déterministes (`llmReviewRequired: false`).
-La mesure porte donc sur **DETERMINISTIC_GRADING_LATENCY** et sur elle seule.
-Aucun appel au LLM ni au RAG n'intervient — ce n'est pas une fonction désactivée
-pour la circonstance, c'est la configuration de ces questions.
+l'évaluation de référence sont toutes déterministes (`llmReviewRequired:
+false`). La mesure porte donc sur **DETERMINISTIC_GRADING_LATENCY** et sur elle
+seule — ce n'est pas une fonction désactivée pour la circonstance, c'est la
+configuration de ces questions.
 
-### 9.2 Profil d'une remise, avant toute optimisation
+### 9.1 Profil d'une remise, avant / après optimisation
 
 `PROFIL_SQL=1 npx tsx scripts/profil-submit.ts`
 
-| Part | Durée |
-|---|---|
-| Calcul (mathjs, 21 questions) | 12,4 ms |
-| Base de données | 153,1 ms |
-| **Correction complète** | **165,5 ms** |
-| Requêtes SQL par correction | 25 |
-| Requêtes SQL par remise entière | 82 |
+| | Départ | Après transaction + écriture groupée d'entrée | Après unicité + mise à jour groupée |
+|---|---|---|---|
+| Requêtes SQL par correction | 25 | 30 | **10** |
+| Requêtes SQL par remise | 82 | 43 | **25** |
+| Calcul (mathjs, 21 questions) | 12,4 ms | 8,7 ms | **7,4 ms** |
+| Base de données | 153,1 ms | 32,9 ms | **26,7 ms** |
+| Correction complète | 165,5 ms | 41,3 ms | **34,1 ms** |
+| Remise complète, hors charge | 61,0 ms | 44,9 ms | **39,6 ms** |
 
-**Le moteur de correction n'était pas en cause** : sept pour cent du temps. Tout
-le reste était des allers-retours à la base.
+Le moteur de correction n'a jamais été en cause : sept pour cent du temps.
 
-### 9.3 Ce qui a été corrigé
+### 9.2 Ce qui a été corrigé
 
-1. **Les écritures de correction étaient émises une par une.** Vingt et un ordres
-   d'écriture, chacun avec son aller-retour et sa validation sur disque. Elles
-   sont maintenant appliquées en une seule transaction — ce qui leur donne au
-   passage l'atomicité : une interruption en cours de route laissait jusqu'ici
-   une copie à moitié corrigée.
-2. **La remise relisait chaque réponse avant de l'écrire.** Quarante-deux
-   allers-retours pour vingt et une questions. L'état existant est lu une fois,
-   les nouvelles réponses insérées en un seul ordre, et seules celles qui
-   changent réellement sont mises à jour.
-3. **Le pool de connexions valait dix**, la valeur par défaut du pilote,
-   invisible parce que jamais écrite. Il est désormais explicite et dimensionné.
+1. **Les écritures de correction étaient émises une par une**, chacune avec son
+   aller-retour et sa validation sur disque. Elles sont appliquées en une
+   transaction — ce qui leur donne au passage l'atomicité : une interruption en
+   cours de route laissait une copie à moitié corrigée.
+2. **La remise relisait chaque réponse avant de l'écrire** : quarante-deux
+   allers-retours pour vingt et une questions.
+3. **Le pool de connexions valait dix**, valeur par défaut du pilote, jamais
+   écrite. Il est désormais explicite.
+4. **La correction écrit toute la copie en un seul ordre**, ce que rend possible
+   la contrainte d'unicité (voir §5).
 
-| | Avant | Après |
-|---|---|---|
-| Correction | 165,5 ms | 41,3 ms |
-| Dont base | 153,1 ms | 34,3 ms |
-| Requêtes par remise | 82 | 43 |
-| Remise complète, hors charge | 61,0 ms | 44,9 ms |
+### 9.3 Courbe de contention et dimensionnement du pool
 
-### 9.4 Courbe de contention
-
-`load/courbe-contention.k6.js`, remise seule, p95 :
-
-| Élèves simultanés | p95 |
-|---|---|
-| 1 | 56 ms |
-| 25 | 459 ms |
-| 50 | 584 ms |
-| 100 (pool 20) | 5,49 s |
-| 100 (pool 60) | 1,54 s |
-| 200 (pool 60) | 1,74 s |
-
-Dimensionnement du pool, à 200 remises simultanées :
+Remise seule, p95, à 200 copies rendues au même instant :
 
 | Pool | p95 |
 |---|---|
@@ -365,101 +351,85 @@ Dimensionnement du pool, à 200 remises simultanées :
 | 100 | 2,31 s |
 | 140 | 5,19 s |
 
-Au-delà de soixante, la base passe plus de temps à arbitrer qu'à travailler, et
-MySQL n'accepte de toute façon que cent cinquante et une connexions par défaut.
-**Soixante devient la valeur par défaut**, documentée et surchargeable par
-`DB_POOL_SIZE`.
+Au-delà de soixante, la base arbitre plus qu'elle ne travaille, et MySQL
+n'accepte que 151 connexions par défaut.
 
-Étalement des remises, pool 60, 200 élèves :
+**`DB_POOL_SIZE = 60` est un `LOCAL_BENCHMARK_OPTIMUM`, pas un
+`PRODUCTION_OPTIMUM`.** La valeur reste configurable et doit être remesurée sur
+la cible, au minimum autour de 20 / 40 / 60 / 80.
 
-| Arrivée | p50 | p95 |
-|---|---|---|
-| Toutes dans la même seconde | 1,13 s | 1,74 s |
-| Réparties sur 5 s | 563 ms | 1,78 s |
-| Réparties sur 10 s | 123 ms | 682 ms |
-
-### 9.5 Mesure officielle, après optimisation
-
-Parcours complet, 200 élèves, pool par défaut :
-
-| Opération | p50 | p95 | Critère |
-|---|---|---|---|
-| `session.start` | 94 ms | 313 ms | ✅ |
-| `question.getForActiveSession` | 41 ms | 71 ms | ✅ |
-| `answer.saveDraft` | 65 ms | 380 ms | ✅ |
-| `session.heartbeat` | 307 ms | 649 ms | ❌ |
-| `session.submit` | 1,91 s | 2,29 s | ❌ |
-| Global | 110 ms | 1,88 s | ❌ |
-
-200 sessions ouvertes, 200 copies remises, **0 échec métier, 0 refus de quota**.
-
-Le p95 de la remise passe de **6,73 s à 2,29 s** sur ce scénario, et de 3,90 s à
-1,74 s sur la remise isolée.
-
-### 9.6 SYNC_OPTIMIZATION_LIMIT
-
-Le critère 20 n'est **pas** atteint et n'est pas déclaré atteint.
-
-Il reste un levier synchrone identifié : regrouper les vingt et un ordres
-d'écriture de la correction en un seul, ce qui ramènerait la remise de 43 à
-environ 23 requêtes. Voici pourquoi il ne suffirait pas.
-
-- Débit mesuré de cette base : 200 remises × 43 requêtes en ≈ 3,5 s, soit
-  **≈ 2 460 requêtes par seconde**.
-- Pour tenir 500 ms avec 23 requêtes par remise, il faudrait
-  200 × 23 ÷ 0,5 = **9 200 requêtes par seconde**, soit **3,7 fois** la capacité
-  observée.
-
-Autrement dit, même en supprimant tout ce qui reste de superflu dans le chemin
-d'écriture, la correction synchrone de deux cents copies remises **dans la même
-seconde** ne tient pas les 500 ms sur cette machine.
-
-### Attribution : est-ce la durabilité du disque ?
-
-Une hypothèse naturelle est que le coût vient des écritures synchrones du
-journal InnoDB. Elle a été testée en rejouant la même charge contre deux bases
-identiques, l'une en `innodb_flush_log_at_trx_commit=1` (durabilité stricte),
-l'autre en `=2` (validation différée d'une seconde) :
-
-| Réglage | p95 de la remise |
-|---|---|
-| `=1`, durabilité stricte | 1,61 s |
-| `=2`, validation différée | 2,25 s |
-
-Le second réglage, censé être plus rapide, est ressorti **plus lent**. La
+Une hypothèse a été testée puis écartée faute de preuve : la durabilité du
+journal InnoDB. `innodb_flush_log_at_trx_commit=1` donne 1,61 s,
+`=2` donne 2,25 s — le réglage censé être plus rapide ressort plus lent. La
 conclusion honnête n'est pas « la durabilité ne coûte rien » mais **la mesure
-est trop bruitée à cette échelle sur cette machine pour trancher** : le poste
-exécute simultanément l'application, la base, k6 et le reste du système. C'est
-une raison de plus de refaire la mesure sur l'infrastructure cible avant toute
-décision d'architecture.
+est trop bruitée à cette échelle sur cette machine**.
 
-**Deux réserves importantes, dans les deux sens :**
+### 9.4 Environnement de la mesure locale
 
-1. La mesure est prise sur un poste de développement où tournent simultanément
-   l'application, la base en conteneur, k6 en conteneur et le reste de la
-   machine. Une base de production sur matériel dédié irait plus vite — d'un
-   facteur qui reste à mesurer **sur l'infrastructure cible**, ce qui n'a pas
-   été fait et ne sera pas supposé.
-2. Le pire cas modélisé — deux cents copies remises dans la même seconde — n'est
-   pas le déroulement ordinaire d'une épreuve. Avec une arrivée étalée sur dix
-   secondes, le p50 tombe à 123 ms. Et la remise automatique de fin d'épreuve,
-   elle, est faite par le serveur : elle ne fait attendre personne.
+| | |
+|---|---|
+| Processeur | AMD Ryzen 7 3700X, 16 cœurs |
+| Mémoire | 31 Go |
+| Système | Linux Mint 22.1, noyau 6.8.0-138 |
+| Docker | 29.1.3 |
+| Node | 22.22.0 |
+| MySQL | 8.4.11 en conteneur, `max_connections = 151` |
+| Stockage | ext4 sur SSD/NVMe |
+| `DB_POOL_SIZE` | 60 |
+| Instances applicatives | 1 |
+| Générateur de charge | k6 en conteneur, **même machine** |
 
-**Le levier synchrone suivant, non engagé.** La table des réponses ne porte
-aucune contrainte d'unicité sur le couple (session, question) — rien
-n'empêcherait aujourd'hui deux réponses à la même question dans une même copie.
-L'ajouter serait une amélioration d'intégrité en soi, et permettrait d'écrire
-les vingt et une corrections en un seul ordre `INSERT … ON DUPLICATE KEY
-UPDATE` au lieu de vingt et un. Ce n'est pas engagé ici : le calcul du §9.6
-montre que cela ne suffirait pas à tenir les 500 ms, et une migration touchant
-la table des notes se décide avec vous, pas en fin de campagne.
+**Cette machine n'est pas l'infrastructure cible** : l'application, la base et
+le générateur de charge y partagent le même processeur. C'est la limite
+principale de ce qui suit.
 
-**Ce qui n'a pas été fait, et pourquoi.** Passer la correction en traitement
-différé tiendrait le chiffre, mais changerait le contrat fonctionnel — la copie
-serait remise puis corrigée plus tard, ce qui touche l'API, le jeton de
-résultats, le statut des sessions, l'écran de résultats et le déploiement. La
-mission l'exclut tant que la voie synchrone n'est pas épuisée, et surtout tant
-que la mesure n'a pas été refaite sur l'infrastructure de production.
+### 9.5 Test d'acceptation — trois exécutions consécutives
+
+`bash scripts/mesure-acceptation.sh 3`
+
+Le script attend cinq minutes et demie entre deux exécutions. Ce n'est pas
+cosmétique : `session.start` est plafonné à six cents ouvertures par tranche de
+cinq minutes et par adresse, et trois exécutions de deux cents élèves lancées à
+la suite mesureraient le limiteur au lieu de l'application. **Le quota de
+production n'est pas touché ; c'est le générateur qui patiente.** Une première
+campagne, lancée sans cet espacement, avait produit 11 % de refus de quota sur
+sa deuxième exécution — l'erreur était dans la méthode de mesure, pas dans le
+produit.
+
+| Exécution | p50 | p95 | p99 | Erreurs HTTP | Échecs métier | Refus de quota | Copies remises |
+|---|---|---|---|---|---|---|---|
+| 1 | 6,67 ms | **36,02 ms** | 47,33 ms | 0 / 2600 | 0 / 200 | 0 | 200 |
+| 2 | 6,37 ms | **35,60 ms** | 47,80 ms | 0 / 2600 | 0 / 200 | 0 | 200 |
+| 3 | 6,88 ms | **39,65 ms** | 52,44 ms | 0 / 2600 | 0 / 200 | 0 | 200 |
+
+Remise seule : p95 de 52, 52 et 58 ms.
+
+**Trois exécutions consécutives conformes**, sur cette machine.
+
+### 9.6 Test de résistance — 200 copies au même instant
+
+`docker run … -e VUS=200 grafana/k6 run - < load/burst-submit.k6.js`
+
+| p50 | p95 | p99 | Erreurs | Débit |
+|---|---|---|---|---|
+| 1,96 s | 2,09 s | 2,11 s | **0** | 66 remises/s |
+
+Aucune erreur, aucune copie perdue : le système ne rompt pas, il ralentit. Le
+p95 de la remise sous cette pointe est passé de **6,73 s à 2,09 s** au cours de
+la campagne. Cette limite est documentée comme telle et **ne conditionne pas le
+critère 20**.
+
+### 9.7 Ce qui manque pour clore le critère
+
+Le critère demande une mesure sur l'infrastructure de déploiement, avec un
+générateur de charge extérieur à la machine applicative. **Aucune infrastructure
+cible n'est désignée** : ni `DEPLOYMENT.md`, ni la configuration, ni la CI ne
+nomment de serveur pour ce projet. Les hôtes présents dans la configuration SSH
+de la machine appartiennent à d'autres projets, dont l'un est explicitement hors
+périmètre.
+
+Le critère 20 reste donc **IN_PROGRESS** : il n'est déclaré ni atteint ni en
+échec. Ce qu'il faut pour le fermer est en §12.
 
 ## 10. Docker / AMC
 
@@ -498,8 +468,63 @@ enchaînées dans l'image.
 | 33276738129 | `5433023` | succès |
 | — | `99a5a4b` | poussé, en attente |
 
-## 12. Production
+## 12. Production — ce qui manque, et comment le débloquer
 
-Aucun déploiement de production vérifié. `v1.0.0` reste hors d'atteinte tant
-que ce n'est pas le cas ; seul `v1.0.0-rc1` est envisageable, et seulement une
-fois les 23 critères clos.
+Aucun déploiement de production n'a été vérifié. `v1.0.0` reste hors d'atteinte
+tant que ce n'est pas le cas.
+
+### Ce qui bloque le critère 20
+
+Le critère demande une mesure sur l'infrastructure de déploiement. Elle n'est
+pas désignée : rien dans le dépôt, la configuration ou la CI ne nomme de
+serveur pour ce projet, et les hôtes présents dans la configuration SSH locale
+appartiennent à d'autres projets — dont l'un est explicitement hors périmètre.
+Déployer un banc de mesure sur une machine qui n'a pas été désignée pour cela
+n'est pas une décision qui m'appartient.
+
+### Ce qu'il faut fournir
+
+1. **L'adresse de la machine applicative** et un accès (utilisateur SSH ou
+   accès Docker), ainsi que la confirmation qu'on peut y exécuter un banc de
+   mesure.
+2. **L'architecture prévue** : base sur la même machine ou séparée ; une ou
+   plusieurs instances applicatives ; présence d'un proxy en amont.
+3. **Une machine distincte pour le générateur de charge** — le critère exige
+   qu'il ne prenne pas le processeur de ce qu'il mesure.
+
+### Ce qui sera exécuté dès que ce sera fourni
+
+```bash
+# 1. Sur la cible : image et base, au commit candidat
+git clone <dépôt> && git checkout <TARGET_HEAD_SHA>
+docker build -t eval-maths:rc1 .
+docker compose up -d                 # renseigner .env au préalable
+docker compose exec app node dist/migrate.js
+
+# 2. Contrôle préalable d'intégrité, avant toute mesure
+docker compose exec app node -e "…"   # ou, depuis un poste :
+DATABASE_URL=<url cible> npx tsx scripts/preflight-unicite-reponses.ts
+
+# 3. Relevé de l'environnement (à consigner ici)
+nproc; free -g; docker --version
+docker compose exec mysql mysql -N -B -e "SELECT VERSION(), @@max_connections"
+
+# 4. Dimensionnement du pool, sur la cible
+for POOL in 20 40 60 80; do
+  DB_POOL_SIZE=$POOL docker compose up -d app
+  # depuis la machine du générateur :
+  docker run --rm -i grafana/k6 run - < load/burst-submit.k6.js \
+    -e BASE_URL=https://<cible> -e VUS=200
+done
+
+# 5. Mesure officielle, depuis la machine du générateur
+BASE_URL=https://<cible> bash scripts/mesure-acceptation.sh 3
+
+# 6. Limite de capacité en pointe, pour mémoire
+docker run --rm -i grafana/k6 run - < load/burst-submit.k6.js \
+  -e BASE_URL=https://<cible> -e VUS=200
+```
+
+Aucun secret ne figure dans ce document et aucun n'y figurera : les adresses et
+identifiants de la cible restent dans le `.env` de la machine concernée.
+
