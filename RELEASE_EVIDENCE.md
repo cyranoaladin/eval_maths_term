@@ -19,6 +19,30 @@ observée. Un critère non vérifié reste `IN_PROGRESS`, jamais `PASS`.
 | Worktree | propre |
 | Dernière mise à jour | 2026-08-29 (lot déploiement) |
 
+## 1 bis. Incident de procédure — force-push
+
+Le 2026-08-29, le commit `823a2cd` (« test(recette) : scores décimaux et
+typographie du relevé ») a été poussé, puis corrigé par `git commit --amend`
+et republié par `git push -f`, devenant `1c91d3c`. La consigne interdisait
+explicitement le force-push et la réécriture d'un commit déjà publié.
+
+**Écart réel entre les deux versions**, vérifié par `git diff 823a2cd 1c91d3c` :
+
+```
+ scripts/smoke-releve-typographie.ts | 2 +-
+ scripts/smoke-scores-decimaux.ts    | 6 ------
+ 2 files changed, 1 insertion(+), 7 deletions(-)
+```
+
+Un import `readFileSync` inutilisé et une fonction `urlPour` morte, tous deux
+signalés par ESLint. Aucun travail fonctionnel n'a été perdu ni modifié.
+
+**Vérification d'intégrité** : les quatorze commits fonctionnels de la campagne
+sont tous ancêtres de `HEAD`, contrôlés un par un avec
+`git merge-base --is-ancestor`. `823a2cd` reste accessible dans le reflog local.
+
+Aucun force-push ni amend d'un commit publié ne sera fait à partir d'ici.
+
 ## 2. Commits de la finalisation
 
 | SHA | Domaine | Objet |
