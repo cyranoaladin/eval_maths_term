@@ -27,6 +27,7 @@ Renseignez au minimum :
 | `APP_ID`, `APP_SECRET` | Application OAuth Kimi |
 | `TEACHER_SESSION_SECRET`, `STUDENT_SESSION_SECRET` | Signature des jetons de session |
 | `KIMI_AUTH_URL`, `KIMI_OPEN_URL` | Serveurs OAuth |
+| `PUBLIC_BASE_URL` | Adresse publique en `https` — **requise en production** |
 | `ALLOWED_ORIGINS` | Origines autorisées, séparées par des virgules |
 | `DATABASE_URL` | Imposée par le compose ; à renseigner hors conteneur |
 | `OWNER_UNION_ID` | Le seul compte provisionné administrateur — voir ci-dessous |
@@ -91,6 +92,13 @@ server {
     }
 }
 ```
+
+`PUBLIC_BASE_URL` et `ALLOWED_ORIGINS` doivent désigner la même adresse
+publique. La première est la seule source de l'URL de redirection OAuth :
+l'application ne la déduit jamais de l'en-tête `Host`, ni de
+`X-Forwarded-Host`, parce que ces en-têtes viennent du client et qu'un proxy
+qui les transmet sans les valider suffirait à détourner le code
+d'autorisation.
 
 `ALLOWED_ORIGINS` doit contenir l'URL publique exacte, sans quoi la protection
 CSRF rejette toutes les mutations.

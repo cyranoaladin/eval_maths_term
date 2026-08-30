@@ -1,11 +1,13 @@
 {
-  "name": "my-app",
+  "name": "atelier-qcm",
+  "version": "1.0.0-rc2",
+  "description": "Atelier de QCM de mathématiques : rédaction, passage en ligne ou sur papier, correction et export.",
+  "license": "UNLICENSED",
   "private": true,
-  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && esbuild api/boot.ts --platform=node --bundle --format=esm --outdir=dist --banner:js=\"import { createRequire as __creerRequire } from 'module';const require = __creerRequire(import.meta.url);\" && esbuild db/migrate.ts --platform=node --bundle --format=esm --outdir=dist --banner:js=\"import { createRequire as __creerRequire } from 'module';const require = __creerRequire(import.meta.url);\"",
+    "build": "node scripts/build.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "NODE_ENV=production node dist/boot.js",

@@ -76,7 +76,7 @@ SECRET_B="$(openssl rand -base64 48 | tr -d '\n=+/' | head -c 48)"
 SECRET_C="$(openssl rand -base64 48 | tr -d '\n=+/' | head -c 48)"
 
 env_app() {
-  printf -- "-e NODE_ENV=production -e PORT=3000 -e DATABASE_URL=%s -e APP_ID=recette -e APP_SECRET=%s -e TEACHER_SESSION_SECRET=%s -e STUDENT_SESSION_SECRET=%s -e KIMI_AUTH_URL=https://auth.invalid -e KIMI_OPEN_URL=https://open.invalid -e ALLOWED_ORIGINS=http://127.0.0.1:3100,http://localhost:3100 -e PAPER_OUTPUT_DIR=/data/paper-exams" \
+  printf -- "-e NODE_ENV=production -e PORT=3000 -e DATABASE_URL=%s -e APP_ID=recette -e APP_SECRET=%s -e TEACHER_SESSION_SECRET=%s -e STUDENT_SESSION_SECRET=%s -e KIMI_AUTH_URL=https://auth.invalid -e KIMI_OPEN_URL=https://open.invalid -e ALLOWED_ORIGINS=http://127.0.0.1:3100,http://localhost:3100 -e PUBLIC_BASE_URL=http://127.0.0.1:3100 -e PAPER_OUTPUT_DIR=/data/paper-exams" \
     "$DB_URL" "$SECRET_A" "$SECRET_B" "$SECRET_C"
 }
 
@@ -108,6 +108,7 @@ sortie=$(docker run --rm --network "$RESEAU" \
   -e STUDENT_SESSION_SECRET="$SECRET_C" \
   -e KIMI_AUTH_URL=https://auth.invalid -e KIMI_OPEN_URL=https://open.invalid \
   -e ALLOWED_ORIGINS=http://127.0.0.1:3100,http://localhost:3100 \
+  -e PUBLIC_BASE_URL=http://127.0.0.1:3100 \
   "$IMAGE_BASE" node dist/boot.js 2>&1 | head -20)
 echo "$sortie" | grep -q "Configuration de production refusée"
 ok "une valeur de remplissage est refusée en production" $? \

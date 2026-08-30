@@ -13,6 +13,51 @@ const MOTIFS_INTERDITS = [
   /^(secret|password|changeme)$/i,
 ];
 
+/**
+ * En production, l'application doit connaître sa propre adresse publique.
+ *
+ * L'URL de redirection OAuth était construite à partir de l'en-tête `Host` de
+ * la requête. Cet en-tête est fourni par le client : derrière un reverse proxy
+ * mal configuré, il suffit d'en changer pour faire pointer la redirection —
+ * donc le code d'autorisation — vers un domaine choisi par l'attaquant.
+ * L'adresse vient désormais de la configuration, et d'elle seule.
+ */
+export function verifierUrlPubliqueDeProduction(config: {
+  NODE_ENV: string;
+  PUBLIC_BASE_URL?: string;
+}): string[] {
+  if (config.NODE_ENV !== "production") return [];
+
+  const brute = config.PUBLIC_BASE_URL?.trim() ?? "";
+  if (brute === "") {
+    return [
+      "PUBLIC_BASE_URL est requise en production : c'est l'adresse à laquelle les élèves et les enseignants joignent l'application, et la seule source de l'URL de redirection OAuth.",
+    ];
+  }
+
+  let url: URL;
+  try {
+    url = new URL(brute);
+  } catch {
+    return [`PUBLIC_BASE_URL n'est pas une URL absolue : « ${brute} ».`];
+  }
+
+  const erreurs: string[] = [];
+  // Exception explicite : la boucle locale. C'est ce qu'utilise la recette de
+  // l'image de production, qui doit pouvoir éprouver le vrai artefact sans
+  // certificat. Un cookie qui ne quitte pas la machine ne traverse rien.
+  const boucleLocale = url.hostname === "127.0.0.1" || url.hostname === "localhost";
+  if (url.protocol !== "https:" && !boucleLocale) {
+    erreurs.push(
+      `PUBLIC_BASE_URL doit être en https en production (reçu « ${url.protocol}//… ») : un cookie de session ne traverse pas un canal en clair.`,
+    );
+  }
+  if (url.search !== "" || url.hash !== "") {
+    erreurs.push("PUBLIC_BASE_URL ne doit porter ni paramètre ni ancre.");
+  }
+  return erreurs;
+}
+
 export function verifierSecretsDeProduction(config: {
   NODE_ENV: string;
   TEACHER_SESSION_SECRET: string;
@@ -111,6 +156,15 @@ const envSchema = z.object({
   RAG_COLLECTION: z.string().default("default"),
   RAG_TIMEOUT_MS: z.coerce.number().default(10000),
 
+  /**
+   * Adresse publique de l'application, sans barre oblique finale.
+   *
+   * Requise en production : elle est la seule source de l'URL de redirection
+   * OAuth. Hors production, l'adresse est déduite de la requête, ce qui rend
+   * une machine de développement utilisable sans configuration.
+   */
+  PUBLIC_BASE_URL: z.string().optional(),
+
   ALLOWED_ORIGINS: z.string().default("http://localhost:3000"),
 
   SENTRY_DSN: z.string().optional(),
@@ -130,7 +184,10 @@ function parseEnv() {
   // Refus au démarrage plutôt qu'une découverte après coup : un serveur qui
   // tourne avec les secrets du dépôt accepte n'importe quel cookie forgé, et
   // rien dans son comportement ne le laisse voir.
-  const fautes = verifierSecretsDeProduction(result.data);
+  const fautes = [
+    ...verifierSecretsDeProduction(result.data),
+    ...verifierUrlPubliqueDeProduction(result.data),
+  ];
   if (fautes.length > 0) {
     throw new Error(
       `Configuration de production refusée :\n${fautes.map((f) => `  - ${f}`).join("\n")}`,
@@ -172,6 +229,8 @@ export const env = {
     collection: _env.RAG_COLLECTION,
     timeoutMs: _env.RAG_TIMEOUT_MS,
   },
+  /** Sans barre oblique finale : les chemins sont concaténés tels quels. */
+  publicBaseUrl: (_env.PUBLIC_BASE_URL ?? "").replace(/\/+$/, ""),
   allowedOrigins: _env.ALLOWED_ORIGINS.split(",").map(o => o.trim()),
   sentryDsn: _env.SENTRY_DSN,
   logLevel: _env.LOG_LEVEL,

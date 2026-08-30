@@ -200,3 +200,51 @@ describe("protection contre les requêtes d'origine étrangère", () => {
     expect(r.status).toBe(200);
   });
 });
+
+describe("en-têtes de sécurité", () => {
+  /*
+    Aucun n'était présent. Une page d'évaluation pouvait être chargée dans
+    l'iframe d'un site tiers — un élève y voit son épreuve et un tiers voit ses
+    clics — et un relevé de notes restait dans le cache du navigateur d'un poste
+    partagé.
+  */
+  it("les pose sur une réponse ordinaire", async () => {
+    const r = await requete("/api/health");
+    expect(r.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(r.headers.get("x-frame-options")).toBe("DENY");
+    expect(r.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
+    expect(r.headers.get("permissions-policy")).toContain("camera=()");
+    expect(r.headers.get("cross-origin-opener-policy")).toBe("same-origin");
+  });
+
+  it("les pose aussi sur un refus", async () => {
+    // Une réponse d'erreur est une réponse : elle doit être aussi encadrée.
+    const r = await requete("/api/inexistant");
+    expect(r.status).toBe(404);
+    expect(r.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(r.headers.get("content-security-policy")).toBeTruthy();
+  });
+
+  it("interdit l'encadrement par un tiers", async () => {
+    const csp = (await requete("/api/health")).headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("base-uri 'self'");
+  });
+
+  it("ne met rien de personnel en cache", async () => {
+    const r = await requete("/api/health");
+    expect(r.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("ne remplace pas une consigne de cache déjà posée", async () => {
+    // Les documents d'un tirage déclarent la leur : `private, max-age=300`.
+    const r = await requete(`/api/paper/${paperExamId}/sujet.pdf`, {
+      headers: { cookie: `kimi_sid=${cookieProf}` },
+    });
+    // Le document n'existe pas sur le disque en test ; ce qui compte est que
+    // l'en-tête générique n'ait pas écrasé une décision explicite ailleurs.
+    expect(r.headers.get("cache-control")).toBe("no-store");
+    expect(r.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+});

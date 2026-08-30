@@ -1,4 +1,15 @@
+/**
+ * api/lib/cookies.ts
+ *
+ * Options des cookies de session.
+ *
+ * `secure` se décidait sur l'en-tête `Host` : un `Host: localhost:3000` forgé
+ * suffisait à obtenir un cookie de session transmissible en clair. En
+ * production, l'attribut est posé sans condition — c'est une propriété du
+ * déploiement, pas de la requête.
+ */
 import type { CookieOptions } from "hono/utils/cookie";
+import { env } from "./env";
 
 export function isLocalhost(headers: Headers): boolean {
   const host = headers.get("host") || "";
@@ -6,12 +17,10 @@ export function isLocalhost(headers: Headers): boolean {
 }
 
 export function getSessionCookieOptions(headers: Headers): CookieOptions {
-  const localhost = isLocalhost(headers);
-
   return {
     httpOnly: true,
     path: "/",
     sameSite: "Lax",
-    secure: !localhost,
+    secure: env.isProduction || !isLocalhost(headers),
   };
 }

@@ -1,4 +1,5 @@
 import { env } from "../lib/env";
+import { logger } from "../lib/logger";
 import type { UserProfile } from "./types";
 
 async function kimiRequest<T>(
@@ -16,9 +17,14 @@ async function kimiRequest<T>(
   });
   if (!resp.ok) {
     const text = await resp.text();
-    console.warn(
-      `[kimi] Request to ${path} failed (${resp.status}): ${text}`,
-    );
+    // Passe par le journal structuré : ce message porte un identifiant de
+    // requête, et la réponse du fournisseur est tronquée — elle peut contenir
+    // le jeton refusé.
+    logger.warn("[kimi] Appel refusé par la plateforme", {
+      path,
+      status: resp.status,
+      reponse: text.slice(0, 200),
+    });
     return null;
   }
   return resp.json() as Promise<T>;

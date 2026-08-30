@@ -17,6 +17,14 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 COPY . .
+
+# Version et empreinte Git sont inscrites dans le binaire : le dépôt n'est pas
+# présent dans l'image finale, et `docker compose ps` ne dit pas quel commit
+# répond. `/api/health` les expose.
+ARG APP_VERSION
+ARG GIT_SHA
+ENV APP_VERSION=${APP_VERSION}
+ENV GIT_SHA=${GIT_SHA}
 RUN npm run build
 
 # Dépendances de production uniquement, pour l'image finale.

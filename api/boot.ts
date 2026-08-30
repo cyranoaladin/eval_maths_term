@@ -10,8 +10,10 @@ import { STUDENT_SESSION_HEADER } from "./middleware";
 import { logger } from "./lib/logger";
 import { createOAuthCallbackHandler, createOAuthInitHandler } from "./kimi/auth";
 import { csrfMiddleware } from "./lib/csrf";
+import { enTetesDeSecurite } from "./lib/security-headers";
 import { REQUEST_ID_HEADER, normaliserRequestId, withRequestId } from "./lib/request-id";
 import { Paths } from "@contracts/constants";
+import { EMPREINTE_GIT, VERSION_APPLICATION } from "./lib/version";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
@@ -27,6 +29,9 @@ app.use("*", async (c, next) => {
   await withRequestId(requestId, () => next());
 });
 
+// En-têtes de sécurité — sur toute réponse, y compris les 404 et les erreurs.
+app.use("*", enTetesDeSecurite());
+
 app.use(bodyLimit({ maxSize: 10 * 1024 * 1024 }));
 
 // CORS — autorise uniquement les origines configurées
@@ -41,12 +46,15 @@ app.use("/api/*", cors({
 app.get("/api/oauth/login", createOAuthInitHandler());
 app.get(Paths.oauthCallback, createOAuthCallbackHandler());
 
-// Health check
+// Contrôle de santé — dit aussi ce qui tourne, pour qu'un incident puisse être
+// rattaché à une version et à un commit précis.
 app.get("/api/health", async (c) => {
   return c.json({
     status: "ok",
     uptime: process.uptime(),
     serverTime: new Date().toISOString(),
+    version: VERSION_APPLICATION,
+    gitSha: EMPREINTE_GIT,
   });
 });
 
@@ -179,8 +187,12 @@ if (env.isProduction) {
   const { serveStaticFiles } = await import("./lib/vite");
   serveStaticFiles(app);
 
-  const port = parseInt(process.env.PORT || "3000");
+  const port = env.port;
   serve({ fetch: app.fetch, port }, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+    logger.info("Serveur démarré", {
+      port,
+      version: VERSION_APPLICATION,
+      gitSha: EMPREINTE_GIT,
+    });
   });
 }

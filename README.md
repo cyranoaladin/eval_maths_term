@@ -636,6 +636,7 @@ une variable requise manque ou est trop courte.
 | `RAG_URL`, `RAG_API_KEY`, `RAG_COLLECTION`, `RAG_TIMEOUT_MS` | non | — / — / `default` / 10000 | Port débranché sans `RAG_URL` |
 | `PAPER_OUTPUT_DIR` | — | `./.paper-exams` | Dossiers de tirage |
 | `OWNER_UNION_ID` | fortement conseillé | — | Le seul compte provisionné administrateur |
+| `PUBLIC_BASE_URL` | **oui en production** | — | Adresse publique ; seule source de la redirection OAuth |
 | `LOG_LEVEL`, `BRAND_NAME`, `SENTRY_DSN`, `REDIS_URL` | non | | |
 | `VITE_ETABLISSEMENT`, `VITE_ETABLISSEMENT_ADRESSE`, `VITE_DIRECTEUR_PUBLICATION`, `VITE_CONTACT_DONNEES`, `VITE_HEBERGEUR` | non | — | Mentions légales |
 

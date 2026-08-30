@@ -1,3 +1,4 @@
+import { journal } from "@/lib/journal";
 import { useEffect, useRef, useCallback } from "react";
 import type { CheatEvent } from "@contracts/types";
 import { useCheatBuffer, type UseCheatBufferResult } from "./useCheatBuffer";
@@ -105,7 +106,7 @@ export function useAntiCheat(options: AntiCheatOptions): UseAntiCheatResult {
         await elem.requestFullscreen();
       }
     } catch {
-      console.warn("Fullscreen not supported");
+      journal.warn("Plein écran refusé par le navigateur");
     }
   }, []);
 

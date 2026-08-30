@@ -1,3 +1,4 @@
+import { journal } from "@/lib/journal";
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
@@ -212,7 +213,7 @@ export default function Evaluation() {
       clearSession();
       navigate(`/results?token=${encodeURIComponent(result.resultsToken)}`);
     } catch (err) {
-      console.error("Échec de la soumission :", err);
+      journal.error("Échec de la remise de copie", err);
       setIsSubmitted(false);
     }
   }, [questions, sessionId, submitSession, getTimeSpent, navigate, cheatBuffer, clearSession]);
@@ -235,7 +236,7 @@ export default function Evaluation() {
       setSession(result.sessionToken, result.sessionId);
       setIsStarted(true);
     } catch (err) {
-      console.error("Erreur au démarrage de session :", err);
+      journal.error("Échec du démarrage de session", err);
     }
   };
 

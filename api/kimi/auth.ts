@@ -4,7 +4,8 @@ import * as jose from "jose";
 import * as cookie from "cookie";
 import { nanoid } from "nanoid";
 import { env } from "../lib/env";
-import { getSessionCookieOptions, isLocalhost } from "../lib/cookies";
+import { getSessionCookieOptions } from "../lib/cookies";
+import { baseUrlPublique } from "../lib/base-url";
 import { logger } from "../lib/logger";
 import { Session, OAuthState, Paths } from "@contracts/constants";
 import { Errors } from "@contracts/errors";
@@ -43,23 +44,58 @@ const jwks = jose.createRemoteJWKSet(
   new URL(`${env.kimiAuthUrl}/api/.well-known/jwks.json`),
 );
 
+/**
+ * Ce que les revendications d'un jeton d'accès doivent dire.
+ *
+ * La signature ne suffit pas : le fournisseur signe aussi les jetons des autres
+ * applications qu'il héberge. Un jeton valide émis pour une application tierce
+ * était accepté ici tel quel, et son `user_id` devenait une identité chez nous.
+ * Le `client_id` doit donc être le nôtre, et l'émetteur — quand le fournisseur
+ * le renseigne — le serveur que nous interrogeons.
+ *
+ * Extrait de la vérification cryptographique pour être éprouvable sans réseau.
+ */
+export function validerRevendicationsJeton(payload: jose.JWTPayload): {
+  userId: string;
+  clientId: string;
+} {
+  const userId = payload.user_id as string;
+  const clientId = payload.client_id as string;
+
+  if (!userId) {
+    throw new Error("user_id absent du jeton d'accès");
+  }
+  if (clientId !== env.appId) {
+    throw new Error(
+      "Le jeton d'accès a été émis pour une autre application : client_id inattendu.",
+    );
+  }
+  if (typeof payload.iss === "string" && payload.iss !== "") {
+    const attendu = new URL(env.kimiAuthUrl).origin;
+    let emetteur: string;
+    try {
+      emetteur = new URL(payload.iss).origin;
+    } catch {
+      throw new Error("Le jeton d'accès porte un émetteur illisible.");
+    }
+    if (emetteur !== attendu) {
+      throw new Error("Le jeton d'accès vient d'un autre émetteur.");
+    }
+  }
+  return { userId, clientId };
+}
+
 async function verifyAccessToken(
   accessToken: string,
 ): Promise<{ userId: string; clientId: string }> {
   const { payload } = await jose.jwtVerify(accessToken, jwks);
-  const userId = payload.user_id as string;
-  const clientId = payload.client_id as string;
-  if (!userId) {
-    throw new Error("user_id missing from access token");
-  }
-  return { userId, clientId };
+  return validerRevendicationsJeton(payload);
 }
 
 export async function authenticateRequest(headers: Headers) {
   const cookies = cookie.parse(headers.get("cookie") || "");
   const token = cookies[Session.cookieName];
   if (!token) {
-    console.warn("[auth] No session cookie found in request.");
     throw Errors.forbidden("Invalid authentication token.");
   }
   const claim = await verifySessionToken(token);
@@ -81,17 +117,15 @@ export async function authenticateRequest(headers: Headers) {
 export function createOAuthInitHandler() {
   return async (c: Context) => {
     const state = nanoid(32);
-    const localhost = isLocalhost(c.req.raw.headers);
 
+    // Le cookie d'état porte la protection CSRF du flux : il suit les mêmes
+    // règles que le cookie de session, `Secure` compris.
     setCookie(c, OAuthState.cookieName, state, {
-      httpOnly: true,
-      path: "/",
-      sameSite: "Lax",
-      secure: !localhost,
+      ...getSessionCookieOptions(c.req.raw.headers),
       maxAge: OAuthState.maxAgeMs / 1000,
     });
 
-    const redirectUri = `${c.req.url.split("/api")[0]}${Paths.oauthCallback}`;
+    const redirectUri = `${baseUrlPublique(c.req.raw)}${Paths.oauthCallback}`;
     const authUrl = new URL(`${env.kimiAuthUrl}/api/oauth/authorize`);
     authUrl.searchParams.set("client_id", env.appId);
     authUrl.searchParams.set("redirect_uri", redirectUri);
@@ -135,8 +169,10 @@ export function createOAuthCallbackHandler() {
     deleteCookie(c, OAuthState.cookieName, { path: "/" });
 
     try {
-      const localhost = isLocalhost(c.req.raw.headers);
-      const redirectUri = `${localhost ? "http" : "https"}://${c.req.header("host")}${Paths.oauthCallback}`;
+      // La même adresse qu'au départ, et elle ne vient pas de la requête :
+      // le fournisseur compare les deux, et un `Host` forgé les ferait diverger
+      // — ou pire, les ferait coïncider sur un domaine choisi par un tiers.
+      const redirectUri = `${baseUrlPublique(c.req.raw)}${Paths.oauthCallback}`;
 
       const tokenResp = await exchangeAuthCode(code, redirectUri);
       const { userId } = await verifyAccessToken(tokenResp.access_token);

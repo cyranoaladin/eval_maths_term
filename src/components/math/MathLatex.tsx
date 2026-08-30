@@ -12,10 +12,12 @@
  * Pièges gérés :
  * - KaTeX.renderToString peut throw → affichage du raw LaTeX avec style d'erreur
  * - Les délimiteurs $...$ et $$...$$ sont gérés par le mode "auto"
- * - SSR safe : katex est chargé uniquement côté client (dynamic import si besoin)
+ * - SSR safe : katex est chargé uniquement côté client (dynamic import { journal } from "@/lib/journal";
+import si besoin)
  */
 import React, { useMemo } from "react";
 import katex from "katex";
+import { journal } from "@/lib/journal";
 import "katex/dist/katex.min.css";
 
 interface MathLatexProps {
@@ -33,7 +35,7 @@ interface MathLatexProps {
 
 /**
  * Rend une expression LaTeX pure en HTML via KaTeX.
- * Retourne null en cas d'erreur (avec console.warn).
+ * Retourne null en cas d'erreur, signalée dans le journal.
  */
 function renderLatex(tex: string, displayMode: boolean): string | null {
   try {
@@ -44,7 +46,7 @@ function renderLatex(tex: string, displayMode: boolean): string | null {
       trust: false,
     });
   } catch (e) {
-    console.warn("[MathLatex] Erreur KaTeX:", e instanceof Error ? e.message : e, "| tex:", tex);
+    journal.warn(`[MathLatex] Formule non rendue : ${tex.slice(0, 120)}`, e);
     return null;
   }
 }
