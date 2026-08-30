@@ -1,5 +1,98 @@
 # Changelog
 
+## [Non publié] — Durcissement de production, vers v1.0.0-rc2
+
+`v1.0.0-rc1` reste ce qu'il était : un jalon acquis, dont l'historique n'est pas
+réécrit. Ce qui suit vise un produit sans dette connue sur le chemin
+fonctionnel. L'état d'avancement vit dans `PRODUCTION_READINESS.md`.
+
+### Sécurité
+
+**Une connexion OAuth réussie ouvrait l'accès enseignant.** `users.role` avait
+`teacher` pour valeur par défaut, et le provisionnement ne précisait pas de
+rôle : toute personne capable d'ouvrir une session chez le fournisseur devenait
+enseignante à sa première connexion — accès aux copies, aux notes, aux identités
+d'élèves. L'autorisation est désormais explicite (`pending` / `active` /
+`disabled`), décidée par le serveur, et un écran « Comptes » permet à un
+administrateur de l'accorder.
+
+**Un administrateur ne pouvait atteindre aucun écran.** Le contrôle de rôle
+comparait à « teacher » exactement : le propriétaire déclaré par
+`OWNER_UNION_ID` — tel que la documentation le décrit — recevait `FORBIDDEN` sur
+la quasi-totalité de l'application.
+
+**Deux fuites de cloisonnement entre enseignants.** Le suivi en direct rendait,
+pour n'importe quelle évaluation, les noms et courriels des élèves, leur
+avancement, leur score de suspicion et leurs incidents. La génération papier
+vérifiait la propriété de la classe mais pas celle de l'évaluation : un
+enseignant imprimait le sujet et le corrigé d'un collègue.
+
+**L'URL de redirection OAuth venait de l'en-tête `Host`**, fourni par le client.
+Elle vient de `PUBLIC_BASE_URL`, requise en production. Le cookie de session
+décidait de son attribut `Secure` sur ce même en-tête ; il est désormais posé
+sans condition en production. Le jeton d'accès n'était vérifié que sur sa
+signature, alors que le fournisseur signe aussi les jetons des autres
+applications qu'il héberge.
+
+**Aucun en-tête de sécurité n'était posé.** CSP sans `unsafe-eval`,
+`frame-ancestors`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS et
+`Cache-Control` le sont maintenant, sur toute réponse, y compris les erreurs.
+
+**Cinq vulnérabilités élevées en production**, dont `mathjs` — le module qui
+évalue les expressions écrites par les élèves. `npm audit` ne signale plus rien.
+
+### Configuration
+
+**Aucun secret ne vient plus du dépôt.** Les deux secrets de session avaient une
+valeur de repli publiée ; le compose de développement portait ses mots de passe
+en clair ; la CI signait ses jetons avec des chaînes fixes lisibles dans le
+workflow. Tout cela est tiré au hasard localement, ou dans le job.
+
+**La configuration avait divergé.** Le code retenait Moonshot comme fournisseur
+de correction assistée pendant que le compose imposait OpenRouter : la même
+version ne se comportait pas pareil selon la façon de la démarrer. Un test lit
+`env.ts`, `.env.example`, les deux composes et `DEPLOYMENT.md` et refuse qu'ils
+se contredisent.
+
+**Le produit n'avait pas de nom.** `my-app@0.0.0` devient
+`atelier-qcm@1.0.0-rc2` ; `/api/health` expose la version et l'empreinte Git du
+binaire qui répond.
+
+### Dette
+
+- 0 suppression de type, de linter ou de couverture, sur tout le dépôt.
+- 0 appel direct à `console.*` hors des deux journaux.
+- 0 fichier mort, 0 dépendance inutilisée, 0 export sans lecteur : 39 fichiers
+  et 32 dépendances supprimés, dont les deux SDK AWS.
+- 52 → 45 procédures tRPC. Les orphelines partaient d'un principe simple : une
+  route sans appelant est une surface d'attaque sans usage.
+- Quatre duplications qui divergeaient : deux calculs d'une même note, deux
+  calculs d'un même score de suspicion, deux réponses à « cette copie est-elle
+  inscriptible ? », deux chemins d'écriture vers la table corrigée.
+
+### Défauts trouvés par l'outillage lui-même
+
+**`poolOptions.forks.singleFork` était ignoré depuis la montée en Vitest 4** :
+les tests d'intégration s'exécutaient en parallèle sur une base partagée.
+
+**MathLive 0.110 ne prend plus le focus au clic** — il le déplace ensuite vers
+un puits de saisie de son shadow DOM. Un élève ne frappe pas en dix
+millisecondes ; un robot, si.
+
+**Zod découvre par exception s'il peut compiler ses schémas.** Sous CSP, l'essai
+échoue sans dommage, mais le navigateur signale la violation : une erreur dans
+la console de chaque élève, à chaque chargement.
+
+**`upgrade-insecure-requests` sur une adresse en clair** fait tenter à WebKit de
+charger le bundle en https. La page restait entièrement blanche.
+
+**Les tests des écrans enseignant passaient grâce à un tirage papier créé à la
+main**, un jour, dans une base de développement. Sur une base neuve, ils
+échouaient. Une fois la donnée écrite par un script, ils ont montré ce qu'ils ne
+pouvaient pas voir : l'écran de saisie papier débordait à 1872 px sur une
+tablette de 820 px — l'écran même qu'un enseignant tient à la main avec son
+paquet de copies.
+
 ## [v1.0.0-rc1] — Mise en service — 2026-08-30
 
 Campagne de durcissement avant première mise en production. Rien n'y a été

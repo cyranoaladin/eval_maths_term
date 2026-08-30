@@ -105,6 +105,21 @@ export function MathInput({
     onChangeRef.current = onChange;
   });
 
+  /**
+   * Dernière valeur que le champ a lui-même produite.
+   *
+   * Sans cette mémoire, une frappe rapide perd des caractères. L'élève tape
+   * « 1 », le champ prévient React, mais l'état ne s'applique pas dans la même
+   * frappe ; il tape « / », et le rendu déclenché par le « 1 » arrive avec une
+   * valeur d'un temps de retard. La synchronisation « externe » constate alors
+   * un écart et réécrit le champ — effaçant le « / » qui venait d'être frappé.
+   * Un élève qui compose vite voyait sa réponse se rétracter sous ses doigts.
+   *
+   * On ne réécrit donc le champ que pour une valeur qui ne vient pas de lui :
+   * la restauration d'un brouillon, ou le passage à une autre question.
+   */
+  const derniereValeurEmise = useRef<string | null>(null);
+
   // Construction du champ, une fois MathLive chargé.
   useEffect(() => {
     let monte = true;
@@ -117,7 +132,9 @@ export function MathInput({
       champ.setValue(valeurRef.current, { silenceNotifications: true });
       champ.addEventListener("input", () => {
         const lue = champ.getValue();
-        if (lue !== valeurRef.current) onChangeRef.current(lue);
+        if (lue === valeurRef.current) return;
+        derniereValeurEmise.current = lue;
+        onChangeRef.current(lue);
       });
 
       hote.appendChild(champ);
@@ -143,12 +160,16 @@ export function MathInput({
     if (placeholder !== undefined) champ.setAttribute("placeholder", placeholder);
   }, [pret, id, ariaLabel, ariaDescribedBy, placeholder]);
 
-  // Synchronisation valeur externe → champ.
+  // Synchronisation d'une valeur venue d'ailleurs → champ.
   useEffect(() => {
     const champ = champRef.current;
     if (!pret || !champ) return;
+    // C'est notre propre frappe qui nous revient, peut-être en retard : ne pas
+    // y toucher, le champ est déjà en avance sur elle.
+    if (value === derniereValeurEmise.current) return;
     if (champ.getValue() !== value) {
       champ.setValue(value, { silenceNotifications: true });
+      derniereValeurEmise.current = null;
     }
   }, [value, pret]);
 

@@ -63,6 +63,8 @@ export interface UseAutoSaveOptions {
 export interface UseAutoSaveResult {
   status: AutoSaveStatus;
   saveDraft: (payload: DraftPayload) => void;
+  /** Envoie sans attendre tout ce qui est en attente de temporisation. */
+  flush: () => void;
   pendingCount: number;
 }
 
@@ -85,7 +87,19 @@ export function useAutoSave({ enabled }: UseAutoSaveOptions): UseAutoSaveResult 
   const [status, setStatus] = useState<AutoSaveStatus>("idle");
   const [pendingCount, setPendingCount] = useState(0);
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * Une temporisation par question.
+   *
+   * Il n'y en avait qu'une, partagée : programmer l'enregistrement d'une
+   * question annulait celui de la précédente. Un élève qui répondait puis
+   * passait à la question suivante en moins de deux secondes — ce qui est le
+   * rythme normal sur un QCM — perdait sa réponse. Elle n'était ni envoyée, ni
+   * mise en file locale : elle n'existait plus qu'à l'écran, jusqu'au premier
+   * rechargement.
+   */
+  const temporisations = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+  /** Ce que chaque temporisation en attente enverra. */
+  const enAttenteParQuestion = useRef(new Map<number, DraftPayload>());
   const retryRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cancelRef = useRef(false);
 
@@ -118,13 +132,38 @@ export function useAutoSave({ enabled }: UseAutoSaveOptions): UseAutoSaveResult 
   const saveDraft = useCallback(
     (payload: DraftPayload) => {
       if (!enabled) return;
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        doSave(payload);
-      }, DEBOUNCE_MS);
+      const enCours = temporisations.current.get(payload.questionId);
+      if (enCours) clearTimeout(enCours);
+      enAttenteParQuestion.current.set(payload.questionId, payload);
+      temporisations.current.set(
+        payload.questionId,
+        setTimeout(() => {
+          temporisations.current.delete(payload.questionId);
+          enAttenteParQuestion.current.delete(payload.questionId);
+          doSave(payload);
+        }, DEBOUNCE_MS),
+      );
     },
     [enabled, doSave],
   );
+
+  /**
+   * Force l'envoi immédiat des brouillons en attente.
+   *
+   * La temporisation de deux secondes existe pour ne pas écrire à chaque
+   * frappe ; elle n'a aucune raison de survivre à un changement de question.
+   * Sans ce vidage, un élève qui répond puis quitte la question a deux secondes
+   * pendant lesquelles sa réponse n'existe qu'à l'écran — et un rechargement
+   * dans cet intervalle l'efface.
+   */
+  const flush = useCallback(() => {
+    for (const [questionId, minuteur] of temporisations.current) {
+      clearTimeout(minuteur);
+      temporisations.current.delete(questionId);
+      const paquet = enAttenteParQuestion.current.get(questionId);
+      if (paquet) doSave(paquet);
+    }
+  }, [doSave]);
 
   // Retry depuis IDB
   useEffect(() => {
@@ -160,12 +199,16 @@ export function useAutoSave({ enabled }: UseAutoSaveOptions): UseAutoSaveResult 
       }
     }, RETRY_INTERVAL_MS);
 
+    const enAttente = temporisations.current;
+    const paquets = enAttenteParQuestion.current;
     return () => {
       cancelRef.current = true;
       if (retryRef.current) clearInterval(retryRef.current);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      for (const minuteur of enAttente.values()) clearTimeout(minuteur);
+      enAttente.clear();
+      paquets.clear();
     };
   }, [enabled]);
 
-  return { status, saveDraft, pendingCount };
+  return { status, saveDraft, flush, pendingCount };
 }

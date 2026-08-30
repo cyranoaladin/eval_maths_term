@@ -29,6 +29,22 @@ la session.
 Le timer fait autorité côté serveur : `expiresAt` est fixé à la création de la
 session et vérifié à chaque mutation.
 
+### Un enseignant lit les copies d'un autre
+
+Une session appartient à l'enseignant propriétaire de son évaluation ; une
+classe, un tirage et un élève à celui qui les a créés. Cette règle vit dans
+`api/queries/ownership.ts`, en un seul endroit — elle avait été recopiée dans
+l'atelier de rédaction, et deux routes hors de l'atelier ne la vérifiaient pas :
+
+- **le suivi en direct** rendait, pour n'importe quelle évaluation, les noms et
+  courriels des élèves qui la composaient, leur avancement, leur score de
+  suspicion et le détail de leurs incidents ;
+- **la génération papier** contrôlait la propriété de la classe mais pas celle
+  de l'évaluation : un enseignant imprimait le sujet et le corrigé d'un collègue.
+
+Le refus est un `NOT_FOUND`, jamais un `FORBIDDEN` : il ne confirme pas
+l'existence d'une copie qu'on ne possède pas.
+
 ### Un élève lit la copie d'un autre
 
 Les résultats exigent un jeton signé à durée courte, émis à la soumission.
@@ -117,6 +133,8 @@ décrivant une faille exploitable.
 - Pas de journal d'audit des modifications de notes (prévu, critère 17).
 - L'autorisation d'un compte n'envoie aucune notification : un administrateur
   doit consulter l'écran « Comptes » pour voir les demandes en attente.
+- Les évaluations sans propriétaire — antérieures au champ, dont l'évaluation
+  de référence — restent partagées entre tous les enseignants autorisés.
 
 ## Ce que la campagne de mise en service a corrigé
 

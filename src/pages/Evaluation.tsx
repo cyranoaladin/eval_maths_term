@@ -149,7 +149,12 @@ export default function Evaluation() {
 
   // Phase 3 : auto-save brouillons
   const currentQ = questions?.[currentQuestion];
-  const { status: autoSaveStatus, saveDraft, pendingCount } = useAutoSave({
+  const {
+    status: autoSaveStatus,
+    saveDraft,
+    flush: viderLesBrouillonsEnAttente,
+    pendingCount,
+  } = useAutoSave({
     enabled: isStarted && !isSubmitted,
   });
 
@@ -260,11 +265,25 @@ export default function Evaluation() {
     }
   };
 
+  /**
+   * Changer de question envoie sans attendre ce qui vient d'être répondu.
+   *
+   * La temporisation de deux secondes de l'enregistrement automatique existe
+   * pour ne pas écrire à chaque frappe. Elle n'a aucune raison de survivre au
+   * départ de la question : sinon, un élève qui répond puis passe à la suivante
+   * garde sa réponse à l'écran seulement — un rechargement dans cet intervalle
+   * l'efface.
+   */
+  const allerA = (indice: number) => {
+    viderLesBrouillonsEnAttente();
+    setCurrentQuestion(indice);
+  };
+
   const goToNext = () => {
-    if (questions && currentQuestion < questions.length - 1) setCurrentQuestion((p) => p + 1);
+    if (questions && currentQuestion < questions.length - 1) allerA(currentQuestion + 1);
   };
   const goToPrevious = () => {
-    if (currentQuestion > 0) setCurrentQuestion((p) => p - 1);
+    if (currentQuestion > 0) allerA(currentQuestion - 1);
   };
 
   const answeredCount = Object.keys(answers).filter((k) => answers[parseInt(k)]?.answer !== "").length;
@@ -447,7 +466,7 @@ export default function Evaluation() {
                     return (
                       <button
                         key={q.id}
-                        onClick={() => setCurrentQuestion(idx)}
+                        onClick={() => allerA(idx)}
                         className={`w-full aspect-square rounded-lg text-sm font-medium transition-all ${
                           isCurrent
                             ? "bg-blue-600 text-white ring-2 ring-blue-300"

@@ -23,7 +23,7 @@ corrigés par le même moteur.
 Branche : `main`, taguée `v1.0.0-rc1`.
 
 **État.** Phases 1 à 5 terminées. `npm run check`, `npm run lint`,
-**805 tests**, `npm run test:coverage` et `npm run build` sont verts, ainsi que
+**857 tests**, `npm run test:coverage` et `npm run build` sont verts, ainsi que
 **39 scénarios navigateur** sur Chromium, Firefox et WebKit contre le build de
 production. **Les 23 critères de mise en service sont satisfaits.**
 
@@ -208,7 +208,7 @@ La génération **retourne des propositions**. L'enregistrement repasse par
 | Authentification | OAuth Kimi, session JWT (`jose`) |
 | Modèle de langage | API compatible OpenAI — OpenRouter par défaut |
 | Impression | `auto-multiple-choice` 1.6.0 piloté en ligne de commande |
-| Tests | Vitest (805 tests, dont un socle d'intégration sur base réelle), Playwright (39 scénarios, trois moteurs), neuf recettes de bout en bout, k6 |
+| Tests | Vitest (857 tests, dont un socle d'intégration sur base réelle), Playwright (39 scénarios, trois moteurs), neuf recettes de bout en bout, k6 |
 
 ### 5.2 Arborescence
 
@@ -378,7 +378,7 @@ saisie reflète le papier, pas l'état courant des questions.
 
 ---
 
-## 7. Surface API — 52 procédures tRPC
+## 7. Surface API — 45 procédures tRPC
 
 Quatre niveaux d'accès, définis dans `api/middleware.ts` :
 
@@ -386,8 +386,12 @@ Quatre niveaux d'accès, définis dans `api/middleware.ts` :
 |---|---|
 | `publicQuery` | aucune |
 | `studentQuery` | en-tête `x-student-session-token` (JWT signé serveur) |
-| `teacherQuery` | cookie de session + rôle `teacher` |
-| `adminQuery` | cookie de session + rôle `admin` |
+| `teacherQuery` | cookie de session + compte **autorisé** + rôle `teacher` ou `admin` |
+| `adminQuery` | cookie de session + compte **autorisé** + rôle `admin` |
+
+Être authentifié ne suffit pas : un compte créé à la première connexion arrive
+« en attente » et n'ouvre rien tant qu'un administrateur ne l'a pas autorisé.
+Voir SECURITY.md.
 
 `api/__tests__/security/public-surface.spec.ts` **fige l'inventaire** : toute
 procédure ajoutée fait échouer le test tant qu'elle n'y est pas inscrite
@@ -396,9 +400,8 @@ appel anonyme **avant** d'atteindre la base.
 
 ### Accessibles sans authentification (4)
 ```
-ping                     evaluation.listPublic
-session.start            session.getResults
-question.getPublicInfo
+evaluation.listPublic    session.start
+session.getResults       question.getPublicInfo
 ```
 
 ### Authentifiées, tous rôles (2)
@@ -406,13 +409,21 @@ question.getPublicInfo
 auth.me                  auth.logout
 ```
 `session.getResults` exige un **jeton de résultats** signé, valable 10 minutes,
-émis à la soumission. Sans lui, rien n'est lisible.
+émis à la soumission. Sans lui, rien n'est lisible. `auth.me` reste accessible à
+un compte en attente : c'est ce qui permet à l'interface de dire pourquoi elle
+n'ouvre rien.
 
-### Élève — jeton de session requis (9)
+### Élève — jeton de session requis (6)
 ```
 question.getForActiveSession   session.heartbeat   session.submit
-answer.save   answer.getSaved   answer.saveDraft   answer.listDrafts
-cheat.report   cheat.reportBatch
+answer.saveDraft               answer.listDrafts   cheat.report
+```
+L'élève n'écrit que des brouillons. Sa copie n'entre dans la table corrigée qu'à
+la remise — volontaire, automatique sur inactivité, ou forcée par l'enseignant.
+
+### Administrateur (2)
+```
+access.listUsers          access.setAccess
 ```
 
 ### Enseignant — rédaction (10)
@@ -430,27 +441,28 @@ authoring.llmStatus            → { configured, model, ragAvailable }
 authoring.generateQuestions    → propositions NON enregistrées
 ```
 
-### Enseignant — papier (12)
+### Enseignant — papier (13)
 ```
 paper.status              paper.listClasses      paper.createClass
 paper.listStudents        paper.importStudents   paper.listExams
 paper.createAndGenerate   paper.entrySheet       paper.saveEntry
-paper.results             paper.exportStudentData  paper.anonymizeStudent
+paper.results             paper.overview
+paper.exportStudentData   paper.anonymizeStudent
 ```
 
-### Enseignant — correction et suivi (13)
+### Enseignant — correction et suivi (6)
 ```
-session.getAllForTeacher      session.getDetailsForTeacher
-grading2.gradeSession         grading2.getResults
-grading2.overrideGrade        grading2.auditTrail
-question.getWithAnswersForTeacher
-teacherLive.snapshot          teacherLive.forceSubmit   teacherLive.overview
-evaluation.listForTeacher     evaluation.seed           paper.overview
+session.getDetailsForTeacher   grading2.gradeSession
+grading2.overrideGrade         grading2.auditTrail
+teacherLive.snapshot           teacherLive.forceSubmit
 ```
 
 **Propriété vérifiée sur chacune.** Une session appartient à l'enseignant
-propriétaire de son évaluation ; un tirage, au propriétaire de sa classe. Le
-refus est un `NOT_FOUND`, jamais un `FORBIDDEN` : il ne confirme pas
+propriétaire de son évaluation ; une classe, un tirage et un élève à celui qui
+les a créés. La règle vit dans `api/queries/ownership.ts`, en un seul endroit :
+elle avait été recopiée dans l'atelier de rédaction, et deux routes hors de
+l'atelier — le suivi en direct et la génération papier — ne la vérifiaient pas
+du tout. Le refus est un `NOT_FOUND`, jamais un `FORBIDDEN` : il ne confirme pas
 l'existence d'une copie qu'on ne possède pas.
 
 ### Route HTTP hors tRPC
@@ -460,8 +472,9 @@ et nom de fichier pris dans une **liste fermée** — `sujet.pdf`, `corrige.pdf`
 `catalog.pdf`, plus `resultats.pdf` et `resultats.csv` produits à la demande.
 Aucun segment de chemin ne vient de l'URL.
 
-`GET /api/health` — état, uptime, heure serveur. Utilisé par le healthcheck
-du conteneur.
+`GET /api/health` — état, uptime, heure serveur, **version et empreinte Git**
+du binaire qui répond. Utilisé par le healthcheck du conteneur, et par
+quiconque doit rattacher une anomalie à un commit précis.
 
 ---
 
@@ -661,7 +674,7 @@ npm run check   # tsc -b
 npm run lint    # eslint (0 erreur, 3 avertissements react-hooks connus)
 # Les tests d'intégration parlent à une vraie base. `scripts/bootstrap-dev.sh`
 # a écrit TEST_DATABASE_URL dans `.env` ; la base est créée si elle manque.
-npm test        # 813 tests, 62 fichiers
+npm test        # 857 tests, 66 fichiers
 npm run build   # vite + esbuild
 ```
 

@@ -65,8 +65,11 @@ export { expect } from "@playwright/test";
  * un puits de saisie caché dans son shadow DOM. Pendant ce court intervalle,
  * `document.activeElement` reste l'élément précédent — le bouton « Suivant » —
  * et toute frappe y est perdue. Un élève ne peut pas frapper en moins de dix
- * millisecondes après un clic ; un robot, si. On attend donc la condition
- * observable plutôt qu'une temporisation arbitraire.
+ * millisecondes après un clic ; un robot, si.
+ *
+ * La condition attendue est le puits lui-même, pas le `<math-field>` : sous
+ * Gecko et WebKit, l'élément hôte se déclare actif avant que le puits ne le
+ * soit, et les frappes émises dans cet intervalle n'arrivent nulle part.
  */
 export async function focaliserMath(page: Page): Promise<void> {
   const champ = page.locator("math-field");
@@ -74,10 +77,78 @@ export async function focaliserMath(page: Page): Promise<void> {
   await expect
     .poll(
       () =>
-        champ.evaluate(
-          (el) => el.contains(document.activeElement) || document.activeElement === el,
-        ),
-      { message: "le champ mathématique n'a jamais reçu le focus" },
+        champ.evaluate((el) => {
+          const puits = el.shadowRoot?.activeElement;
+          return puits instanceof Element
+            ? puits.classList.contains("ML__keyboard-sink")
+            : false;
+        }),
+      { message: "le puits de saisie de MathLive n'a jamais reçu le focus" },
     )
     .toBe(true);
+}
+
+/**
+ * Ce que le serveur détient réellement pour la session ouverte dans cet onglet.
+ *
+ * Sert aux messages d'échec : « la réponse est perdue » n'a pas le même sens
+ * selon qu'elle manque en base ou qu'elle n'est pas revenue à l'écran.
+ */
+export async function brouillonsDuServeur(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    const jeton = sessionStorage.getItem("session-eleve") ?? "";
+    if (!jeton) return "(pas de jeton de session)";
+    const r = await fetch("/api/trpc/answer.listDrafts", {
+      headers: { "x-student-session-token": jeton },
+    });
+    if (!r.ok) return `HTTP ${r.status}`;
+    const corps = (await r.json()) as {
+      result?: { data?: { json?: Array<{ questionId: number; answer: string }> } };
+    };
+    const brouillons = corps.result?.data?.json ?? [];
+    return brouillons.map((b) => `${b.questionId}:${b.answer}`).join(" , ") || "(aucun)";
+  });
+}
+
+/**
+ * Parcourt toutes les questions et relève les formules effectivement affichées.
+ *
+ * La navigation passe par les pastilles numérotées, et chaque étape attend que
+ * l'en-tête confirme le changement : enchaîner des « Suivant » à intervalle fixe
+ * faisait manquer des questions — le champ n'était pas encore rendu au moment
+ * où on le cherchait, et une réponse bien présente en base passait pour perdue.
+ *
+ * Chaque champ dispose ensuite d'un délai borné pour recevoir sa valeur : les
+ * brouillons arrivent du serveur après le rendu.
+ */
+export async function formulesAffichees(page: Page): Promise<string[]> {
+  const entete = await page.getByText(/Question \d+ \/ \d+/).first().innerText();
+  const total = Number(entete.match(/\/\s*(\d+)/)![1]);
+
+  const trouvees: string[] = [];
+  for (let i = 1; i <= total; i++) {
+    await page.getByRole("button", { name: new RegExp(`^${i}$`) }).first().click();
+    await expect(page.getByText(new RegExp(`Question ${i} / `))).toBeVisible();
+
+    // La question est-elle à réponse courte ? Cela se lit sur l'écran, pas sur
+    // la présence du champ : MathLive arrive dans un morceau chargé à la
+    // demande, et sur un rechargement le premier champ peut mettre un moment à
+    // exister. Chercher le champ d'abord faisait sauter la question — et une
+    // réponse bien présente en base passait pour perdue.
+    if (!(await page.getByText("Votre réponse :").isVisible().catch(() => false))) {
+      continue;
+    }
+    const champ = page.locator("math-field");
+    await expect(champ).toBeVisible();
+
+    const echeance = Date.now() + 3_000;
+    let valeur = "";
+    for (;;) {
+      valeur = await champ.evaluate((el: HTMLElement & { value: string }) => el.value);
+      if (valeur !== "" || Date.now() > echeance) break;
+      await page.waitForTimeout(100);
+    }
+    if (valeur) trouvees.push(valeur.replace(/\s/g, ""));
+  }
+  return trouvees;
 }

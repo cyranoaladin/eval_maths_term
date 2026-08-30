@@ -11,7 +11,12 @@
  * dont ils disposent.
  */
 import { test, expect, type Page } from "@playwright/test";
-import { collecterErreurs, focaliserMath } from "./fixtures";
+import {
+  brouillonsDuServeur,
+  collecterErreurs,
+  focaliserMath,
+  formulesAffichees,
+} from "./fixtures";
 
 const EVALUATION_ID = 1;
 
@@ -82,7 +87,14 @@ test.describe("parcours élève", () => {
     await allerAReponseCourte(page);
     await saisirMath(page, "1/2", /frac/);
 
-    // Le debounce d'auto-save est de 2 s ; on attend la confirmation visible.
+    /*
+      Quitter la question envoie sans attendre ce qui vient d'être répondu : la
+      temporisation de l'enregistrement automatique ne survit pas au changement
+      de question. Attendre « Sauvegardé » ne suffirait pas — cet indicateur ne
+      dit pas *quel* brouillon est parti, et il peut refléter la réponse au QCM
+      précédent.
+    */
+    await page.getByRole("button", { name: /Suivant/ }).click();
     await expect(page.getByText("Sauvegardé", { exact: true })).toBeVisible({ timeout: 20_000 });
 
     // Rechargement : c'est ici que la copie se perdait tant que le jeton ne
@@ -100,6 +112,88 @@ test.describe("parcours élève", () => {
     await expect.poll(() => lireMath(page)).toMatch(/frac/);
 
     expect(erreurs, `erreurs console : ${erreurs.join(" | ")}`).toEqual([]);
+  });
+
+  test("une frappe rapide n'est pas rognée par la synchronisation", async ({
+    page,
+  }) => {
+    /*
+      Le champ mathématique est contrôlé par React : sa valeur remonte à chaque
+      frappe et redescend au rendu suivant. Ce rendu arrive avec un temps de
+      retard, et la synchronisation constatait alors un écart avec ce que
+      l'élève avait déjà tapé entre-temps — puis réécrivait le champ, effaçant
+      les caractères frappés depuis. La réponse se rétractait sous ses doigts,
+      d'autant plus qu'il composait vite.
+
+      Ce test frappe sans temporisation, comme un élève pressé en fin d'épreuve,
+      et compare caractère par caractère.
+    */
+    const erreurs = collecterErreurs(page);
+    await demarrer(page, "E2E Frappe rapide");
+    await allerAReponseCourte(page);
+
+    const champ = page.locator("math-field");
+    for (const [frappes, attendu] of [
+      ["2x+3-5", "2x+3-5"],
+      ["3*x^2+1", "3\\cdot x^2+1"],
+    ] as const) {
+      await champ.evaluate((el: HTMLElement & { setValue?: (v: string) => void }) =>
+        el.setValue?.(""),
+      );
+      await focaliserMath(page);
+      await page.keyboard.type(frappes);
+      await expect
+        .poll(() => lireMath(page), { message: `frappe « ${frappes} » rognée` })
+        .toBe(attendu);
+    }
+
+    expect(erreurs, erreurs.join(" | ")).toEqual([]);
+  });
+
+  test("changer de question aussitôt après avoir répondu ne perd pas la réponse", async ({
+    page,
+  }) => {
+    /*
+      L'enregistrement automatique attend deux secondes de silence avant
+      d'envoyer. Cette temporisation était unique et partagée : programmer
+      l'envoi d'une question annulait celui de la précédente. Un élève qui
+      répondait puis passait à la suivante en moins de deux secondes — le rythme
+      normal d'un QCM — perdait sa réponse sans le savoir : ni envoyée, ni mise
+      en file locale, elle n'existait plus qu'à l'écran.
+
+      Ce test ne laisse aucun répit entre les deux réponses, puis recharge la
+      page : ce qui revient est ce que le serveur détient réellement.
+    */
+    const erreurs = collecterErreurs(page);
+    await demarrer(page, "E2E Enchainement");
+
+    await allerAReponseCourte(page);
+    await saisirMath(page, "x^2", /x\^2/);
+
+    // Aussitôt : pas d'attente, pas de « Sauvegardé » guetté.
+    await page.getByRole("button", { name: /Suivant/ }).click();
+    await allerAReponseCourte(page);
+    await saisirMath(page, "3x+1", /3x\+1/);
+
+    await expect(page.getByText("Sauvegardé", { exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+    // Les deux temporisations doivent avoir vécu leur vie.
+    await page.waitForTimeout(3_000);
+
+    await page.reload();
+    await expect(page.getByText(/Question 1 \/ /)).toBeVisible();
+
+    const trouves = await formulesAffichees(page);
+
+    const etat = `écran : ${trouves.join(" , ") || "(rien)"} — serveur : ${await brouillonsDuServeur(page)}`;
+    expect(
+      trouves.some((v) => v.includes("x^2")),
+      `la réponse quittée aussitôt est perdue — ${etat}`,
+    ).toBe(true);
+    expect(trouves.some((v) => v.includes("3x+1")), etat).toBe(true);
+
+    expect(erreurs, erreurs.join(" | ")).toEqual([]);
   });
 
   test("coupure réseau de 30 secondes sans perte de copie", async ({ page, context }) => {
@@ -139,26 +233,24 @@ test.describe("parcours élève", () => {
     await page.reload();
     await expect(page.getByText(/Question 1 \/ /)).toBeVisible();
 
-    const trouves: string[] = [];
-    for (let i = 0; i < 25; i++) {
-      const champ = page.locator("math-field");
-      if (await champ.isVisible().catch(() => false)) {
-        const v = await lireMath(page);
-        if (v) trouves.push(v.replace(/\s/g, ""));
-      }
-      const suivant = page.getByRole("button", { name: /Suivant/ });
-      if (!(await suivant.isVisible().catch(() => false))) break;
-      await suivant.click();
-      await page.waitForTimeout(120);
-    }
+    /*
+      Les brouillons arrivent du serveur après le rendu, et le champ n'existe
+      lui-même qu'une fois MathLive chargé. Lire immédiatement reviendrait à
+      constater un vide qui n'a pas encore eu le temps d'être rempli — et à
+      accuser le produit d'une perte qui n'en est pas une. On laisse donc à
+      chaque champ un délai borné pour recevoir sa valeur ; passé ce délai, il
+      est vraiment vide.
+    */
+    const trouves = await formulesAffichees(page);
 
+    const cote = `écran : ${trouves.join(" , ") || "(rien)"} — serveur : ${await brouillonsDuServeur(page)}`;
     expect(
       trouves.some((v) => v.includes("x^2")),
-      `réponses retrouvées : ${trouves.join(" , ")}`,
+      `la réponse écrite avant la coupure est perdue — ${cote}`,
     ).toBe(true);
     expect(
       trouves.some((v) => v.includes("3x+1")),
-      `la réponse écrite hors ligne est perdue — retrouvées : ${trouves.join(" , ")}`,
+      `la réponse écrite hors ligne est perdue — ${cote}`,
     ).toBe(true);
 
     // La copie est remise depuis l'état restauré : ce sont donc bien les

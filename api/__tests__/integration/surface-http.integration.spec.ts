@@ -237,6 +237,23 @@ describe("en-têtes de sécurité", () => {
     expect(r.headers.get("cache-control")).toBe("no-store");
   });
 
+  it("met en cache durable les fichiers dont le nom porte une empreinte", async () => {
+    /*
+      Le motif attendait un point avant l'empreinte là où Vite met un tiret :
+      rien n'était mis en cache, et chaque navigation retéléchargeait la
+      totalité du bundle — deux mégaoctets de polices mathématiques comprises.
+      Sur le réseau d'un établissement, au démarrage d'une épreuve, c'est
+      exactement le moment où il ne faut pas.
+    */
+    const r = await requete("/assets/Evaluation-dmi_50pi.js");
+    expect(r.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+  });
+
+  it("revalide les polices, qui n'ont pas d'empreinte", async () => {
+    const r = await requete("/mathlive/fonts/KaTeX_Main-Regular.woff2");
+    expect(r.headers.get("cache-control")).toBe("public, max-age=86400");
+  });
+
   it("ne remplace pas une consigne de cache déjà posée", async () => {
     // Les documents d'un tirage déclarent la leur : `private, max-age=300`.
     const r = await requete(`/api/paper/${paperExamId}/sujet.pdf`, {

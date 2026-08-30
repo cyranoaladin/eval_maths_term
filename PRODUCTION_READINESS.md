@@ -18,7 +18,7 @@ sur le chemin fonctionnel.
 |---|---|
 | Branche | `release/production-hardening` |
 | Base | `90fb380` (`main`, tag `v1.0.0-rc1`) |
-| Dernière mise à jour | 2026-08-30 — audit initial |
+| Dernière mise à jour | 2026-08-30 — 6 lots livrés |
 
 ---
 
@@ -123,39 +123,61 @@ Huit procédures ne sont appelées par aucun écran :
 
 | # | Exigence | État | Preuve |
 |---|---|---|---|
-| P1 | 0 suppression de type, 0 suppression de linter, 0 test ignoré | IN_PROGRESS | — |
-| P2 | 0 identifiant codé en dur, 0 secret de développement versionné | IN_PROGRESS | — |
-| P3 | Une seule source de configuration, parité prouvée | IN_PROGRESS | — |
-| P4 | Identité produit et version exposées, SHA injecté au build | IN_PROGRESS | — |
+| P1 | 0 suppression de type, 0 suppression de linter, 0 test ignoré | **PASS** | `api/__tests__/typage-strict.spec.ts` — balaie 200+ fichiers, interdit les six formes d'exception et les tests ignorés |
+| P2 | 0 identifiant codé en dur, 0 secret de développement versionné | **PASS** | `contrat-env.spec.ts` « ne versionne aucun identifiant en clair » ; `scripts/bootstrap-dev.sh` ; identifiants éphémères en CI |
+| P3 | Une seule source de configuration, parité prouvée | **PASS** | `api/__tests__/config/contrat-env.spec.ts` — 8 vérifications sur `env.ts`, `.env.example`, les deux composes et `DEPLOYMENT.md` |
+| P4 | Identité produit et version exposées, SHA injecté au build | **PASS** | `atelier-qcm@1.0.0-rc2` ; `/api/health` → `{"version":"1.0.0-rc2","gitSha":"…"}` sur le binaire construit |
 | P5 | 0 double source de vérité (`correctAnswer` / `gradingRubric`) | IN_PROGRESS | — |
-| P6 | 0 dette anti-triche (`sessions.cheatEvents`, `tabSwitchCount`, `cheat.report`) | IN_PROGRESS | — |
-| P7 | 0 route orpheline | IN_PROGRESS | — |
+| P6 | 0 dette anti-triche | **PASS** | migration 0007 + `migration-incidents.integration.spec.ts` ; une seule route d'ingestion |
+| P7 | 0 route orpheline | **PASS** | 52 → 45 procédures ; `public-surface.spec.ts` fige l'inventaire |
 | P8 | Invariants d'intégrité des 13 tables, contraintes en base | IN_PROGRESS | — |
-| P9 | Provisionnement enseignant explicite, aucun accès automatique | IN_PROGRESS | — |
-| P10 | OAuth durci — `PUBLIC_BASE_URL`, cookie `Secure`, validation du jeton | IN_PROGRESS | — |
-| P11 | En-têtes de sécurité HTTP, CSP sans `unsafe-eval` | IN_PROGRESS | — |
+| P9 | Provisionnement enseignant explicite, aucun accès automatique | **PASS** | migration 0006 + `acces-comptes.integration.spec.ts` (11 cas sur la vraie base) |
+| P10 | OAuth durci — `PUBLIC_BASE_URL`, cookie `Secure`, validation du jeton | **PASS** | `api/__tests__/security/oauth-durcissement.spec.ts` — 18 cas |
+| P11 | En-têtes de sécurité HTTP, CSP sans `unsafe-eval` | **PASS** | `surface-http.integration.spec.ts` sur du vrai HTTP + 39 parcours sur le build de production, trois moteurs |
 | P12 | Analyse de secrets dans notre CI | IN_PROGRESS | — |
-| P13 | Chaîne d'approvisionnement — 0 vulnérabilité HIGH/CRITICAL, SBOM | IN_PROGRESS | — |
+| P13 | Chaîne d'approvisionnement — 0 vulnérabilité HIGH/CRITICAL, SBOM | IN_PROGRESS | `npm audit` : 0 vulnérabilité, production et développement. SBOM et scan d'image restants |
 | P14 | Build reproductible, images épinglées par empreinte | IN_PROGRESS | — |
 | P15 | Une seule image canonique de production, avec impression | IN_PROGRESS | — |
-| P16 | Vivacité et disponibilité distinctes et réelles | IN_PROGRESS | — |
+| P16 | Vivacité et disponibilité distinctes et réelles | IN_PROGRESS | `/api/health` expose version et empreinte ; la distinction reste à faire |
 | P17 | Arrêt gracieux | IN_PROGRESS | — |
 | P18 | Contre-pression, remise idempotente | IN_PROGRESS | — |
-| P19 | Observabilité — 0 `console.*`, supervision d'erreurs | IN_PROGRESS | — |
-| P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | IN_PROGRESS | — |
-| P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | IN_PROGRESS | — |
-| P22 | Couverture : 100 % sur les domaines critiques, ≥ 95 % global serveur | IN_PROGRESS | — |
+| P19 | Observabilité — 0 `console.*`, supervision d'erreurs | IN_PROGRESS | `journalisation.spec.ts` : 0 appel direct. Supervision non branchée |
+| P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | IN_PROGRESS | identifiants éphémères faits ; matrice de jobs à faire |
+| P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | IN_PROGRESS | 857 tests, 39 parcours ; `fileParallelism: false` rétabli (l'option était ignorée depuis Vitest 4) |
+| P22 | Couverture : 100 % sur les domaines critiques, ≥ 95 % global serveur | IN_PROGRESS | seuils actuels : 100 % sur `api/grading`, 80 % global |
 | P23 | Accessibilité — 0 violation critique ou sérieuse | IN_PROGRESS | — |
 | P24 | Régression visuelle sur les écrans critiques | IN_PROGRESS | — |
-| P25 | Aucune erreur navigateur inattendue tolérée | IN_PROGRESS | — |
-| P26 | 0 code mort, 0 dépendance inutilisée, 0 duplication métier | IN_PROGRESS | — |
+| P25 | Aucune erreur navigateur inattendue tolérée | IN_PROGRESS | `collecterErreurs` en place ; à généraliser |
+| P26 | 0 code mort, 0 dépendance inutilisée, 0 duplication métier | **PASS** | `knip` ne signale plus rien ; `jscpd` 1,34 % — voir §4 |
 | P27 | `main` protégée, tags protégés | IN_PROGRESS | — |
 | P28 | Sauvegarde et restauration éprouvées | IN_PROGRESS | — |
-| P29 | Migration de production : sauvegarde → préflight → migration → postflight | IN_PROGRESS | — |
+| P29 | Migration de production : sauvegarde → préflight → migration → postflight | IN_PROGRESS | 0006 et 0007 ont chacune leur préflight ; procédure à écrire |
 | P30 | Retour arrière éprouvé | IN_PROGRESS | — |
-| P31 | Performance non régressée (p95 < 500 ms, 0 erreur) | IN_PROGRESS | — |
+| P31 | Performance non régressée (p95 < 500 ms, 0 erreur) | IN_PROGRESS | à rejouer après les changements de base |
 | P32 | Endurance sans fuite | IN_PROGRESS | — |
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 0 / 34. IN_PROGRESS : 32. BLOCKED_EXTERNAL : 2.**
+**PASS : 10 / 34. IN_PROGRESS : 22. BLOCKED_EXTERNAL : 2.**
+
+---
+
+## 4. Duplication : ce qui reste, et pourquoi
+
+`jscpd --min-lines 8` : 1,34 % de lignes dupliquées. Ce qui subsiste a été
+regardé une à une :
+
+- **Fixtures de tests** (une trentaine de blocs). Un test se lit de haut en bas ;
+  factoriser sa mise en place le rend plus court et moins clair.
+- **`GenerationPanel` ≡ `PrintPanel`** (10 lignes) : un bouton de fermeture dans
+  un en-tête de carte. **`Evaluation` ≡ `Preview`** (11 lignes) : une barre
+  « Précédent / Suivant ». Du balisage voisin dans des écrans qui divergent
+  ensuite ; en extraire un composant coûterait plus qu'il ne rapporte.
+- **Trois requêtes de 9 à 11 lignes** — « lire un tirage », « lire une session » —
+  identiques parce que la table l'est. Les enrober masquerait ce qu'elles lisent.
+
+Ce qui a été supprimé relevait d'une autre nature : deux calculs d'une même
+note, deux calculs d'un même score de suspicion, deux réponses à « cette copie
+est-elle inscriptible ? », deux chemins d'écriture vers la table corrigée. Ces
+duplications-là ne se contentent pas de répéter : elles divergent.
+

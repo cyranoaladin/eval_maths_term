@@ -73,8 +73,18 @@ const PERMISSIONS = [
   "interest-cohort=()",
 ].join(", ");
 
-/** Les fichiers produits par le build portent une empreinte dans leur nom. */
-const ACTIF_VERSIONNE = /^\/assets\/[^/]+\.[0-9a-zA-Z_-]{8,}\.[a-z0-9]+$/;
+/**
+ * Les fichiers produits par le build portent une empreinte dans leur nom, sous
+ * la forme `nom-EMPREINTE.ext`. Le motif attendait un point avant l'empreinte
+ * là où Vite met un tiret : plus rien n'était mis en cache, et chaque
+ * navigation retéléchargeait la totalité du bundle — police mathématique
+ * comprise. Sur le réseau d'un établissement, au démarrage d'une épreuve,
+ * c'est exactement le moment où il ne faut pas.
+ */
+const ACTIF_VERSIONNE = /^\/assets\/[^/]+-[0-9a-zA-Z_-]{8,}\.[a-z0-9]+$/;
+
+/** Les polices de MathLive sont servies telles quelles, sans empreinte. */
+const POLICE_MATHLIVE = /^\/mathlive\/fonts\/[^/]+\.(woff2?|ttf|otf)$/;
 
 function politiqueApplicable(): string {
   if (!env.isProduction) return POLITIQUE_DEVELOPPEMENT;
@@ -113,6 +123,10 @@ export function enTetesDeSecurite(): MiddlewareHandler {
     const chemin = new URL(c.req.url).pathname;
     if (ACTIF_VERSIONNE.test(chemin)) {
       c.header("Cache-Control", "public, max-age=31536000, immutable");
+    } else if (POLICE_MATHLIVE.test(chemin)) {
+      // Sans empreinte dans le nom : on revalide, mais on ne retélécharge pas
+      // deux mégaoctets de polices à chaque page.
+      c.header("Cache-Control", "public, max-age=86400");
     } else if (!c.res.headers.has("Cache-Control")) {
       c.header("Cache-Control", "no-store");
     }
