@@ -14,6 +14,9 @@ concurrency:
 permissions:
   contents: read
 
+# Les actions sont épinglées par version majeure, et remontées volontairement :
+# celles d'origine tournaient encore sur Node 20, que GitHub a déprécié.
+
 # Aucun job ne tolère l'échec, et aucune étape ne porte `continue-on-error` :
 # un contrôle qu'on peut ignorer n'est pas un contrôle.
 
@@ -25,8 +28,8 @@ jobs:
     timeout-minutes: 25
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -67,8 +70,8 @@ jobs:
     timeout-minutes: 40
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -137,7 +140,7 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:3200
         run: npx playwright test --project=webkit --retries=0
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
@@ -153,8 +156,8 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -191,8 +194,8 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -201,14 +204,14 @@ jobs:
       # du client tRPC du dépôt, pas seulement de l'image.
       - run: npm ci --no-audit --no-fund
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       # L'image de production embarque `auto-multiple-choice` : c'est le même
       # artefact qui est construit ici, éprouvé par la recette et démarré par le
       # compose. Il y en avait deux, et ce qui était vérifié n'était pas ce qui
       # était déployé.
       - name: Construire l'image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: false
@@ -233,12 +236,12 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # L'analyse de secrets lit l'historique, pas seulement la pointe.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -259,15 +262,15 @@ jobs:
       - name: Nomenclature logicielle
         run: npm run sbom
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: sbom.json
           retention-days: 90
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Construire l'image à analyser
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: false
