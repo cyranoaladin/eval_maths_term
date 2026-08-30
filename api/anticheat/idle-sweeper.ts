@@ -10,7 +10,7 @@
  * Le sweeper est simple et synchrone ; il ne tourne PAS en boucle par lui-même
  * pour rester testable et éviter les faux-positifs en dev.
  */
-import { lt, eq, and, isNotNull, inArray } from "drizzle-orm";
+import { lt, eq, and, isNotNull } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { sessions } from "@db/schema";
 import { autoSubmitSession } from "./auto-submit";
@@ -32,7 +32,6 @@ export async function runIdleSweep(): Promise<SweepResult> {
   const db = getDb();
   const now = Date.now();
   const warnSince = new Date(now - IDLE_THRESHOLD_MS);
-  const autoSince = new Date(now - AUTO_SUBMIT_THRESHOLD_MS);
 
   // Sélectionner les sessions candidates (lastHeartbeatAt non null + in_progress)
   const candidates = await db

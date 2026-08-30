@@ -1,0 +1,63 @@
+# Pile de production : application + MySQL.
+#
+#   cp .env.example .env   puis renseigner les secrets
+#   docker compose up -d --build
+#   docker compose exec app node dist/migrate.js
+#
+# Le développement utilise `docker-compose.dev.yml`, qui ne fournit que MySQL.
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?renseignez MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-eval_maths}
+      MYSQL_USER: ${MYSQL_USER:-eval}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?renseignez MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    # Non publié sur l'hôte : seule l'application y accède, par le réseau interne.
+    expose:
+      - "3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: mysql://${MYSQL_USER:-eval}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-eval_maths}
+      APP_ID: ${APP_ID:?}
+      APP_SECRET: ${APP_SECRET:?}
+      TEACHER_SESSION_SECRET: ${TEACHER_SESSION_SECRET:?}
+      STUDENT_SESSION_SECRET: ${STUDENT_SESSION_SECRET:?}
+      KIMI_AUTH_URL: ${KIMI_AUTH_URL:?}
+      KIMI_OPEN_URL: ${KIMI_OPEN_URL:?}
+      OWNER_UNION_ID: ${OWNER_UNION_ID:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openrouter}
+      LLM_API_URL: ${LLM_API_URL:-https://openrouter.ai/api/v1}
+      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-5}
+      RAG_URL: ${RAG_URL:-}
+      RAG_API_KEY: ${RAG_API_KEY:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Soixante connexions : optimum mesuré à deux cents remises simultanées.
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-60}
+      PAPER_OUTPUT_DIR: /data/paper-exams
+    volumes:
+      - paper_exams:/data/paper-exams
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  mysql_data:
+  paper_exams:

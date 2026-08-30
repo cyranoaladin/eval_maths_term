@@ -21,13 +21,17 @@ export interface DevToolsDetectorProps {
 export function DevToolsDetector({ enabled, onDetected }: DevToolsDetectorProps) {
   const detectedRef = useRef(false);
   const onDetectedRef = useRef(onDetected);
-  onDetectedRef.current = onDetected;
+
+  // Le callback est rafraîchi hors rendu : lire ou écrire une ref pendant le
+  // rendu casse les garanties du compilateur React.
+  useEffect(() => {
+    onDetectedRef.current = onDetected;
+  }, [onDetected]);
 
   useEffect(() => {
     if (!enabled) return;
 
-    let rafId: number;
-    let checkInterval: ReturnType<typeof setInterval>;
+    let rafId = 0;
 
     // Méthode 1 : taille de fenêtre
     const checkWindowSize = () => {
@@ -53,7 +57,7 @@ export function DevToolsDetector({ enabled, onDetected }: DevToolsDetectorProps)
       }
     };
 
-    checkInterval = setInterval(() => {
+    const checkInterval = setInterval(() => {
       checkWindowSize();
       // checkPerf via rAF pour ne pas bloquer le thread principal
       rafId = requestAnimationFrame(checkPerf);

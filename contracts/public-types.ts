@@ -13,6 +13,11 @@ export interface PublicQuestion {
   points: number;
   order: number;
   imageUrl: string | null;
+  /**
+   * Réponses courtes : nature du champ à afficher. Dérivée du mode de
+   * correction, elle n'en expose rien d'autre. Voir `api/questions/input-mode.ts`.
+   */
+  inputMode?: "math" | "text";
 }
 
 /**

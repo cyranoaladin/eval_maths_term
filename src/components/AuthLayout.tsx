@@ -21,14 +21,15 @@ import {
 } from "@/components/ui/sidebar";
 import { LOGIN_PATH } from "@/const";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { LayoutDashboard, LogOut, PanelLeft, BookOpen, Home } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, BookOpen, Home, FilePenLine } from "lucide-react";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { AuthLayoutSkeleton } from "./AuthLayoutSkeleton";
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
+  { icon: FilePenLine, label: "Mes évaluations", path: "/teacher/evaluations" },
+  { icon: LayoutDashboard, label: "Tableau de bord", path: "/dashboard" },
   { icon: BookOpen, label: "Aperçu", path: "/preview" },
   { icon: Home, label: "Accueil", path: "/" },
 ];
@@ -63,11 +64,11 @@ export default function AuthLayout({
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
           <div className="flex flex-col items-center gap-6">
             <h1 className="text-2xl font-semibold tracking-tight text-center">
-              Sign in to continue
+              Connexion requise
             </h1>
             <p className="text-sm text-muted-foreground text-center max-w-sm">
-              Access to this dashboard requires authentication. Continue to
-              launch the login flow.
+              L'accès à l'espace enseignant demande une authentification.
+              Continuez pour lancer la connexion.
             </p>
           </div>
           <Button
@@ -77,7 +78,7 @@ export default function AuthLayout({
             size="lg"
             className="w-full shadow-lg hover:shadow-xl transition-all"
           >
-            Sign in
+            Se connecter
           </Button>
         </div>
       </div>
@@ -115,7 +116,9 @@ function AuthLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.path === location.pathname);
+  const activeMenuItem = menuItems.find(
+    item => item.path === location.pathname || (item.path !== "/" && location.pathname.startsWith(item.path)),
+  );
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -161,7 +164,7 @@ function AuthLayoutContent({
               <button
                 onClick={toggleSidebar}
                 className="h-8 w-8 flex items-center justify-center hover:bg-accent rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
-                aria-label="Toggle navigation"
+                aria-label="Afficher ou masquer la navigation"
               >
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
               </button>
@@ -178,7 +181,9 @@ function AuthLayoutContent({
           <SidebarContent className="gap-0">
             <SidebarMenu className="px-2 py-1">
               {menuItems.map(item => {
-                const isActive = location.pathname === item.path;
+                const isActive =
+                  location.pathname === item.path ||
+                  (item.path !== "/" && location.pathname.startsWith(item.path));
                 return (
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
@@ -223,7 +228,7 @@ function AuthLayoutContent({
                   className="cursor-pointer text-destructive focus:text-destructive"
                 >
                   <LogOut className="mr-2 h-4 w-4" />
-                  <span>Sign out</span>
+                  <span>Se déconnecter</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -239,7 +244,15 @@ function AuthLayoutContent({
         />
       </div>
 
-      <SidebarInset>
+      {/*
+        `min-w-0` : sans lui, la zone de contenu est un élément flex dont la
+        largeur minimale vaut celle de son contenu. Sur une tablette de 820
+        pixels, elle réclamait 575 pixels là où 540 restaient disponibles, et la
+        page débordait de trente-cinq pixels vers la droite — les commandes de
+        fin de ligne sortaient de l'écran. Le défaut n'apparaissait que sur le
+        bundle de production.
+      */}
+      <SidebarInset className="min-w-0">
         {isMobile && (
           <div className="flex border-b h-14 items-center justify-between bg-background/95 px-2 backdrop-blur supports-backdrop-filter:backdrop-blur sticky top-0 z-40">
             <div className="flex items-center gap-2">

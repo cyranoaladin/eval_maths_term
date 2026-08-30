@@ -35,6 +35,18 @@ export function normalizeExpression(s: string): string {
     .replace(/⁷/g, "^7")
     .replace(/⁸/g, "^8")
     .replace(/⁹/g, "^9")
+    // 6b. Opérateurs et délimiteurs produits par MathLive.
+    // Un élève qui compose dans le champ mathématique produit `\cdot`,
+    // `\times` et `\left(...\right)` : sans traduction, `2\cdot x` devenait
+    // `2\cdotx`, que mathjs ne sait pas lire — la réponse était comptée fausse
+    // alors qu'elle était juste.
+    .replace(/\\left\s*/g, "")
+    .replace(/\\right\s*/g, "")
+    .replace(/\\cdot\s*/g, "*")
+    .replace(/\\times\s*/g, "*")
+    .replace(/\\div\s*/g, "/")
+    .replace(/\\pm\s*/g, "+")           // approximation : on retient la branche positive
+    .replace(/\\!|\\,|\\;|\\:/g, "") // espacements fins LaTeX
     // 7. Racine carrée
     .replace(/√\(/g, "sqrt(")
     .replace(/√([a-zA-Z0-9])/g, "sqrt($1)")
@@ -58,6 +70,18 @@ export function normalizeExpression(s: string): string {
     // \bln\b ne matche pas 'ln2' car '2' est \w — on utilise un lookahead plus large
     .replace(/\bln\(/g, "log(")
     .replace(/\bln(?=[^a-zA-Z]|$)/g, "log")  // ln sans parenthèse (ex: ln2, ln x, ln)
+    // 8c. Arguments LaTeX d'un seul caractère : LaTeX autorise `\frac12` et
+    // `\sqrt2`, et c'est exactement ce que MathLive écrit quand l'élève tape
+    // « 1/2 » — la fraction la plus courante de toutes. La règle suivante ne
+    // reconnaissait que la forme accoladée : `\frac12` traversait la
+    // normalisation intact et mathjs le refusait, comptant la réponse fausse.
+    // On rétablit les accolades sans rien changer au sens.
+    .replace(
+      /\\([dt]?frac)(?:\{([^{}]*)\}|([^{}\\]))(?:\{([^{}]*)\}|([^{}\\]))/g,
+      (_m, nom, numAcc, numSeul, denAcc, denSeul) =>
+        `\\${nom}{${numAcc ?? numSeul}}{${denAcc ?? denSeul}}`,
+    )
+    .replace(/\\sqrt(?!\{)([0-9a-zA-Z])/g, "sqrt($1)")
     // 9. Fractions LaTeX \frac{num}{den} et \dfrac{num}{den}
     // Gestion imbriquée à 1 niveau — pour les fractions imbriquées, le LLM prend le relais
     .replace(/\\d?frac\{([^{}]+)\}\{([^{}]+)\}/g, "(($1)/($2))")
@@ -70,20 +94,33 @@ export function normalizeExpression(s: string): string {
     // 12. Multiplication implicite : chiffre suivi de lettre ou parenthèse ouvrante
     // ex: 2x → 2*x, 3(x+1) → 3*(x+1)
     // ATTENTION : ne PAS faire lettre×lettre pour préserver sin, exp, log, etc.
-    .replace(/(\d)([a-zA-Z(])/g, "$1*$2")
+    // Le nombre ne doit pas faire partie d'un nom de fonction : sans cette
+    // garde, `log10(10)` devenait `log10*(10)`.
+    .replace(/(?<![a-zA-Z_0-9])(\d+)([a-zA-Z(])/g, "$1*$2")
     // 13. Signe + explicite en tête (ex: +2 → 2)
     .replace(/^\+/, "")
     // 13b. Supprimer éventuels * parasites créés avant des exposants
     // ex: "*^" ne peut pas exister en mathjs
     .replace(/\*\^/g, "^")
-    // 13c. log ou log10 suivi directement d'un chiffre → ajouter parenthèses
-    // ex: log2 → log(2), log10 → log(10)
-    // Important : log10(2) ne doit pas devenir log10((2)) — guard par \b
-    .replace(/\blog10(\d)/g, "log10($1)")
-    .replace(/\blog(\d)/g, "log($1)")
+    // 13c. Un logarithme écrit sans parenthèses — « log 2 » — reçoit les
+    // siennes. Le nom de fonction `log10`, lui, ne doit pas être disloqué :
+    // la règle précédente coupait `log10(10)` en `log(1)0*(10)`, une chaîne
+    // que mathjs refuse. Toute réponse écrite en logarithme décimal était donc
+    // comptée fausse.
+    .replace(/\blog10(\d+)/g, "log10($1)")
+    .replace(/\blog(?!10)(\d+)/g, "log($1)")
     // 14. Lowercase final — mathjs est case-sensitive pour les constantes (pi, e)
     // mais on lowercase tout sauf les noms de fonctions déjà en minuscule
-    .toLowerCase();
+    .toLowerCase()
+    // 14b. Les fonctions écrites en majuscules — « LN(2) » — n'étaient
+    // traduites nulle part : les règles ci-dessus s'appliquent avant le passage
+    // en minuscules, et mathjs ne connaît pas `ln`. On rattrape après.
+    .replace(/\bln\(/g, "log(")
+    .replace(/\bln(?=[^a-z]|$)/g, "log")
+    // 15. `Infinity` est la seule constante mathjs qui porte une majuscule :
+    // le passage en minuscules ci-dessus la rendait illisible, et toute réponse
+    // comportant une limite infinie était comptée fausse.
+    .replace(/\binfinity\b/g, "Infinity");
 }
 
 /**

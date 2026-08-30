@@ -1,106 +1,87 @@
 /**
  * src/providers/StudentSessionContext.tsx
  *
- * Contexte React qui stocke le sessionToken élève en mémoire (pas de localStorage)
- * et expose un client tRPC spécialisé qui injecte automatiquement le header
- * `x-student-session-token` requis par `studentQuery` middleware.
+ * Fournit la session élève : le jeton vit en mémoire et dans le `sessionStorage`
+ * de l'onglet — jamais `localStorage`, il ne doit pas survivre à la fermeture de
+ * l'onglet — et le client tRPC élève l'injecte automatiquement dans le header
+ * `x-student-session-token`.
  *
- * Usage :
- *   const { sessionToken, setSessionToken, studentTrpc } = useStudentSession();
+ * Ce fichier n'exporte qu'un composant — le contexte et le hook vivent dans
+ * `student-session.ts`, le client dans `student-trpc.ts`.
  */
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import { createTRPCReact, httpBatchLink } from "@trpc/react-query";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { httpBatchLink } from "@trpc/react-query";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import superjson from "superjson";
-import type { AppRouter } from "../../api/router";
+import {
+  StudentSessionContext,
+  type StudentSessionContextValue,
+} from "./student-session";
+import { getStudentToken, restaurerSession, setStudentToken, studentTrpc } from "./student-trpc";
 
-const studentTrpcClient = createTRPCReact<AppRouter>();
-
-interface StudentSessionContextValue {
-  sessionToken: string;
-  sessionId: number | null;
-  setSession: (token: string, id: number) => void;
-  clearSession: () => void;
-  studentTrpc: typeof studentTrpcClient;
-}
-
-const StudentSessionContext = createContext<StudentSessionContextValue | null>(null);
+/**
+ * Client créé une seule fois au chargement du module : le lien lit le jeton
+ * via `getStudentToken()` à chaque requête, donc il n'a jamais besoin d'être
+ * recréé quand le jeton change.
+ */
+const queryClient = new QueryClient();
+const trpcClient = studentTrpc.createClient({
+  links: [
+    httpBatchLink({
+      url: "/api/trpc",
+      transformer: superjson,
+      headers() {
+        const token = getStudentToken();
+        return token ? { "x-student-session-token": token } : {};
+      },
+      fetch(input, init) {
+        return globalThis.fetch(input, {
+          ...(init ?? {}),
+          credentials: "include",
+        });
+      },
+    }),
+  ],
+});
 
 export function StudentSessionProvider({ children }: { children: ReactNode }) {
-  const [sessionToken, setSessionToken] = useState("");
-  const [sessionId, setSessionId] = useState<number | null>(null);
-  const tokenRef = useRef(sessionToken);
-  tokenRef.current = sessionToken;
+  // Reprise après rechargement : l'état initial vient du stockage de l'onglet,
+  // sans effet ni rendu supplémentaire.
+  const reprise = restaurerSession();
+  const [sessionToken, setSessionToken] = useState(reprise?.token ?? "");
+  const [sessionId, setSessionId] = useState<number | null>(reprise?.sessionId ?? null);
 
+  /**
+   * Le cache est vidé à chaque changement de session : les requêtes élève
+   * (`question.getForActiveSession`, `answer.listDrafts`) n'ont pas d'entrée,
+   * donc leur clé de cache est identique d'une session à l'autre. Sans ce
+   * vidage, une seconde évaluation ouverte dans le même onglet réafficherait
+   * les questions — et l'ordre de mélange — de la première.
+   */
   const setSession = useCallback((token: string, id: number) => {
+    queryClient.clear();
+    setStudentToken(token, id);
     setSessionToken(token);
     setSessionId(id);
-    tokenRef.current = token;
   }, []);
 
   const clearSession = useCallback(() => {
+    queryClient.clear();
+    setStudentToken("");
     setSessionToken("");
     setSessionId(null);
-    tokenRef.current = "";
   }, []);
 
-  // Créer un client tRPC séparé qui injecte le header à chaque requête
-  const trpcInstance = useMemo(() => {
-    const qc = new QueryClient();
-    const client = studentTrpcClient.createClient({
-      links: [
-        httpBatchLink({
-          url: "/api/trpc",
-          transformer: superjson,
-          headers() {
-            const tok = tokenRef.current;
-            return tok
-              ? { "x-student-session-token": tok }
-              : {};
-          },
-          fetch(input, init) {
-            return globalThis.fetch(input, {
-              ...(init ?? {}),
-              credentials: "include",
-            });
-          },
-        }),
-      ],
-    });
-    return { client, qc };
-  }, []); // stable: tokenRef is a ref, always up-to-date without recreating client
-
   const value: StudentSessionContextValue = useMemo(
-    () => ({ sessionToken, sessionId, setSession, clearSession, studentTrpc: studentTrpcClient }),
+    () => ({ sessionToken, sessionId, setSession, clearSession }),
     [sessionToken, sessionId, setSession, clearSession],
   );
 
   return (
     <StudentSessionContext.Provider value={value}>
-      <studentTrpcClient.Provider client={trpcInstance.client} queryClient={trpcInstance.qc}>
-        <QueryClientProvider client={trpcInstance.qc}>
-          {children}
-        </QueryClientProvider>
-      </studentTrpcClient.Provider>
+      <studentTrpc.Provider client={trpcClient} queryClient={queryClient}>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </studentTrpc.Provider>
     </StudentSessionContext.Provider>
   );
 }
-
-export function useStudentSession(): StudentSessionContextValue {
-  const ctx = useContext(StudentSessionContext);
-  if (!ctx) {
-    throw new Error("useStudentSession must be used inside <StudentSessionProvider>");
-  }
-  return ctx;
-}
-
-/** Alias du client tRPC student pour les imports dans Evaluation.tsx */
-export { studentTrpcClient as strpc };

@@ -4,6 +4,34 @@
  * Comparaison de fractions avec vérification d'irréductibilité.
  * Pénalité 25 % si fraction équivalente mais non réduite, ou valeur décimale exacte.
  */
+import { normalizeExpression } from "./normalize";
+
+/**
+ * Retire les parenthèses qui enveloppent l'expression entière.
+ *
+ * La normalisation rend `\frac12` sous la forme `((1)/(2))` : les motifs de
+ * fraction ci-dessous attendent `(1)/(2)`, sans la paire extérieure.
+ */
+function retirerParenthesesGlobales(s: string): string {
+  let courant = s;
+  while (courant.startsWith("(") && courant.endsWith(")")) {
+    let profondeur = 0;
+    let englobante = true;
+    for (let i = 0; i < courant.length; i++) {
+      if (courant[i] === "(") profondeur++;
+      else if (courant[i] === ")") {
+        profondeur--;
+        if (profondeur === 0 && i < courant.length - 1) {
+          englobante = false;
+          break;
+        }
+      }
+    }
+    if (!englobante) break;
+    courant = courant.slice(1, -1);
+  }
+  return courant;
+}
 
 function gcd(a: number, b: number): number {
   a = Math.abs(a);
@@ -20,7 +48,11 @@ interface FractionParsed {
 }
 
 function parseFraction(s: string): FractionParsed | null {
-  const cleaned = s.replace(/\s+/g, "");
+  // Le comparateur ré-analysait le texte brut avec ses propres motifs : tout ce
+  // que le champ mathématique produit — `\frac12` sans accolades, `\div`,
+  // délimiteurs extensibles — lui échappait. On passe d'abord par la
+  // normalisation commune, seule référence du moteur.
+  const cleaned = retirerParenthesesGlobales(normalizeExpression(s));
   // Formats : 17/32, -17/32, (17)/(32), \frac{17}{32}
   const patterns = [
     /^(-?\d+)\/(\d+)$/,
@@ -40,10 +72,11 @@ function parseFraction(s: string): FractionParsed | null {
 }
 
 function parseDecimalFR(s: string): number | null {
-  const cleaned = s.replace(/\s+/g, "").replace(",", ".");
+  const cleaned = normalizeExpression(s);
+  // Le motif n'accepte que des chiffres et un point : `parseFloat` ne peut
+  // en tirer ni infini ni NaN.
   if (!/^-?\d*\.?\d+$/.test(cleaned)) return null;
-  const n = parseFloat(cleaned);
-  return isFinite(n) ? n : null;
+  return parseFloat(cleaned);
 }
 
 export interface FractionResult {
@@ -59,11 +92,10 @@ export function compareFraction(
   const expVal = expected.numerator / expected.denominator;
 
   // 1. Forme fraction
+  // `parseFraction` refuse déjà un dénominateur nul : une seconde garde ici
+  // serait du code que rien ne peut atteindre.
   const frac = parseFraction(given);
   if (frac) {
-    if (frac.den === 0) {
-      return { equal: false, reason: "Division par zéro", penalty: 0 };
-    }
     const givenVal = frac.num / frac.den;
     if (Math.abs(givenVal - expVal) > 1e-12) {
       return { equal: false, reason: `Valeur incorrecte : ${frac.num}/${frac.den} ≠ ${expected.numerator}/${expected.denominator}`, penalty: 0 };

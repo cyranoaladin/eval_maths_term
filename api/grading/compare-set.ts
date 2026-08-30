@@ -6,6 +6,36 @@
  */
 import { normalizeExpression } from "./normalize";
 import { compareExact } from "./compare-exact";
+import { evaluate } from "mathjs";
+
+/**
+ * Valeur numérique d'un élément d'ensemble, ou `null` s'il n'en a pas.
+ *
+ * `1/2` et `((1)/(2))` désignent le même nombre mais ne sont pas la même
+ * chaîne : un élève écrivant sa solution en fraction dans le champ
+ * mathématique serait compté faux face à un barème écrit « 1/2 ». La
+ * comparaison de chaînes reste la règle — c'est elle qui décide pour tout ce
+ * qui n'est pas un nombre — et on ne lui ajoute qu'un secours : deux constantes
+ * qui valent le même nombre sont le même élément.
+ */
+function valeurNumerique(element: string): number | null {
+  try {
+    const v = evaluate(element);
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Deux éléments désignent-ils la même valeur ? */
+function memeElement(attendu: string, donne: string): boolean {
+  if (compareExact(attendu, donne).equal) return true;
+  const a = valeurNumerique(attendu);
+  const b = valeurNumerique(donne);
+  // Tolérance relative : les fractions décimales ne tombent pas juste en
+  // binaire (0,1 + 0,2 n'est pas 0,3).
+  return a !== null && b !== null && Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a));
+}
 
 export interface SetResult {
   equal: boolean;
@@ -18,16 +48,26 @@ export interface SetResult {
  * Parse une réponse sous forme d'ensemble :
  * "{1, 2, 3}", "[1; 2; 3]", "1, 2, 3", "∅", "{}", "empty"
  */
-function parseSet(s: string): string[] | null {
-  const trimmed = s.trim();
+function parseSet(s: string): string[] {
+  // MathLive écrit les accolades d'un ensemble en délimiteurs extensibles
+  // échappés : `\left\{1,2\right\}`. Sans cette remise à plat, le découpage
+  // rendait « \left\{1 » et « 2\right\} », deux éléments qui ne
+  // correspondaient à rien : un élève ayant donné le bon ensemble était compté
+  // faux. On retire les habillages LaTeX sans toucher au contenu.
+  const trimmed = s
+    .replace(/\\left\s*/g, "")
+    .replace(/\\right\s*/g, "")
+    .replace(/\\([{}])/g, "$1")
+    .trim();
 
   // Ensemble vide
   if (
     trimmed === "∅" ||
     trimmed === "{}" ||
+    trimmed === "\\emptyset" ||
+    trimmed === "\\varnothing" ||
     trimmed.toLowerCase() === "empty" ||
-    trimmed.toLowerCase() === "vide" ||
-    trimmed === "∅"
+    trimmed.toLowerCase() === "vide"
   ) {
     return [];
   }
@@ -45,11 +85,9 @@ export function compareSet(
   expected: { values: string[]; ordered: boolean },
   given: string,
 ): SetResult {
+  // `parseSet` rend toujours une liste — vide au pire. Le test d'échec qui
+  // figurait ici ne pouvait pas se déclencher.
   const givenValues = parseSet(given);
-
-  if (givenValues === null) {
-    return { equal: false, reason: `Format non reconnu pour l'ensemble : "${given}"` };
-  }
 
   // Normaliser toutes les valeurs
   const normExpected = expected.values.map(normalizeExpression);
@@ -64,8 +102,7 @@ export function compareSet(
       };
     }
     for (let i = 0; i < normExpected.length; i++) {
-      const res = compareExact(normExpected[i], normGiven[i]);
-      if (!res.equal) {
+      if (!memeElement(normExpected[i], normGiven[i])) {
         return {
           equal: false,
           reason: `Élément ${i + 1} incorrect : attendu "${normExpected[i]}", obtenu "${normGiven[i]}"`,
@@ -81,7 +118,7 @@ export function compareSet(
   const remaining = [...normGiven];
 
   for (const exp of normExpected) {
-    const idx = remaining.findIndex((g) => compareExact(exp, g).equal);
+    const idx = remaining.findIndex((g) => memeElement(exp, g));
     if (idx === -1) {
       missing.push(exp);
     } else {

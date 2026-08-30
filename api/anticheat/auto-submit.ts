@@ -20,9 +20,11 @@ import {
   questions,
 } from "@db/schema";
 import { gradeResponse } from "../grading/grade-response";
+import { resolveSubmittedQcmIndex } from "../grading/grade-session";
 import { computeSuspicionScore } from "./score-suspicion";
 import { GradingRubricSchema } from "../../contracts/grading-rubric";
 import { logger } from "../lib/logger";
+import { toDecimal } from "../lib/decimal";
 import type { CheatEventType } from "@db/schema";
 
 export type AutoSubmitReason =
@@ -111,6 +113,19 @@ export async function autoSubmitSession(
             needsLLM: false,
           };
         } else {
+          // Sans reconversion, l'index soumis est lu dans l'ordre mélangé vu
+          // par l'élève et tous les QCM seraient comptés faux.
+          const resolvedQcmIndex =
+            q.type === "qcm"
+              ? resolveSubmittedQcmIndex({
+                  rawOptions: q.options,
+                  shuffleSeed: session.shuffleSeed,
+                  questionId: q.id,
+                  submittedAnswer: draft.answer ?? "",
+                  mode: session.mode,
+                })
+              : undefined;
+
           result = await gradeResponse({
             questionType: q.type,
             studentAnswer: draft.answer ?? "",
@@ -118,6 +133,7 @@ export async function autoSubmitSession(
             rubric: rubricParsed.data,
             questionText: q.question,
             maxPoints: q.points,
+            resolvedQcmIndex,
             skipLLM: true,
           });
         }
@@ -130,7 +146,7 @@ export async function autoSubmitSession(
         answer: draft.answer ?? "",
         justification: draft.justification,
         isCorrect: result.isCorrect,
-        score: result.score,
+        score: toDecimal(result.score),
         maxScore: q.points,
         llmFeedback: result.needsLLM
           ? "À corriger manuellement par l'enseignant."
@@ -154,7 +170,21 @@ export async function autoSubmitSession(
       totalScore += result.score;
     }
 
-    // 5. Calculer le score de suspicion final
+    // 5. Enregistrer la déconnexion AVANT de calculer le score.
+    // L'ordre inverse rendait l'incident invisible au calcul : une copie
+    // abandonnée en pleine épreuve ressortait avec un score de suspicion nul
+    // et le verdict « Propre », alors que l'abandon est précisément ce que
+    // l'enseignant doit voir.
+    if (opts.reason === "idle_disconnect") {
+      await tx.insert(cheatEvents).values({
+        sessionId,
+        type: "idle_disconnect",
+        timestamp: new Date(),
+        metadata: { count: 1 },
+      });
+    }
+
+    // 6. Calculer le score de suspicion final, incidents compris
     const events = await tx
       .select()
       .from(cheatEvents)
@@ -166,16 +196,6 @@ export async function autoSubmitSession(
         count: (e.metadata as { count?: number })?.count ?? 1,
       })),
     );
-
-    // 6. Enregistrer idle_disconnect si applicable
-    if (opts.reason === "idle_disconnect") {
-      await tx.insert(cheatEvents).values({
-        sessionId,
-        type: "idle_disconnect",
-        timestamp: new Date(),
-        metadata: { count: 1 },
-      });
-    }
 
     // 7. Calcul du score normalisé /20 (arrondi au quart de point)
     const normalizedScore =
@@ -189,9 +209,9 @@ export async function autoSubmitSession(
       .set({
         status: "auto_submitted_idle",
         endedAt: new Date(),
-        totalScore,
+        totalScore: toDecimal(totalScore),
         maxScore: realMaxScore,
-        normalizedScore: normalizedScore.toFixed(2),
+        normalizedScore: toDecimal(normalizedScore),
         suspicionScore: suspicion.score,
         suspicionVerdict: suspicion.verdict,
         timeSpent: session.startedAt

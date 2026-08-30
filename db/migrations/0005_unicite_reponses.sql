@@ -1,0 +1,12 @@
+-- Une copie ne peut pas porter deux réponses à la même question.
+--
+-- Cette migration ne supprime rien. Si la base contient des doublons, MySQL
+-- refuse l'ordre avec l'erreur 1062 et la migration s'arrête : c'est le
+-- comportement voulu. Deux réponses à une même question sont une information —
+-- éventuellement le signe d'un incident — et leur sort se décide avec
+-- l'enseignant, pas dans un script de déploiement.
+--
+-- Contrôle préalable :   npx tsx scripts/preflight-unicite-reponses.ts
+-- Réparation explicite : npx tsx scripts/reparer-doublons-reponses.ts --appliquer
+--
+ALTER TABLE `responses` ADD CONSTRAINT `uq_responses_session_question` UNIQUE(`sessionId`,`questionId`);

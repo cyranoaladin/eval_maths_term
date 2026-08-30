@@ -76,3 +76,42 @@ describe("compareNumeric — cas limites", () => {
     expect(r.equal).toBe(false);
   });
 });
+
+/**
+ * `parseNumericSafe` était un analyseur écrit à la main, avec une liste de cas
+ * particuliers codés en dur (`log(2)`, `log(3)`, `log(5)`…). Toute réponse
+ * numérique écrite comme une expression — une fraction, un produit, une racine
+ * composée — était déclarée non convertible et comptée fausse, alors que la
+ * normalisation produit déjà une chaîne que mathjs sait évaluer.
+ */
+describe("compareNumeric — réponses écrites comme expressions", () => {
+  const deux = { value: 2, tolerance: 1e-9, relative: false };
+
+  it("évalue une fraction, y compris écrite par le champ mathématique", () => {
+    expect(compareNumeric(deux, "4/2").equal).toBe(true);
+    expect(compareNumeric(deux, "\\frac42").equal).toBe(true);
+  });
+
+  it("évalue un produit et une somme", () => {
+    expect(compareNumeric(deux, "1+1").equal).toBe(true);
+    expect(compareNumeric(deux, "2*1").equal).toBe(true);
+    expect(compareNumeric(deux, "2\\cdot1").equal).toBe(true);
+  });
+
+  it("évalue une expression composée que la liste codée en dur ignorait", () => {
+    expect(compareNumeric({ value: Math.log(4), tolerance: 1e-9, relative: false }, "2*ln(2)").equal).toBe(true);
+    expect(compareNumeric({ value: 2 * Math.SQRT2, tolerance: 1e-9, relative: false }, "2*sqrt(2)").equal).toBe(true);
+    expect(compareNumeric({ value: Math.PI / 2, tolerance: 1e-9, relative: false }, "pi/2").equal).toBe(true);
+  });
+
+  it("garde les constantes usuelles", () => {
+    expect(compareNumeric({ value: Math.PI, tolerance: 1e-9, relative: false }, "pi").equal).toBe(true);
+    expect(compareNumeric({ value: Math.LN2, tolerance: 1e-9, relative: false }, "ln(2)").equal).toBe(true);
+  });
+
+  it("refuse toujours une valeur fausse", () => {
+    expect(compareNumeric(deux, "3").equal).toBe(false);
+    expect(compareNumeric(deux, "5/2").equal).toBe(false);
+    expect(compareNumeric(deux, "bonjour").equal).toBe(false);
+  });
+});

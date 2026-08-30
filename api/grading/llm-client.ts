@@ -1,21 +1,17 @@
 /**
  * api/grading/llm-client.ts
  *
- * Client LLM pour la correction des réponses élèves.
- * - Moonshot/Kimi API (compatible OpenAI chat completions)
- * - Retry × 3 avec backoff exponentiel (1s, 3s, 9s)
- * - Cache LRU keyed par SHA-256 des arguments (TTL 1h, max 1000 entrées)
- * - Parsing tolérant aux fences ```json ... ```
+ * Correction d'une réponse élève par le LLM.
  *
- * Pièges gérés :
- * - response_format JSON_object non supporté par certains modèles → omis si erreur 400
- * - Réponse enveloppée dans ``` → stripped avant parse
- * - Score clampé au barème max et arrondi au demi-point
+ * Le transport vit dans `api/llm/chat.ts`, partagé avec la génération de
+ * questions. Ce module ne porte que la sémantique de correction :
+ * - Cache LRU par SHA-256 des arguments (TTL 1 h, 1000 entrées)
+ * - Score plafonné au barème et arrondi au demi-point (usage français)
  */
 import { LRUCache } from "lru-cache";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { env } from "../lib/env";
+import { chatCompletion, isLlmConfigured, stripJsonFences, withRetry } from "../llm/chat";
 import { logger } from "../lib/logger";
 import { buildGradingPrompt } from "./grading-prompt";
 import type { GradingPromptArgs } from "./grading-prompt";
@@ -37,7 +33,7 @@ const cache = new LRUCache<string, LLMResponse>({
 });
 
 export async function gradeWithLLM(args: GradingPromptArgs): Promise<LLMResponse> {
-  if (!env.llm.apiKey) {
+  if (!isLlmConfigured()) {
     throw new Error("LLM_API_KEY non configurée — correction LLM impossible");
   }
 
@@ -50,84 +46,21 @@ export async function gradeWithLLM(args: GradingPromptArgs): Promise<LLMResponse
 
   const messages = buildGradingPrompt(args);
 
-  // 3 tentatives avec backoff exponentiel : 1s, 3s, 9s
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const raw = await callLLMWithTimeout(messages, env.llm.timeoutMs);
-      const parsed = parseLLMResponse(raw, args.maxPoints);
-      cache.set(cacheKey, parsed);
-      logger.info("LLM correction réussie", { attempt, score: parsed.score, confidence: parsed.confidence });
-      return parsed;
-    } catch (e) {
-      lastError = e;
-      logger.warn("LLM appel échoué", { attempt, error: String(e) });
-      if (attempt < 3) {
-        await new Promise((r) => setTimeout(r, 1000 * 3 ** (attempt - 1)));
-      }
-    }
-  }
-  throw lastError;
-}
+  const parsed = await withRetry(async () => {
+    const raw = await chatCompletion({ messages, json: true });
+    return parseLLMResponse(raw, args.maxPoints);
+  }, 3, "llm-grading");
 
-interface ChatMessage {
-  role: "system" | "user";
-  content: string;
-}
-
-async function callLLMWithTimeout(
-  messages: ChatMessage[],
-  timeoutMs: number,
-): Promise<string> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-
-  try {
-    const body: Record<string, unknown> = {
-      model: env.llm.model,
-      messages,
-      temperature: 0.2,
-      max_tokens: env.llm.maxTokens,
-    };
-
-    // response_format JSON_object : supporté sur moonshot-v1-32k, pas sur 8k
-    // On l'inclut par défaut — si erreur 400, le retry tentera sans
-    if (!env.llm.model.includes("8k")) {
-      body.response_format = { type: "json_object" };
-    }
-
-    const r = await fetch(`${env.llm.apiUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${env.llm.apiKey}`,
-      },
-      body: JSON.stringify(body),
-      signal: ctrl.signal,
-    });
-
-    if (!r.ok) {
-      const text = await r.text();
-      throw new Error(`LLM HTTP ${r.status}: ${text.slice(0, 200)}`);
-    }
-
-    const data = (await r.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new Error("Réponse LLM vide (content absent)");
-    return content;
-  } finally {
-    clearTimeout(timer);
-  }
+  cache.set(cacheKey, parsed);
+  logger.info("LLM correction réussie", {
+    score: parsed.score,
+    confidence: parsed.confidence,
+  });
+  return parsed;
 }
 
 function parseLLMResponse(raw: string, maxPoints: number): LLMResponse {
-  // Strip fences ```json ... ``` ou ``` ... ```
-  const cleaned = raw
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "")
-    .trim();
+  const cleaned = stripJsonFences(raw);
 
   let obj: unknown;
   try {

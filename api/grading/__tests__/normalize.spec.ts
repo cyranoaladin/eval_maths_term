@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { evaluate } from "mathjs";
 import { normalizeExpression } from "../normalize";
 
 /**
@@ -195,5 +196,147 @@ describe("normalizeExpression — règles supplémentaires", () => {
 
   it("expression avec espaces multiples", () => {
     expect(normalizeExpression("  2  *  x  ")).toBe("2*x");
+  });
+});
+
+describe("LaTeX produit par le champ de saisie mathématique", () => {
+  // MathLive n'émet pas le LaTeX qu'un élève taperait à la main : la
+  // multiplication devient `\cdot`, les parenthèses sont encadrées de
+  // `\left`/`\right`. Sans traduction, `2\cdot x` devenait `2\cdotx` et la
+  // réponse était comptée fausse alors qu'elle était juste.
+  it("traduit la multiplication", () => {
+    expect(normalizeExpression("2\\cdot x")).toBe("2*x");
+    expect(normalizeExpression("3\\times 4")).toBe("3*4");
+  });
+
+  it("retire les délimiteurs extensibles", () => {
+    expect(normalizeExpression("\\left(x+1\\right)")).toBe("(x+1)");
+  });
+
+  it("traduit la division", () => {
+    expect(normalizeExpression("6\\div 2")).toBe("6/2");
+  });
+
+  it("retire les espacements fins", () => {
+    expect(normalizeExpression("x\\,dx")).toBe("xdx");
+  });
+
+  it("combine avec les fractions", () => {
+    expect(normalizeExpression("\\frac{1}{2}\\cdot 4")).toBe("((1)/(2))*4");
+    expect(normalizeExpression("2\\cdot\\frac{1}{2}")).toBe("2*((1)/(2))");
+  });
+
+  it("préserve la casse d'Infinity, seule constante mathjs à majuscule", () => {
+    // Le passage final en minuscules produisait « infinity », que mathjs ne
+    // sait pas lire : toute limite infinie était comptée fausse.
+    expect(normalizeExpression("\\infty")).toBe("Infinity");
+    expect(normalizeExpression("∞")).toBe("Infinity");
+    expect(normalizeExpression("+\\infty")).toBe("Infinity");
+    expect(normalizeExpression("-\\infty")).toBe("-Infinity");
+  });
+});
+
+/**
+ * Ce que MathLive écrit réellement quand un élève tape au clavier.
+ *
+ * Les chaînes ci-dessous ne sont pas inventées : elles ont été relevées dans un
+ * navigateur, en tapant la séquence indiquée en commentaire dans le champ de
+ * l'écran d'évaluation. LaTeX autorise un argument d'un seul caractère sans
+ * accolades, et MathLive en profite : « 1/2 » ne produit pas `\frac{1}{2}` mais
+ * `\frac12`. La normalisation ne reconnaissait que la forme accoladée — la
+ * fraction la plus courante de toutes était donc rendue illisible pour mathjs.
+ */
+describe("normalizeExpression — sorties réelles de MathLive", () => {
+  const mathjs = { evaluable: (e: string) => { try { evaluate(e, { x: 2 }); return true; } catch { return false; } } };
+
+  it("lit une fraction écrite sans accolades", () => {
+    expect(normalizeExpression("\\frac12")).toBe("((1)/(2))");      // frappe « 1/2 »
+    expect(normalizeExpression("\\frac34")).toBe("((3)/(4))");      // frappe « 3/4 »
+    expect(normalizeExpression("-\\frac12")).toBe("-((1)/(2))");    // frappe « -1/2 »
+  });
+
+  it("lit les formes mixtes d'écriture d'une fraction", () => {
+    expect(normalizeExpression("\\frac1{2}")).toBe("((1)/(2))");
+    expect(normalizeExpression("\\frac{1}2")).toBe("((1)/(2))");
+    expect(normalizeExpression("\\dfrac12")).toBe("((1)/(2))");
+  });
+
+  it("lit une racine écrite sans accolades", () => {
+    expect(normalizeExpression("\\sqrt2")).toBe("sqrt(2)");
+    expect(normalizeExpression("\\sqrt{\\left(2\\right)}")).toBe("sqrt((2))"); // frappe « sqrt(2) »
+  });
+
+  it("rend évaluables par mathjs les expressions réellement produites", () => {
+    // Le vrai critère : mathjs doit savoir lire le résultat. Une chaîne
+    // « normalisée » qu'il refuse vaut zéro pour l'élève.
+    const relevees = [
+      "\\frac12",                       // 1/2
+      "\\frac34",                       // 3/4
+      "-\\frac12",                      // -1/2
+      "2\\cdot x",                      // 2*x
+      "x^2",                             // x^2
+      "x^{\\left(\\frac12\\right)}",   // x^(1/2)
+      "\\sqrt{\\left(2\\right)}",       // sqrt(2)
+      "\\ln\\left(x\\right)",           // ln(x)
+      "0,5",                             // 0,5 (virgule française)
+      "3.14",                            // 3.14
+      "\\frac{2}{3\\cdot x}",            // 2/(3*x)
+    ];
+    for (const brute of relevees) {
+      const normalisee = normalizeExpression(brute);
+      expect(
+        mathjs.evaluable(normalisee),
+        `mathjs refuse « ${normalisee} » issue de « ${brute} »`,
+      ).toBe(true);
+    }
+  });
+
+  it("conserve la valeur, pas seulement la lisibilité", () => {
+    // Une normalisation qui rendrait l'expression lisible en changeant sa
+    // valeur serait bien pire qu'une normalisation absente.
+    expect(evaluate(normalizeExpression("\\frac12"))).toBe(0.5);
+    expect(evaluate(normalizeExpression("\\frac34"))).toBe(0.75);
+    expect(evaluate(normalizeExpression("-\\frac12"))).toBe(-0.5);
+    expect(evaluate(normalizeExpression("0,5"))).toBe(0.5);
+    expect(evaluate(normalizeExpression("\\sqrt{\\left(2\\right)}"))).toBeCloseTo(Math.SQRT2, 12);
+    expect(evaluate(normalizeExpression("x^{\\left(\\frac12\\right)}"), { x: 9 })).toBeCloseTo(3, 12);
+  });
+});
+
+/**
+ * Le logarithme décimal.
+ *
+ * `\log` désigne le logarithme décimal dans l'usage français, et la
+ * normalisation le traduit en `log10`. Une règle destinée à parenthéser
+ * « log 2 » coupait ensuite ce nom de fonction en deux : `\log(10)` devenait
+ * `log(1)0*(10)`, que mathjs refuse. Toute réponse écrite en logarithme
+ * décimal était donc comptée fausse.
+ */
+describe("normalizeExpression — logarithme décimal", () => {
+  it("préserve le nom de la fonction", () => {
+    expect(normalizeExpression("\\log(10)")).toBe("log10(10)");
+    expect(normalizeExpression("log10(10)")).toBe("log10(10)");
+    expect(normalizeExpression("\\log(100)")).toBe("log10(100)");
+  });
+
+  it("parenthèse un logarithme écrit sans parenthèses", () => {
+    expect(normalizeExpression("log2")).toBe("log(2)");
+    expect(normalizeExpression("\\log 100")).toBe("log10(100)");
+  });
+
+  it("distingue le logarithme népérien du décimal", () => {
+    expect(normalizeExpression("\\ln(2)")).toBe("log(2)");
+    expect(evaluate(normalizeExpression("\\log(10)"))).toBe(1);
+    expect(evaluate(normalizeExpression("\\ln(1)"))).toBe(0);
+  });
+
+  it("ne casse pas la multiplication implicite", () => {
+    // La garde qui protège le nom de fonction ne doit pas empêcher `2x` de
+    // devenir `2*x`.
+    expect(normalizeExpression("2x")).toBe("2*x");
+    expect(normalizeExpression("12x")).toBe("12*x");
+    expect(normalizeExpression("3(x+1)")).toBe("3*(x+1)");
+    expect(normalizeExpression("exp(2x)")).toBe("exp(2*x)");
+    expect(normalizeExpression("x^2(3)")).toBe("x^2*(3)");
   });
 });

@@ -230,7 +230,7 @@ export const evaluationQuestions: Omit<EvaluationQuestion, "id" | "evaluationId"
       mode: { kind: "numeric", value: 2, tolerance: 1e-12, relative: false },
       acceptableForms: ["2", "2.0", "2,0", "+2", "2/1"],
       llmReviewRequired: false,
-      weight: 1,
+      weight: 2,
       detailedRubric:
         "Diviser num. et dén. par $n$\u00a0: $\\dfrac{2 + 3/n}{1 + 1/n} \\to \\dfrac{2}{1} = 2$. Accepter toute valeur numérique égale à 2.",
     },
@@ -260,7 +260,7 @@ export const evaluationQuestions: Omit<EvaluationQuestion, "id" | "evaluationId"
         "2e^{2x}-3",
       ],
       llmReviewRequired: false,
-      weight: 1,
+      weight: 2,
       detailedRubric:
         "Dérivée de $\\mathrm{e}^{2x}$\u00a0: $2\\,\\mathrm{e}^{2x}$ (règle de la composée). Dérivée de $-3x$\u00a0: $-3$. Résultat\u00a0: $2\\,\\mathrm{e}^{2x} - 3$.",
     },
@@ -284,7 +284,7 @@ export const evaluationQuestions: Omit<EvaluationQuestion, "id" | "evaluationId"
       },
       acceptableForms: ["ln(2)", "log(2)", "ln2", "\\ln(2)", "\\ln 2"],
       llmReviewRequired: false,
-      weight: 1,
+      weight: 2,
       detailedRubric:
         "$\\displaystyle\\int_1^2 \\frac{1}{x}\\,\\mathrm{d}x = [\\ln x]_1^2 = \\ln 2 - \\ln 1 = \\ln 2$.",
     },
@@ -314,7 +314,7 @@ export const evaluationQuestions: Omit<EvaluationQuestion, "id" | "evaluationId"
         "-\\mathrm{e}^{-2x}+2",
       ],
       llmReviewRequired: false,
-      weight: 1,
+      weight: 2,
       detailedRubric:
         "Solution générale\u00a0: $y = C\\,\\mathrm{e}^{-2x} + 2$. Condition initiale $y(0)=1$\u00a0: $C + 2 = 1 \\Rightarrow C = -1$. Donc $y(x) = 2 - \\mathrm{e}^{-2x}$.",
     },
@@ -334,7 +334,7 @@ export const evaluationQuestions: Omit<EvaluationQuestion, "id" | "evaluationId"
       mode: { kind: "fraction", numerator: 17, denominator: 32, reduced: true },
       acceptableForms: ["17/32"],
       llmReviewRequired: false,
-      weight: 1,
+      weight: 2,
       detailedRubric:
         "$P = \\left(\\dfrac{5}{8}\\right)^2 + \\left(\\dfrac{3}{8}\\right)^2 = \\dfrac{25}{64} + \\dfrac{9}{64} = \\dfrac{34}{64} = \\dfrac{17}{32}$. Pénalité 25\\% si fraction non irréductible ou forme décimale.",
     },
@@ -355,7 +355,7 @@ export const evaluationQuestions: Omit<EvaluationQuestion, "id" | "evaluationId"
     gradingRubric: {
       mode: { kind: "true_false", correctValue: "true" },
       llmReviewRequired: true,
-      weight: 1,
+      weight: 2,
       detailedRubric:
         "1 pt pour la réponse VRAI. 1 pt si la justification invoque le théorème de la limite monotone (suite croissante et majorée ⇒ converge vers sa borne supérieure).",
     },
@@ -375,7 +375,7 @@ export const evaluationQuestions: Omit<EvaluationQuestion, "id" | "evaluationId"
     gradingRubric: {
       mode: { kind: "true_false", correctValue: "true" },
       llmReviewRequired: true,
-      weight: 1,
+      weight: 2,
       detailedRubric:
         "1 pt pour VRAI. 1 pt si la justification mentionne que la dérivabilité implique la continuité (la réciproque est fausse).",
     },
@@ -395,7 +395,7 @@ export const evaluationQuestions: Omit<EvaluationQuestion, "id" | "evaluationId"
     gradingRubric: {
       mode: { kind: "true_false", correctValue: "false" },
       llmReviewRequired: true,
-      weight: 1,
+      weight: 2,
       detailedRubric:
         "1 pt pour FAUX. 1 pt si contre-exemple ou rappel de la vraie formule\u00a0: $\\ln(ab) = \\ln a + \\ln b \\neq \\ln(a+b)$.",
     },
@@ -416,7 +416,7 @@ export const evaluationQuestions: Omit<EvaluationQuestion, "id" | "evaluationId"
     gradingRubric: {
       mode: { kind: "true_false", correctValue: "true" },
       llmReviewRequired: true,
-      weight: 1,
+      weight: 2,
       detailedRubric:
         "1 pt pour VRAI. 1 pt si justification\u00a0: $f \\geq 0$ sur $[a\\,;\\,b]$ avec $a<b$ implique $\\int_a^b f \\geq 0$ (positivité de l'intégrale).",
     },
@@ -436,7 +436,7 @@ export const evaluationQuestions: Omit<EvaluationQuestion, "id" | "evaluationId"
     gradingRubric: {
       mode: { kind: "true_false", correctValue: "false" },
       llmReviewRequired: true,
-      weight: 1,
+      weight: 2,
       detailedRubric:
         "1 pt pour FAUX. 1 pt si justification\u00a0: $V(X) = np(1-p) \\neq np$ en général (sauf si $p = 0$). C'est l'espérance qui vaut $np$.",
     },

@@ -5,6 +5,7 @@
  * Utilisée pour les limites, intégrales, probabilités (Q11, Q13, Q15).
  */
 import { normalizeExpression } from "./normalize";
+import { evaluate } from "mathjs";
 
 export interface NumericResult {
   equal: boolean;
@@ -29,8 +30,11 @@ function parseNumericSafe(expr: string): number | null {
   // Constantes connues
   if (normalized === "pi") return Math.PI;
   if (normalized === "e") return Math.E;
-  if (normalized === "infinity" || normalized === "+infinity") return Infinity;
-  if (normalized === "-infinity") return -Infinity;
+  // La normalisation restitue `Infinity` avec sa majuscule — seule constante
+  // mathjs dans ce cas. La comparaison en minuscules ci-dessous ne matchait
+  // donc plus rien, et toute limite infinie repartait « non convertible ».
+  if (normalized === "Infinity" || normalized === "+Infinity") return Infinity;
+  if (normalized === "-Infinity") return -Infinity;
 
   // log(2) = ln(2)
   if (normalized === "log(2)") return Math.LN2;
@@ -53,6 +57,17 @@ function parseNumericSafe(expr: string): number | null {
     if (den !== 0) return num / den;
   }
 
+  // Tout le reste : la normalisation produit déjà une chaîne que mathjs sait
+  // lire. Les cas particuliers ci-dessus étaient une liste écrite à la main —
+  // `log(2)`, `log(3)`, `log(5)`… — et toute réponse numérique écrite comme une
+  // expression un peu composée en sortait « non convertible », donc fausse.
+  try {
+    const v = evaluate(normalized);
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+  } catch {
+    // Expression illisible : on laisse le comparateur le dire.
+  }
+
   return null;
 }
 
@@ -69,10 +84,16 @@ export function compareNumeric(
     };
   }
 
-  if (!isFinite(parsed)) {
+  // Une limite peut légitimement valoir l'infini. Refuser toute valeur non
+  // finie rendait ces questions impossibles à réussir : c'est la concordance
+  // des deux côtés qui décide, pas la finitude.
+  if (!isFinite(expected.value) || !isFinite(parsed)) {
+    const identiques = Object.is(parsed, expected.value);
     return {
-      equal: false,
-      reason: `Valeur non finie obtenue : ${parsed}`,
+      equal: identiques,
+      reason: identiques
+        ? `Limite infinie correcte (${parsed})`
+        : `Valeur non finie inattendue : obtenu ${parsed}, attendu ${expected.value}`,
       parsedValue: parsed,
     };
   }

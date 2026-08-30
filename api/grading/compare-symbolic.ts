@@ -82,6 +82,26 @@ export async function areSymbolicallyEqual(
         return { equal: false, reason: `NaN obtenu à l'évaluation (point ${i}, scope: ${JSON.stringify(scope)})`, strategy: "failed" };
       }
 
+      // Une valeur infinie ne se compare pas par tolérance : la tolérance
+      // elle-même devenait infinie, et `|a − b| > tolérance` était faux quoi
+      // qu'il arrive. Une réponse écrite « 1/0 » valait donc n'importe quelle
+      // expression attendue, et rapportait tous les points.
+      if (!Number.isFinite(a) || !Number.isFinite(b)) {
+        // Deux infinis de même signe restent un accord — une limite peut
+        // légitimement diverger au point tiré.
+        if (!Object.is(a, b)) {
+          mismatches++;
+          if (mismatches >= 2) {
+            return {
+              equal: false,
+              reason: `Valeur non finie divergente au point ${i} : attendu ${a}, obtenu ${b}`,
+              strategy: "numeric",
+            };
+          }
+        }
+        continue;
+      }
+
       // Tolérance relative pour les grandes valeurs (ex: exp(x) peut valoir 10^6)
       const tol = 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
       if (Math.abs(a - b) > tol) {

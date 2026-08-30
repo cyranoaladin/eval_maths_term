@@ -2,7 +2,9 @@
  * api/routers/grading-router.ts — Phase 2
  *
  * Remplace api/grading-router.ts (ancien, basé sur authedQuery + prompt naïf).
- * Ce router utilise le moteur de correction Phase 2 (grade-response.ts).
+ * Ce router délègue à `api/grading/grade-session.ts`, moteur partagé avec
+ * `session.submit` : une copie est corrigée de la même façon qu'elle ait été
+ * rendue par l'élève ou recorrigée par l'enseignant.
  *
  * Routes :
  *   - gradeSession (teacherQuery) : corrige toutes les réponses d'une session
@@ -17,12 +19,14 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createRouter, teacherQuery } from "../middleware";
 import { getDb } from "../queries/connection";
+import { assertSessionAccessible } from "../queries/ownership";
 import { responses, sessions, questions } from "@db/schema";
 import { eq } from "drizzle-orm";
-import { gradeResponse } from "../grading/grade-response";
-import { resolveOriginalIndex, shuffleDeterministic } from "../grading/shuffle";
-import { GradingRubricSchema } from "../../contracts/grading-rubric";
-import { logger } from "../lib/logger";
+import { gradeSessionResponses } from "../grading/grade-session";
+import { toDecimal, toNumber, toNumberOr } from "../lib/decimal";
+import { readResponseState, recordGradeAudit } from "../grading/grade-audit";
+import { gradeAudit } from "@db/schema";
+import { desc } from "drizzle-orm";
 
 export const gradingRouter2 = createRouter({
   /**
@@ -31,153 +35,38 @@ export const gradingRouter2 = createRouter({
    * Idempotent : re-corriger une session met à jour les scores existants.
    */
   gradeSession: teacherQuery
-    .input(z.object({ sessionId: z.number().int().positive() }))
-    .mutation(async ({ input }) => {
+    .input(
+      z.object({
+        sessionId: z.number().int().positive(),
+        reason: z.string().max(500).optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      await assertSessionAccessible(input.sessionId, ctx.user.id);
       const db = getDb();
-      const { sessionId } = input;
 
-      // Vérifier que la session existe
-      const [session] = await db
-        .select({
-          id: sessions.id,
-          evaluationId: sessions.evaluationId,
-          shuffleSeed: sessions.shuffleSeed,
-          status: sessions.status,
-        })
+      const [avant] = await db
+        .select({ totalScore: sessions.totalScore })
         .from(sessions)
-        .where(eq(sessions.id, sessionId))
+        .where(eq(sessions.id, input.sessionId))
         .limit(1);
 
-      if (!session) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Session introuvable" });
-      }
+      const result = await gradeSessionResponses(input.sessionId);
 
-      // Récupérer toutes les réponses de la session
-      const resps = await db
-        .select()
-        .from(responses)
-        .where(eq(responses.sessionId, sessionId));
+      // Une recorrection change la note sans intervention humaine sur une
+      // réponse précise : on la trace au niveau de la copie pour que l'écart
+      // reste explicable.
+      await recordGradeAudit({
+        sessionId: input.sessionId,
+        action: "regrade",
+        actorId: ctx.user.id,
+        actorEmail: ctx.user.email,
+        oldScore: toNumber(avant?.totalScore ?? null),
+        newScore: result.totalScore,
+        reason: input.reason ?? null,
+      });
 
-      // Récupérer toutes les questions (avec gradingRubric et correctAnswer)
-      const qs = await db
-        .select()
-        .from(questions)
-        .where(eq(questions.evaluationId, session.evaluationId));
-
-      const questionMap = new Map(qs.map((q) => [q.id, q]));
-
-      let totalScore = 0;
-      let totalMax = 0;
-      let gradedCount = 0;
-
-      for (const resp of resps) {
-        const q = questionMap.get(resp.questionId);
-        if (!q) continue;
-
-        totalMax += q.points;
-
-        // Parser la gradingRubric (stockée en JSON dans la DB)
-        const rubricRaw = q.gradingRubric;
-        if (!rubricRaw) {
-          logger.warn("Question sans rubric — ignorée", { questionId: q.id });
-          totalScore += resp.score ?? 0;
-          continue;
-        }
-
-        const rubricParsed = GradingRubricSchema.safeParse(rubricRaw);
-        if (!rubricParsed.success) {
-          logger.warn("Rubric invalide — correction skippée", {
-            questionId: q.id,
-            error: rubricParsed.error.message,
-          });
-          totalScore += resp.score ?? 0;
-          continue;
-        }
-        const rubric = rubricParsed.data;
-
-        // Pour les QCM : résoudre l'index soumis via le mapping de mélange
-        let resolvedQcmIndex: number | undefined;
-        if (q.type === "qcm" && session.shuffleSeed) {
-          const options = (
-            typeof q.options === "string"
-              ? (JSON.parse(q.options) as string[])
-              : (q.options as string[])
-          ) ?? [];
-
-          // Reconstituer le mapping du mélange côté serveur
-          const shuffledOptions = shuffleDeterministic(
-            options.map((_, i) => i),
-            `${session.shuffleSeed}-opt-${q.id}`,
-          );
-          const submittedIndex = parseInt(resp.answer, 10);
-          if (!isNaN(submittedIndex) && submittedIndex >= 0 && submittedIndex < shuffledOptions.length) {
-            resolvedQcmIndex = resolveOriginalIndex(submittedIndex, shuffledOptions);
-          }
-        }
-
-        try {
-          const result = await gradeResponse({
-            questionType: q.type,
-            studentAnswer: resp.answer,
-            justification: resp.justification ?? undefined,
-            rubric,
-            questionText: q.question,
-            maxPoints: q.points,
-            resolvedQcmIndex,
-          });
-
-          await db
-            .update(responses)
-            .set({
-              score: result.score,
-              maxScore: result.maxPoints,
-              isCorrect: result.isCorrect,
-              llmFeedback: result.feedback,
-              gradingMode: result.gradingMode,
-              llmConfidence: result.llmConfidence != null
-                ? String(result.llmConfidence.toFixed(2))
-                : null,
-              gradingReason: result.feedback,
-              partialCreditApplied: result.partialCreditApplied,
-              gradedAt: new Date(),
-            })
-            .where(eq(responses.id, resp.id));
-
-          totalScore += result.score;
-          gradedCount++;
-        } catch (e) {
-          logger.error("Erreur correction réponse", {
-            responseId: resp.id,
-            error: String(e),
-          });
-          totalScore += resp.score ?? 0;
-        }
-      }
-
-      // Mettre à jour le score total de la session
-      const normalizedScore = totalMax > 0
-        ? parseFloat(((totalScore / totalMax) * 20).toFixed(2))
-        : 0;
-
-      await db
-        .update(sessions)
-        .set({
-          totalScore,
-          maxScore: totalMax,
-          normalizedScore: normalizedScore.toFixed(2),
-        })
-        .where(eq(sessions.id, sessionId));
-
-      logger.info("Session corrigée", { sessionId, totalScore, totalMax, gradedCount });
-
-      return {
-        success: true,
-        sessionId,
-        totalScore,
-        maxScore: totalMax,
-        normalizedScore,
-        gradedCount,
-      };
+      return { success: true, sessionId: input.sessionId, ...result };
     }),
 
   /**
@@ -185,7 +74,8 @@ export const gradingRouter2 = createRouter({
    */
   getResults: teacherQuery
     .input(z.object({ sessionId: z.number().int().positive() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      await assertSessionAccessible(input.sessionId, ctx.user.id);
       const db = getDb();
 
       const [session] = await db
@@ -228,7 +118,7 @@ export const gradingRouter2 = createRouter({
           order: q?.order ?? 0,
           answer: r.answer,
           justification: r.justification,
-          score: r.score ?? 0,
+          score: toNumberOr(r.score, 0),
           maxScore: q?.points ?? 0,
           isCorrect: r.isCorrect ?? false,
           feedback: r.llmFeedback ?? null,
@@ -246,7 +136,7 @@ export const gradingRouter2 = createRouter({
         status: session.status,
         startedAt: session.startedAt,
         endedAt: session.endedAt,
-        totalScore: session.totalScore ?? 0,
+        totalScore: toNumberOr(session.totalScore, 0),
         maxScore: session.maxScore ?? 0,
         normalizedScore: session.normalizedScore
           ? parseFloat(session.normalizedScore)
@@ -264,21 +154,100 @@ export const gradingRouter2 = createRouter({
         responseId: z.number().int().positive(),
         score: z.number().min(0),
         feedback: z.string().max(500).optional(),
+        /**
+         * Motif de la modification. Exigé : une note changée sans explication
+         * est indéfendable devant un élève ou une famille.
+         */
+        reason: z.string().min(3).max(500),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = getDb();
+
+      const avant = await readResponseState(input.responseId);
+      if (!avant) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Réponse introuvable" });
+      }
+      // Modifier une note exige d'être l'enseignant de l'évaluation, pas
+      // seulement d'être enseignant.
+      await assertSessionAccessible(avant.sessionId, ctx.user.id);
+
+      // Le barème de la question borne la note : on ne peut pas attribuer
+      // plus de points que la question n'en vaut.
+      const [question] = await db
+        .select({ points: questions.points })
+        .from(questions)
+        .where(eq(questions.id, avant.questionId))
+        .limit(1);
+
+      const plafond = question?.points ?? input.score;
+      if (input.score > plafond) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Cette question vaut ${plafond} point(s) : impossible d'en attribuer ${input.score}.`,
+        });
+      }
+
+      const nouvelleNote = Math.round(input.score * 4) / 4;
 
       await db
         .update(responses)
         .set({
-          score: input.score,
+          score: toDecimal(nouvelleNote),
+          isCorrect: nouvelleNote >= plafond,
           llmFeedback: input.feedback ?? null,
           gradingMode: "manual_override",
+          gradingReason: input.reason,
           gradedAt: new Date(),
         })
         .where(eq(responses.id, input.responseId));
 
-      return { success: true };
+      await recordGradeAudit({
+        sessionId: avant.sessionId,
+        responseId: avant.id,
+        questionId: avant.questionId,
+        actorId: ctx.user.id,
+        actorEmail: ctx.user.email,
+        action: "manual_override",
+        oldScore: toNumber(avant.score),
+        newScore: nouvelleNote,
+        oldMode: avant.gradingMode,
+        newMode: "manual_override",
+        reason: input.reason,
+      });
+
+      // Les totaux de la copie doivent refléter la nouvelle note. La note
+      // manuelle qu'on vient de poser est préservée par `estNoteManuelle`.
+      const totaux = await gradeSessionResponses(avant.sessionId);
+
+      return { success: true, ...totaux };
+    }),
+
+  /** Historique des interventions sur une copie — lecture seule. */
+  auditTrail: teacherQuery
+    .input(z.object({ sessionId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await assertSessionAccessible(input.sessionId, ctx.user.id);
+      const db = getDb();
+      const lignes = await db
+        .select()
+        .from(gradeAudit)
+        .where(eq(gradeAudit.sessionId, input.sessionId))
+        .orderBy(desc(gradeAudit.createdAt), desc(gradeAudit.id));
+
+      return lignes.map((l) => ({
+        id: l.id,
+        action: l.action,
+        auteur: l.actorEmail,
+        questionId: l.questionId,
+        responseId: l.responseId,
+        ancienneNote: toNumber(l.oldScore),
+        nouvelleNote: toNumber(l.newScore),
+        ancienMode: l.oldMode,
+        nouveauMode: l.newMode,
+        motif: l.reason,
+        requestId: l.requestId,
+        date: l.createdAt,
+      }));
     }),
 });

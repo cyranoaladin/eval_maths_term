@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
-import { createRouter, publicQuery, studentQuery, teacherQuery } from "../middleware";
+import { createRouter, publicQuery, studentQuery, teacherQuery, lireJetonEleve } from "../middleware";
 import { getDb } from "../queries/connection";
 import {
   evaluations,
@@ -10,14 +10,18 @@ import {
   responses,
   cheatEvents as cheatEventsTable,
 } from "@db/schema";
-import { eq } from "drizzle-orm";
-import { MAX_SCORE } from "@contracts/evaluation-data";
+import { and, eq, isNull, or } from "drizzle-orm";
+import { assertSessionAccessible } from "../queries/ownership";
+import { gradeSessionResponses } from "../grading/grade-session";
 import { signStudentToken, signResultsToken, verifyResultsToken } from "../anticheat/session-token";
 import { processHeartbeat } from "../anticheat/heartbeat";
 import { ingestEvents } from "../anticheat/event-aggregator";
 import { logger } from "../lib/logger";
+import { toNumber } from "../lib/decimal";
 import { checkRateLimit, getClientIp, RateLimits } from "../lib/rate-limit";
 import { FingerprintComponentsSchema, computeFingerprintHash } from "../anticheat/fingerprint";
+import { computeSuspicionScore } from "../anticheat/score-suspicion";
+import type { CheatEventType } from "@db/schema";
 
 function safeParseJson<T>(value: unknown): T | null {
   if (value == null) return null;
@@ -84,12 +88,24 @@ export const sessionRouter = createRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      // III.9 : rate limit sur session.start
+      // III.9 : limitation du démarrage de session, en deux étages.
+      //
+      // Par candidat d'abord : c'est la personne qui s'acharne que la limite
+      // doit borner. Par adresse ensuite, avec un plafond dimensionné pour un
+      // établissement — tous les élèves d'un lycée sortent par la même IP, et
+      // une limite pensée pour un poste isolé leur interdisait de composer.
       const ip = getClientIp(ctx.req);
-      if (!checkRateLimit(`session-start:${ip}`, RateLimits.sessionStart.max, RateLimits.sessionStart.windowMs)) {
+      const candidat = `${ip}|${input.evaluationId}|${input.studentName.trim().toLowerCase()}`;
+      if (!checkRateLimit(`session-start:${candidat}`, RateLimits.sessionStart.max, RateLimits.sessionStart.windowMs)) {
         throw new TRPCError({
           code: "TOO_MANY_REQUESTS",
-          message: "Trop de tentatives. Veuillez patienter une minute.",
+          message: "Trop de tentatives pour ce nom. Veuillez patienter une minute.",
+        });
+      }
+      if (!checkRateLimit(`session-start-ip:${ip}`, RateLimits.sessionStartPerIp.max, RateLimits.sessionStartPerIp.windowMs)) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: "Trop d'ouvertures simultanées depuis ce réseau. Veuillez patienter une minute.",
         });
       }
 
@@ -191,7 +207,7 @@ export const sessionRouter = createRouter({
       const ip = getClientIp(ctx.req);
       const result = await processHeartbeat(
         {
-          sessionToken: ctx.req.headers.get("x-session-token") ?? "",
+          sessionToken: lireJetonEleve(ctx.req),
           ...input,
         },
         ip,
@@ -242,111 +258,172 @@ export const sessionRouter = createRouter({
       const session = await assertSessionActive(sessionId);
       const db = getDb();
 
-      // Récupérer les questions avec correctAnswer (côté serveur uniquement)
-      const qs = await db
-        .select()
-        .from(questions)
-        .where(eq(questions.evaluationId, session.evaluationId));
+      /**
+       * Prise de la copie, en un seul ordre atomique.
+       *
+       * Deux remises simultanées — un double-clic, une requête rejouée après
+       * une coupure — passaient toutes deux la vérification d'état, puis
+       * écrivaient les mêmes réponses : la seconde butait sur la contrainte
+       * d'unicité et remontait une erreur SQL brute jusqu'à l'élève. C'est la
+       * base qui tranche désormais, avant tout travail : la première remise
+       * qui pose sa date de fin emporte la copie, la seconde est refusée avec
+       * le message qui convient.
+       */
+      const [prise] = await db
+        .update(sessions)
+        .set({ endedAt: new Date() })
+        .where(
+          and(
+            eq(sessions.id, sessionId),
+            eq(sessions.status, "in_progress"),
+            isNull(sessions.endedAt),
+          ),
+        );
 
-      const questionMap = new Map(qs.map((q) => [q.id, q]));
-      let totalScore = 0;
+      if (prise.affectedRows === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cette session est déjà terminée",
+        });
+      }
 
-      await db.transaction(async (tx) => {
-        for (const ans of input.answers) {
-          const q = questionMap.get(ans.questionId);
-          if (!q) continue;
+      /**
+       * La prise est un bail, pas un verrou définitif : si la remise échoue en
+       * cours de route, la copie doit pouvoir être rendue à nouveau plutôt que
+       * de rester bloquée jusqu'au balayage d'inactivité.
+       */
+      const rendreLaCopie = async () => {
+        await db
+          .update(sessions)
+          .set({ endedAt: null })
+          .where(and(eq(sessions.id, sessionId), eq(sessions.status, "in_progress")));
+      };
 
-          let isCorrect = false;
-          let score = 0;
-          let llmFeedback: string | null = null;
+      try {
+        // Seules les questions de l'évaluation de la session sont acceptées :
+        // un client malveillant ne peut pas injecter la réponse d'une autre copie.
+        const qs = await db
+          .select({ id: questions.id })
+          .from(questions)
+          .where(eq(questions.evaluationId, session.evaluationId));
+        const allowedIds = new Set(qs.map((q) => q.id));
 
-          if (q.type === "qcm") {
-            const correctIndex = parseInt(q.correctAnswer);
-            const studentIndex = parseInt(ans.answer);
-            isCorrect = correctIndex === studentIndex;
-            score = isCorrect ? q.points : 0;
-          } else if (q.type === "true_false") {
-            isCorrect = q.correctAnswer === ans.answer;
-            if (q.justificationRequired && ans.justification) {
-              // Score partiel en attente d'évaluation LLM
-              score = isCorrect ? Math.round(q.points * 0.5) : 0;
-              llmFeedback = "Justification à évaluer par l'enseignant.";
-            } else {
-              score = isCorrect ? q.points : 0;
-            }
-          } else if (q.type === "short_answer") {
-            // Correction naïve — sera améliorée en Phase 2 (compare-symbolic)
-            const norm = (s: string) => s.toLowerCase().replace(/\s/g, "").replace(/,/g, ".");
-            isCorrect = norm(ans.answer) === norm(q.correctAnswer);
-            score = isCorrect ? q.points : 0;
-            if (!isCorrect) {
-              llmFeedback = "À évaluer par le moteur de correction mathématique.";
-            }
-          }
+        // 1. Enregistrement brut des réponses — aucun score n'est calculé ici,
+        //    et surtout aucun score n'est accepté depuis le client.
+        //
+        // L'écriture se faisait réponse par réponse, avec une lecture préalable
+        // pour chacune : quarante-deux allers-retours pour une copie de vingt et
+        // une questions. Deux cents copies remises dans la même seconde — la fin
+        // d'une épreuve — saturaient la base pour ce seul travail. L'état
+        // existant est maintenant lu une fois, les nouvelles réponses insérées en
+        // un seul ordre, et seules les réponses réellement modifiées sont mises à
+        // jour.
+        const aEcrire = input.answers.filter((a) => allowedIds.has(a.questionId));
 
-          totalScore += score;
+        const dejaLa = await db
+          .select({
+            id: responses.id,
+            questionId: responses.questionId,
+            answer: responses.answer,
+            justification: responses.justification,
+          })
+          .from(responses)
+          .where(eq(responses.sessionId, sessionId));
+        const parQuestion = new Map(dejaLa.map((r) => [r.questionId, r]));
 
-          await tx.insert(responses).values({
+        const nouvelles = aEcrire
+          .filter((a) => !parQuestion.has(a.questionId))
+          .map((a) => ({
             sessionId,
-            questionId: ans.questionId,
-            answer: ans.answer,
-            justification: ans.justification ?? null,
-            isCorrect,
-            score,
-            maxScore: q.points,
-            llmFeedback,
-            gradedAt: new Date(),
+            questionId: a.questionId,
+            answer: a.answer,
+            justification: a.justification ?? null,
+            maxScore: 0,
+            partialCreditApplied: false,
+          }));
+
+        const aModifier = aEcrire
+          .map((a) => ({ a, existante: parQuestion.get(a.questionId) }))
+          .filter(
+            ({ a, existante }) =>
+              existante !== undefined &&
+              (existante.answer !== a.answer ||
+                (existante.justification ?? null) !== (a.justification ?? null)),
+          );
+
+        if (nouvelles.length > 0 || aModifier.length > 0) {
+          await db.transaction(async (tx) => {
+            if (nouvelles.length > 0) {
+              await tx.insert(responses).values(nouvelles);
+            }
+            for (const { a, existante } of aModifier) {
+              await tx
+                .update(responses)
+                .set({ answer: a.answer, justification: a.justification ?? null })
+                .where(eq(responses.id, existante!.id));
+            }
           });
         }
 
-        // III.5 : note sur 20 calculée serveur
-        const normalizedScore = Math.round((totalScore / MAX_SCORE) * 20 * 4) / 4;
+        // 2. Correction par le moteur Phase 2 (déterministe puis LLM).
+        const grading = await gradeSessionResponses(sessionId);
 
-        // Détermination du statut final (III.5 : tabSwitchCount calculé depuis cheat_events)
-        const cheatCount = await tx
-          .select({ id: cheatEventsTable.id })
+        // 3. Score de suspicion et statut final — calculés serveur, jamais reçus.
+        const events = await db
+          .select()
           .from(cheatEventsTable)
           .where(eq(cheatEventsTable.sessionId, sessionId));
 
+        const suspicion = computeSuspicionScore(
+          events.map((e) => ({
+            type: e.type as CheatEventType,
+            count: (e.metadata as { count?: number })?.count ?? 1,
+          })),
+        );
+
         const finalStatus = input.isTimeout
           ? "timed_out"
-          : cheatCount.length > 10
-          ? "cheating_detected"
-          : "completed";
+          : suspicion.verdict === "severe"
+            ? "cheating_detected"
+            : "completed";
 
-        // Token de résultats à durée courte (10 min) — émis uniquement ici
         const resultsToken = await signResultsToken(sessionId);
 
-        await tx
+        await db
           .update(sessions)
           .set({
             status: finalStatus,
-            totalScore,
-            maxScore: MAX_SCORE,
-            // III.5 : normalizedScore calculé serveur — DECIMAL(5,2) attend une string en Drizzle
-            normalizedScore: (Math.round(normalizedScore * 4) / 4).toFixed(2),
             timeSpent: input.timeSpent ?? null,
             endedAt: new Date(),
             resultsToken,
+            suspicionScore: suspicion.score,
+            suspicionVerdict: suspicion.verdict,
           })
           .where(eq(sessions.id, sessionId));
 
         logger.info("[session] Session soumise", {
           sessionId,
-          totalScore,
-          normalizedScore,
+          totalScore: grading.totalScore,
+          normalizedScore: grading.normalizedScore,
           finalStatus,
+          suspicionScore: suspicion.score,
         });
-      });
 
-      const resultsToken = await signResultsToken(sessionId);
       return {
         success: true,
-        totalScore,
-        maxScore: MAX_SCORE,
-        normalizedScore: Math.round((totalScore / MAX_SCORE) * 20 * 4) / 4,
+        totalScore: grading.totalScore,
+        maxScore: grading.maxScore,
+        normalizedScore: grading.normalizedScore,
+        needsManualReview: grading.needsManualReview,
         resultsToken,
       };
+      } catch (e) {
+        // La remise a échoué après la prise : on relâche le bail pour que
+        // l'élève puisse rendre à nouveau, plutôt que de laisser sa copie dans
+        // un état où plus personne ne peut agir.
+        await rendreLaCopie();
+        throw e;
+      }
     }),
 
   /**
@@ -392,15 +469,24 @@ export const sessionRouter = createRouter({
         .from(responses)
         .where(eq(responses.sessionId, sessionId));
 
+      const reponsesConverties = resps.map((r) => ({ ...r, score: toNumber(r.score) }));
+
+      // Compté depuis la table append-only, jamais depuis le client.
+      const events = await db
+        .select({ id: cheatEventsTable.id })
+        .from(cheatEventsTable)
+        .where(eq(cheatEventsTable.sessionId, sessionId));
+
       return {
         sessionId: session.id,
         studentName: session.studentName,
         status: session.status,
-        totalScore: session.totalScore,
+        totalScore: toNumber(session.totalScore),
         maxScore: session.maxScore,
         normalizedScore: session.normalizedScore !== null ? parseFloat(session.normalizedScore) : null,
         timeSpent: session.timeSpent,
-        responses: resps,
+        cheatEventCount: events.length,
+        responses: reponsesConverties,
       };
     }),
 
@@ -408,9 +494,25 @@ export const sessionRouter = createRouter({
    * Récupère toutes les sessions pour le dashboard prof.
    * III.2 : exige le rôle teacher.
    */
-  getAllForTeacher: teacherQuery.query(async () => {
+  getAllForTeacher: teacherQuery.query(async ({ ctx }) => {
     const db = getDb();
-    return db.select().from(sessions).orderBy(sessions.startedAt);
+    // Un enseignant ne voit que les copies de ses propres évaluations. Les
+    // évaluations sans propriétaire restent partagées — voir
+    // `api/queries/ownership.ts`.
+    const rows = await db
+      .select()
+      .from(sessions)
+      .innerJoin(evaluations, eq(evaluations.id, sessions.evaluationId))
+      .where(or(eq(evaluations.ownerId, ctx.user.id), isNull(evaluations.ownerId)))
+      .orderBy(sessions.startedAt)
+      .then((lignes) => lignes.map((l) => l.sessions));
+    // Conversion à la frontière : le pilote MySQL rend les DECIMAL en chaînes,
+    // et le client fait des moyennes avec ces valeurs.
+    return rows.map((s) => ({
+      ...s,
+      totalScore: toNumber(s.totalScore),
+      normalizedScore: toNumber(s.normalizedScore),
+    }));
   }),
 
   /**
@@ -419,7 +521,8 @@ export const sessionRouter = createRouter({
    */
   getDetailsForTeacher: teacherQuery
     .input(z.object({ sessionId: z.number() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      await assertSessionAccessible(input.sessionId, ctx.user.id);
       const db = getDb();
       const [session] = await db
         .select()
@@ -450,10 +553,12 @@ export const sessionRouter = createRouter({
       return {
         session: {
           ...session,
-          normalizedScore: session.normalizedScore !== null ? parseFloat(session.normalizedScore) : null,
+          totalScore: toNumber(session.totalScore),
+          normalizedScore: toNumber(session.normalizedScore),
         },
         responses: resps.map((r) => ({
           ...r,
+          score: toNumber(r.score),
           question: qs.find((q) => q.id === r.questionId),
           options: safeParseJson<string[]>(qs.find((q) => q.id === r.questionId)?.options),
         })),

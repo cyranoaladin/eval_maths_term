@@ -14,7 +14,6 @@
  * et si une pénalité a été appliquée.
  */
 import type { GradingRubric, ComparisonMode } from "../../contracts/grading-rubric";
-import { compareExact } from "./compare-exact";
 import { compareNumeric } from "./compare-numeric";
 import { compareFraction, applyFractionPenalty } from "./compare-fraction";
 import { areSymbolicallyEqual } from "./compare-symbolic";
@@ -89,11 +88,19 @@ function gradeQcm(args: GradeResponseArgs): GradingResult {
   }
 
   const correct = resolvedQcmIndex === rubric.mode.correctIndex;
+
+  // Retour ciblé si l'enseignant a documenté l'erreur type de ce distracteur.
+  const diagnostic = rubric.distractorDiagnostics?.[resolvedQcmIndex]?.trim();
+
   return {
     score: correct ? maxPoints : 0,
     maxPoints,
     isCorrect: correct,
-    feedback: correct ? "Bonne réponse." : "Réponse incorrecte.",
+    feedback: correct
+      ? "Bonne réponse."
+      : diagnostic && diagnostic.length > 0
+        ? diagnostic
+        : "Réponse incorrecte.",
     gradingMode: "qcm",
     llmConfidence: null,
     partialCreditApplied: false,
@@ -135,20 +142,19 @@ async function gradeTrueFalse(args: GradeResponseArgs): Promise<GradingResult> {
     };
   }
 
-  // Réponse correcte (1 pt) + justification via LLM si requise
+  // À partir d'ici la réponse est nécessairement correcte : le cas contraire
+  // est retourné juste au-dessus. Les branches qui rejouaient ce test étaient
+  // du code que rien ne pouvait atteindre.
   const answerPts = Math.round(maxPoints / 2);
 
   if (!rubric.llmReviewRequired || !justification) {
-    const score = answerCorrect ? maxPoints : 0;
     return {
-      score,
+      score: maxPoints,
       maxPoints,
-      isCorrect: answerCorrect,
-      feedback: answerCorrect
-        ? justification
-          ? "Réponse correcte. Justification non évaluée automatiquement."
-          : "Réponse correcte. Aucune justification fournie."
-        : "Réponse incorrecte.",
+      isCorrect: true,
+      feedback: justification
+        ? "Réponse correcte. Justification non évaluée automatiquement."
+        : "Réponse correcte. Aucune justification fournie.",
       gradingMode: "true_false",
       llmConfidence: null,
       partialCreditApplied: false,
@@ -306,16 +312,13 @@ async function applyComparisonMode(
 ): Promise<GradingResult | null> {
   switch (mode.kind) {
     case "exact": {
-      const r = compareExact("", given);
-      return {
-        score: r.equal ? maxPoints : 0,
-        maxPoints,
-        isCorrect: r.equal,
-        feedback: r.reason,
-        gradingMode: "exact",
-        llmConfidence: null,
-        partialCreditApplied: false,
-      };
+      // Le mode « exact » ne transporte aucune valeur attendue : la seule
+      // référence possible est `acceptableForms`, déjà éprouvée en amont de
+      // cette fonction. Comparer à la chaîne vide, comme c'était fait ici, ne
+      // pouvait reconnaître aucune réponse — la question marquait tout le
+      // monde faux. La comparaison est déclarée inconclusive, et la suite
+      // — crédit partiel, LLM, ou constat d'échec explicite — prend le relais.
+      return null;
     }
 
     case "numeric": {

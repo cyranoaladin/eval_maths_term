@@ -6,7 +6,8 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // Le rapport de couverture contient du JavaScript généré, jamais relu.
+  globalIgnores(['dist', 'coverage', 'test-results', 'playwright-report']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -23,6 +24,15 @@ export default defineConfig([
   {
     files: ['src/components/ui/**/*.{ts,tsx}'],
     rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+  {
+    // Tests navigateur : `use` y est la fixture de Playwright, pas un hook
+    // React. Les règles React n'ont rien à y faire.
+    files: ['e2e/**/*.ts', 'playwright.config.ts'],
+    rules: {
+      'react-hooks/rules-of-hooks': 'off',
       'react-refresh/only-export-components': 'off',
     },
   },

@@ -61,10 +61,27 @@ function requireRole(role: "teacher" | "admin") {
  * Le token est signé par le serveur à la création de session (studentSessionSecret).
  * Ce middleware peuple ctx.studentSession pour les procédures studentQuery.
  */
+/**
+ * En-tête qui porte le jeton de session élève.
+ *
+ * Une seule définition : le routeur `session.heartbeat` a longtemps lu
+ * « x-session-token », un nom que personne n'émet, et le heartbeat répondait
+ * 401 à chaque envoi sans que rien ne le signale côté élève.
+ */
+export const STUDENT_SESSION_HEADER = "x-student-session-token";
+
+/** Lit le jeton élève d'une requête, en-tête dédié ou Bearer. */
+export function lireJetonEleve(req: { headers: { get(n: string): string | null } }): string {
+  const dedie = req.headers.get(STUDENT_SESSION_HEADER);
+  if (dedie) return dedie;
+  const bearer = req.headers.get("authorization");
+  return bearer?.startsWith("Bearer ") ? bearer.slice(7) : "";
+}
+
 const requireStudentSessionToken = t.middleware(async (opts) => {
   const { ctx, next } = opts;
 
-  const authHeader = ctx.req.headers.get("x-student-session-token");
+  const authHeader = ctx.req.headers.get(STUDENT_SESSION_HEADER);
   const bearerHeader = ctx.req.headers.get("authorization");
   const token =
     authHeader ||

@@ -8,11 +8,13 @@ import { trpc } from "@/providers/trpc-client";
 
 export default function Results() {
   const [searchParams] = useSearchParams();
-  const sessionId = parseInt(searchParams.get("session") || "0");
+  // Jeton court (10 min) émis par `session.submit` : sans lui, impossible de
+  // lire une copie. L'ancien `?session=<id>` laissait lire n'importe laquelle.
+  const resultsToken = searchParams.get("token") ?? "";
 
-  const { data: result, isLoading } = trpc.evaluation.getResults.useQuery(
-    { sessionId },
-    { enabled: sessionId > 0 }
+  const { data: result, isLoading } = trpc.session.getResults.useQuery(
+    { resultsToken },
+    { enabled: resultsToken.length > 0, retry: false }
   );
 
   if (isLoading) {
@@ -23,13 +25,13 @@ export default function Results() {
     );
   }
 
-  if (!result || !result.session) {
+  if (!result) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Card>
           <CardContent className="p-6 text-center">
             <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
-            <p>Résultats non trouvés.</p>
+            <p>Résultats indisponibles : le lien a expiré ou est invalide.</p>
             <Link to="/">
               <Button className="mt-4">Retour à l'accueil</Button>
             </Link>
@@ -39,23 +41,25 @@ export default function Results() {
     );
   }
 
-  const { session, responses } = result;
-  const score = session.totalScore || 0;
-  const maxScore = session.maxScore || 1;
+  const { responses, cheatEventCount } = result;
+  const score = result.totalScore ?? 0;
+  const maxScore = result.maxScore || 1;
   const percentage = Math.round((score / maxScore) * 100);
-  const timeSpent = session.timeSpent || 0;
+  const timeSpent = result.timeSpent ?? 0;
   const minutes = Math.floor(timeSpent / 60);
   const seconds = timeSpent % 60;
 
   const getStatusColor = () => {
-    if (session.status === "cheating_detected") return "destructive";
-    if (session.status === "timed_out") return "secondary";
+    if (result.status === "cheating_detected") return "destructive";
+    if (result.status === "timed_out" || result.status === "auto_submitted_idle")
+      return "secondary";
     return "default";
   };
 
   const getStatusLabel = () => {
-    if (session.status === "cheating_detected") return "Triche détectée";
-    if (session.status === "timed_out") return "Temps écoulé";
+    if (result.status === "cheating_detected") return "Triche détectée";
+    if (result.status === "timed_out") return "Temps écoulé";
+    if (result.status === "auto_submitted_idle") return "Soumise automatiquement";
     return "Terminé";
   };
 
@@ -73,12 +77,15 @@ export default function Results() {
           <CardContent className="p-8 text-center space-y-6">
             <div className="flex items-center justify-center gap-2 text-slate-500">
               <User className="w-4 h-4" />
-              <span className="font-medium">{session.studentName}</span>
+              <span className="font-medium">{result.studentName}</span>
             </div>
 
             <div className={`text-6xl font-bold ${percentage >= 50 ? "text-green-600" : "text-red-600"}`}>
-              {score}/{maxScore}
+              {result.normalizedScore !== null ? `${result.normalizedScore}/20` : `${score}/${maxScore}`}
             </div>
+            <p className="text-sm text-slate-500 -mt-4">
+              {score}/{maxScore} points
+            </p>
 
             <div className="w-full max-w-md mx-auto">
               <Progress value={percentage} className="h-3" />
@@ -89,10 +96,10 @@ export default function Results() {
               <Badge variant={getStatusColor() as "default" | "secondary" | "destructive"} className="text-sm px-3 py-1">
                 {getStatusLabel()}
               </Badge>
-              {session.tabSwitchCount > 0 && (
+              {cheatEventCount > 0 && (
                 <Badge variant="destructive" className="text-sm px-3 py-1">
                   <AlertTriangle className="w-3 h-3 mr-1" />
-                  {session.tabSwitchCount} tentative{session.tabSwitchCount > 1 ? "s" : ""} de triche
+                  {cheatEventCount} alerte{cheatEventCount > 1 ? "s" : ""}
                 </Badge>
               )}
             </div>
@@ -160,13 +167,13 @@ export default function Results() {
         </Card>
 
         {/* Alertes */}
-        {session.tabSwitchCount > 0 && (
+        {cheatEventCount > 0 && (
           <Card className="border-red-300 bg-red-50">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 text-red-700">
                 <AlertTriangle className="w-5 h-5" />
                 <span className="font-medium">
-                  {session.tabSwitchCount} comportement{session.tabSwitchCount > 1 ? "s" : ""} suspect{session.tabSwitchCount > 1 ? "s" : ""} détecté{session.tabSwitchCount > 1 ? "s" : ""} pendant l'évaluation
+                  {cheatEventCount} comportement{cheatEventCount > 1 ? "s" : ""} suspect{cheatEventCount > 1 ? "s" : ""} détecté{cheatEventCount > 1 ? "s" : ""} pendant l'évaluation
                 </span>
               </div>
             </CardContent>

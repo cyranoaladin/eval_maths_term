@@ -4,13 +4,18 @@
  * Envoie un heartbeat toutes les 15 s au serveur.
  *
  * Règles anti-bugs (React Strict Mode + deps) :
- * - cancelRef : évite les setState après unmount.
- * - Le setInterval est recréé uniquement si sessionToken ou fingerprintHash change.
- * - remainingMs est maintenu localement par un ticker 1s ; resynchronisé sur chaque heartbeat.
+ * - `session.heartbeat` est une route `studentQuery` : elle passe par
+ *   `studentTrpc`, seul client à porter le header `x-student-session-token`.
+ * - cancelRef : évite les setState après démontage.
+ * - L'intervalle appelle `sendRef.current()` : il n'est recréé que si
+ *   sessionToken ou fingerprintHash change, sans dépendre du callback.
+ * - Aucun setState synchrone dans l'effet — le premier envoi passe par un
+ *   timeout 0 pour éviter les rendus en cascade.
+ * - remainingMs est maintenu par un ticker 1 s, resynchronisé à chaque heartbeat.
  * - Polling 15 s — jamais de SSE/WebSocket.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
-import { trpc } from "@/providers/trpc-client";
+import { useEffect, useRef, useState } from "react";
+import { studentTrpc } from "@/providers/student-trpc";
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
@@ -44,13 +49,11 @@ export function useHeartbeat({
   const [isConnected, setIsConnected] = useState(true);
 
   const cancelRef = useRef(false);
-  const tickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const remainingRef = useRef<number | null>(null);
 
-  const heartbeatMutation = trpc.session.heartbeat.useMutation();
+  const heartbeatMutation = studentTrpc.session.heartbeat.useMutation();
 
-  const sendHeartbeat = useCallback(async () => {
+  async function sendHeartbeat(): Promise<void> {
     if (!enabled || !sessionToken || cancelRef.current) return;
     try {
       const result = await heartbeatMutation.mutateAsync({
@@ -68,41 +71,37 @@ export function useHeartbeat({
       setLastHeartbeatAt(new Date());
       setIsConnected(true);
 
-      if (result.expired || result.status === "timed_out") {
-        onExpired?.();
-      }
-      if (result.fingerprintMismatch) {
-        onFingerprintMismatch?.();
-      }
-      if (result.ipMismatch) {
-        onIpMismatch?.();
-      }
+      if (result.expired || result.status === "timed_out") onExpired?.();
+      if (result.fingerprintMismatch) onFingerprintMismatch?.();
+      if (result.ipMismatch) onIpMismatch?.();
     } catch {
       if (cancelRef.current) return;
       setIsConnected(false);
     }
-  }, [
-    enabled,
-    sessionToken,
-    fingerprintHash,
-    currentQuestionIndex,
-    onExpired,
-    onFingerprintMismatch,
-    onIpMismatch,
-  ]); // heartbeatMutation omis — stable ref from tRPC
+  }
+
+  // Rafraîchi à chaque rendu : l'intervalle appelle toujours la dernière version
+  // sans avoir à être recréé.
+  const sendRef = useRef(sendHeartbeat);
+  useEffect(() => {
+    sendRef.current = sendHeartbeat;
+  });
 
   useEffect(() => {
     cancelRef.current = false;
 
     if (!enabled || !sessionToken) return;
 
-    // Envoyer immédiatement au mount
-    sendHeartbeat();
+    // Premier envoi hors du corps de l'effet
+    const kickoff = setTimeout(() => void sendRef.current(), 0);
 
-    heartbeatRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+    const heartbeat = setInterval(
+      () => void sendRef.current(),
+      HEARTBEAT_INTERVAL_MS,
+    );
 
-    // Ticker local 1s pour décrémenter remainingMs entre les heartbeats
-    tickerRef.current = setInterval(() => {
+    // Ticker local 1 s pour décrémenter remainingMs entre deux heartbeats
+    const ticker = setInterval(() => {
       if (cancelRef.current) return;
       setRemainingMs((prev) => {
         if (prev === null) return null;
@@ -114,10 +113,11 @@ export function useHeartbeat({
 
     return () => {
       cancelRef.current = true;
-      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
-      if (tickerRef.current) clearInterval(tickerRef.current);
+      clearTimeout(kickoff);
+      clearInterval(heartbeat);
+      clearInterval(ticker);
     };
-  }, [enabled, sessionToken, fingerprintHash]); // sendHeartbeat omis intentionnellement (recreate)
+  }, [enabled, sessionToken, fingerprintHash]);
 
   return { remainingMs, lastHeartbeatAt, isConnected };
 }
