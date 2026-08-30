@@ -1,0 +1,11 @@
+-- Le nombre de réponses laissées à l'enseignant est désormais conservé.
+--
+-- Le moteur de correction est le seul à le savoir : barème absent, barème
+-- illisible, correction assistée non aboutie. Il le renvoyait dans la réponse à
+-- la remise sans le conserver — une remise rejouée après une coupure réseau ne
+-- pouvait donc pas rendre la même réponse que la première.
+--
+-- Les copies déjà corrigées gardent zéro : recompter après coup demanderait de
+-- rejouer la correction, ce qu'une migration n'a pas à faire. La valeur devient
+-- exacte à la prochaine correction de chaque copie.
+ALTER TABLE `sessions` ADD `needsManualReview` int DEFAULT 0 NOT NULL;

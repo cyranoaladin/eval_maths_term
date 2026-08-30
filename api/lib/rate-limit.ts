@@ -80,8 +80,20 @@ export const RateLimits = {
   sessionStartPerIp: { max: 600, windowMs: 300_000 },
   /** Signalement d'événements de triche : 10/min par sessionId */
   cheatReport: { max: 10, windowMs: 60_000 },
-  /** Sauvegarde de réponses : 30/min par sessionId */
-  answerSave: { max: 30, windowMs: 60_000 },
+  /**
+   * Enregistrement des brouillons, par copie.
+   *
+   * Cette limite était déclarée et n'était appliquée nulle part : la seule
+   * écriture qu'un élève peut répéter à volonté n'avait aucune borne. Trente
+   * par minute, la valeur d'origine, aurait de toute façon gêné un élève
+   * légitime — l'enregistrement automatique part après deux secondes de silence
+   * *par question*, et un élève rapide sur vingt questions en produit
+   * facilement soixante.
+   *
+   * Cent vingt laissent passer le pire cas honnête avec une marge du simple au
+   * double, et arrêtent net une boucle qui écrirait en continu.
+   */
+  answerSave: { max: 120, windowMs: 60_000 },
   /** Mutations auth : 5/min par IP */
   auth: { max: 5, windowMs: 60_000 },
   /** Heartbeat : 6/min par sessionId (1 toutes les 10s) */

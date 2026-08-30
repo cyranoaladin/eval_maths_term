@@ -18,7 +18,7 @@ import { processHeartbeat } from "../anticheat/heartbeat";
 import { ingestEvents } from "../anticheat/event-aggregator";
 import { logger } from "../lib/logger";
 import { assertSessionActive } from "../queries/session-access";
-import { toNumber } from "../lib/decimal";
+import { toNumber, toNumberOr } from "../lib/decimal";
 import { checkRateLimit, getClientIp, RateLimits } from "../lib/rate-limit";
 import { FingerprintComponentsSchema, computeFingerprintHash } from "../anticheat/fingerprint";
 import { suspicionDeLaSession } from "../anticheat/score-suspicion";
@@ -213,8 +213,48 @@ export const sessionRouter = createRouter({
     )
     .mutation(async ({ input, ctx }) => {
       const { sessionId } = ctx.studentSession;
-      const session = await assertSessionActive(sessionId);
       const db = getDb();
+
+      /*
+        Une remise déjà faite se redonne, elle ne se refuse pas.
+
+        Le cas n'a rien d'exotique : la copie est écrite et corrigée, la réponse
+        HTTP se perd — wifi d'établissement, onglet fermé trop vite, navigateur
+        qui rejoue une requête — et le client réessaie. L'élève recevait alors
+        « cette session est déjà terminée », sans note et sans jeton de
+        résultats : sa copie était bel et bien rendue, mais il ne pouvait plus
+        la consulter, et rien ne le lui disait.
+
+        On rend donc exactement ce que la première remise avait rendu : mêmes
+        points, même jeton, même date de fin. Cela vaut aussi pour une copie
+        remise automatiquement après inactivité, ou par l'enseignant : dans les
+        deux cas, la remise tardive de l'élève ne doit rien écraser.
+      */
+      const [dejaRendue] = await db
+        .select()
+        .from(sessions)
+        .where(eq(sessions.id, sessionId))
+        .limit(1);
+
+      if (!dejaRendue) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Session introuvable" });
+      }
+      if (dejaRendue.status !== "in_progress" && dejaRendue.endedAt !== null) {
+        logger.info("[session] Remise rejouée : la copie était déjà rendue", {
+          sessionId,
+          status: dejaRendue.status,
+        });
+        return {
+          success: true,
+          totalScore: toNumberOr(dejaRendue.totalScore, 0),
+          maxScore: dejaRendue.maxScore ?? 0,
+          normalizedScore: toNumberOr(dejaRendue.normalizedScore, 0),
+          needsManualReview: dejaRendue.needsManualReview,
+          resultsToken: dejaRendue.resultsToken ?? (await signResultsToken(sessionId)),
+        };
+      }
+
+      const session = await assertSessionActive(sessionId);
 
       /**
        * Prise de la copie, en un seul ordre atomique.
@@ -342,7 +382,9 @@ export const sessionRouter = createRouter({
           .set({
             status: finalStatus,
             timeSpent: input.timeSpent ?? null,
-            endedAt: new Date(),
+            // `endedAt` a été posée au moment de la prise : c'est l'instant où
+            // l'élève a rendu, pas celui où la correction s'est achevée. La
+            // réécrire ferait varier la date d'une remise rejouée.
             resultsToken,
             suspicionScore: suspicion.score,
             suspicionVerdict: suspicion.verdict,

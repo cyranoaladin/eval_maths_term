@@ -140,7 +140,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P15 | Une seule image canonique de production, avec impression | IN_PROGRESS | — |
 | P16 | Vivacité et disponibilité distinctes et réelles | **PASS** | `/api/health` et `/api/ready` ; 4 vérifications HTTP dans `surface-http.integration.spec.ts` ; le conteneur interroge la disponibilité |
 | P17 | Arrêt gracieux | **PASS** | `scripts/smoke-arret-gracieux.ts` : SIGTERM pendant une remise en vol, copie entière, sortie 0 ; 4 tests unitaires sur l'ordre |
-| P18 | Contre-pression, remise idempotente | IN_PROGRESS | — |
+| P18 | Contre-pression, remise idempotente | **PASS** | `remise-concurrente.integration.spec.ts` : une remise rejouée rend mot pour mot la même réponse ; audit des files en §5 |
 | P19 | Observabilité — 0 `console.*`, supervision d'erreurs | IN_PROGRESS | `journalisation.spec.ts` : 0 appel direct. Supervision non branchée |
 | P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | IN_PROGRESS | identifiants éphémères faits ; matrice de jobs à faire |
 | P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | IN_PROGRESS | 857 tests, 39 parcours ; `fileParallelism: false` rétabli (l'option était ignorée depuis Vitest 4) |
@@ -158,7 +158,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 13 / 34. IN_PROGRESS : 19. BLOCKED_EXTERNAL : 2.**
+**PASS : 14 / 34. IN_PROGRESS : 18. BLOCKED_EXTERNAL : 2.**
 
 ---
 
@@ -181,3 +181,44 @@ note, deux calculs d'un même score de suspicion, deux réponses à « cette cop
 est-elle inscriptible ? », deux chemins d'écriture vers la table corrigée. Ces
 duplications-là ne se contentent pas de répéter : elles divergent.
 
+
+
+---
+
+## 5. Contre-pression : ce qui attend, ce qui refuse
+
+Sous charge, un service a deux façons de mal se comporter : refuser du trafic
+légitime, ou accepter sans fin ce qu'il ne peut pas traiter. La seconde est la
+pire — elle transforme une pointe en panne, et l'utilisateur n'apprend rien
+avant l'expiration de son propre délai. Inventaire de ce qui borne quoi.
+
+| File ou ressource | Borne | Comportement au plafond |
+|---|---|---|
+| Connexions MySQL | `DB_POOL_SIZE` = 60 | **attend** — `queueLimit: 0`, file non bornée |
+| Corps de requête | 10 Mo | refuse (`413`) |
+| Ouverture de session, par candidat | 5 / min | refuse (`429`) |
+| Ouverture de session, par adresse IP | 600 / 5 min | refuse (`429`) |
+| Enregistrement de brouillon, par copie | 120 / min | refuse (`429`) |
+| Signalement d'incidents, par copie | 10 / min | refuse (`429`) |
+| Heartbeat, par copie | 6 / min | refuse (`429`) |
+| Rédaction assistée, par enseignant | 12 / 5 min | refuse (`429`) |
+| Remise de copie | aucune | idempotente : une remise déjà faite se redonne |
+| Envoi d'un brouillon depuis le client | 8 s | bascule sur IndexedDB, rejoue toutes les 5 s |
+| Arrêt du serveur | 20 s | ferme quand même |
+
+**La file du pool n'est pas bornée, et c'est délibéré.** Une remise de copie
+enchaîne une vingtaine d'allers-retours ; deux cents copies rendues dans la même
+seconde — la fin d'une épreuve — demandent plus de connexions qu'il n'y en a.
+Refuser serait perdre des copies ; faire attendre les sert toutes. La mesure de
+charge donne le prix de cette attente : p95 ≈ 2,09 s sur deux cents remises
+artificiellement simultanées, sans une seule erreur. C'est le seul endroit du
+système où l'on préfère attendre à refuser, et c'est le bon.
+
+**`answerSave` était déclarée et jamais appliquée.** La seule écriture qu'un
+élève peut répéter à volonté n'avait aucune borne. Elle en a une, calibrée sur
+le pire cas honnête avec une marge du simple au double.
+
+**La remise est idempotente.** La copie est écrite et corrigée, la réponse HTTP
+se perd, le client réessaie : il reçoit mot pour mot ce que la première remise
+avait rendu — mêmes points, même jeton de résultats, même date de fin. Le client
+réessaie donc deux fois de lui-même avant d'afficher un échec.

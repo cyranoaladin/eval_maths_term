@@ -193,7 +193,14 @@ export default function Evaluation() {
    * Le serveur corrige (moteur déterministe puis LLM), calcule la note sur 20,
    * le score de suspicion et le statut final. Le client n'envoie aucun score et
    * ne décide plus du statut — il reçoit un jeton de résultats à durée courte.
+   *
+   * Un échec réseau est retenté deux fois, à quelques secondes d'intervalle.
+   * C'est sans danger : la remise est idempotente côté serveur — une copie déjà
+   * rendue redonne exactement ce qu'elle avait rendu, même jeton compris. Sans
+   * cette reprise, une réponse HTTP perdue en fin d'épreuve laissait l'élève
+   * devant un message d'erreur alors que sa copie était partie.
    */
+  const REPRISES_REMISE = 2;
   const handleSubmit = useCallback(async (isTimeout = false) => {
     if (!questions || !sessionId) return;
     setIsSubmitted(true);
@@ -207,19 +214,26 @@ export default function Evaluation() {
       justification: answersRef.current[q.id]?.justification,
     }));
 
-    try {
-      const result = await submitSession.mutateAsync({
-        answers: formattedAnswers,
-        timeSpent: getTimeSpent(),
-        isTimeout,
-      });
-      // La copie est scellée : le jeton n'a plus d'usage et ne doit pas
-      // permettre de rouvrir l'écran de composition au rechargement suivant.
-      clearSession();
-      navigate(`/results?token=${encodeURIComponent(result.resultsToken)}`);
-    } catch (err) {
-      journal.error("Échec de la remise de copie", err);
-      setIsSubmitted(false);
+    for (let tentative = 0; ; tentative++) {
+      try {
+        const result = await submitSession.mutateAsync({
+          answers: formattedAnswers,
+          timeSpent: getTimeSpent(),
+          isTimeout,
+        });
+        // La copie est scellée : le jeton n'a plus d'usage et ne doit pas
+        // permettre de rouvrir l'écran de composition au rechargement suivant.
+        clearSession();
+        navigate(`/results?token=${encodeURIComponent(result.resultsToken)}`);
+        return;
+      } catch (err) {
+        if (tentative >= REPRISES_REMISE) {
+          journal.error("Échec de la remise de copie", err);
+          setIsSubmitted(false);
+          return;
+        }
+        await new Promise((suite) => setTimeout(suite, 2_000 * (tentative + 1)));
+      }
     }
   }, [questions, sessionId, submitSession, getTimeSpent, navigate, cheatBuffer, clearSession]);
 

@@ -146,10 +146,10 @@ describe("remise et correction", () => {
       appelAnonyme().session.getResults({ resultsToken: "jeton-forgé" }),
     ).rejects.toThrow();
 
-    // Une session remise est close.
-    await expect(
-      eleve.session.submit({ answers: [], timeSpent: 1 }),
-    ).rejects.toThrow();
+    // Une session remise est close : la rendre à nouveau ne la modifie pas et
+    // redonne exactement ce qu'elle avait rendu.
+    const rejouee = await eleve.session.submit({ answers: [], timeSpent: 1 });
+    expect(rejouee).toEqual(resultat);
 
     await nettoyerSession(sessionId);
   });

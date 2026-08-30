@@ -13,8 +13,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { eq } from "drizzle-orm";
 import {
-  appelEleve, creerEnseignant, creerEvaluation, db, nettoyer, ouvrirSession, unique,
+  appelAnonyme, appelEleve, creerEnseignant, creerEvaluation, db, nettoyer,
+  ouvrirSession, unique,
 } from "./harnais";
+import { autoSubmitSession } from "../../anticheat/auto-submit";
 import { answerDrafts, cheatEvents, gradeAudit, responses, sessions } from "@db/schema";
 import type { User } from "@db/schema";
 
@@ -120,34 +122,69 @@ describe("deux remises simultanées de la même copie", () => {
     }
   });
 
-  it("traite une reprise réseau comme une remise déjà faite", async () => {
-    // Le client renvoie la même requête après une coupure : la copie ne doit
-    // ni être remise deux fois, ni voir sa note changer.
+  it("rejoue une remise perdue en réseau et rend exactement la même réponse", async () => {
+    /*
+      Le cas n'a rien d'exotique : la copie est écrite et corrigée, la réponse
+      HTTP se perd — wifi d'établissement, onglet fermé trop vite, navigateur
+      qui rejoue — et le client réessaie.
+
+      L'élève recevait « cette session est déjà terminée » : sa copie était bel
+      et bien rendue, mais sans note et sans jeton de résultats, il ne pouvait
+      plus la consulter, et rien ne le lui disait. Une remise déjà faite se
+      redonne, elle ne se refuse pas.
+    */
     const { jeton, sessionId, reponses } = await copiePrete();
     const eleve = appelEleve(jeton);
 
     const premiere = await eleve.session.submit({ answers: reponses, timeSpent: 300 });
     const avant = await etatDeLaCopie(sessionId);
 
-    let seconde: unknown;
-    let refus: string | null = null;
-    try {
-      seconde = await eleve.session.submit({ answers: reponses, timeSpent: 300 });
-    } catch (e) {
-      refus = e instanceof Error ? e.message : String(e);
-    }
+    const seconde = await eleve.session.submit({ answers: reponses, timeSpent: 300 });
 
-    expect(refus ?? "", "le refus doit être explicite").toMatch(/terminée|^$/i);
-    if (seconde) {
-      // Si la reprise aboutit, elle doit rendre exactement le même résultat.
-      expect((seconde as { totalScore: number }).totalScore).toBe(premiere.totalScore);
-    }
+    // Mot pour mot la même réponse : mêmes points, même jeton de résultats.
+    expect(seconde).toEqual(premiere);
 
+    // Et la copie n'a pas bougé — y compris sa date de fin, qui est l'instant
+    // où l'élève a rendu, pas celui où la correction s'est achevée.
     const apres = await etatDeLaCopie(sessionId);
     expect(apres.lignes).toHaveLength(avant.lignes.length);
     expect(Number(apres.session.totalScore)).toBe(Number(avant.session.totalScore));
     expect(apres.session.status).toBe(avant.session.status);
     expect(apres.session.endedAt?.getTime()).toBe(avant.session.endedAt?.getTime());
+
+    // Le jeton rendu ouvre bien les résultats : c'est tout l'enjeu pour l'élève.
+    const resultats = await appelAnonyme().session.getResults({
+      resultsToken: seconde.resultsToken,
+    });
+    expect(resultats.totalScore).toBe(premiere.totalScore);
+
+    await effacer(sessionId);
+  });
+
+  it("rend ses résultats à l'élève dont la copie a été remise automatiquement", async () => {
+    // Remise après inactivité, ou forcée par l'enseignant : la remise tardive
+    // de l'élève ne doit rien écraser, et doit tout de même lui ouvrir sa copie.
+    const { jeton, sessionId, reponses } = await copiePrete();
+    const eleve = appelEleve(jeton);
+    await eleve.answer.saveDraft({
+      questionId: reponses[0].questionId,
+      answer: reponses[0].answer,
+    });
+
+    await autoSubmitSession(sessionId, { reason: "manual_force" });
+    const apresAuto = await etatDeLaCopie(sessionId);
+
+    const tardive = await eleve.session.submit({ answers: reponses, timeSpent: 300 });
+
+    const apres = await etatDeLaCopie(sessionId);
+    expect(apres.session.status).toBe(apresAuto.session.status);
+    expect(Number(apres.session.totalScore)).toBe(Number(apresAuto.session.totalScore));
+    expect(apres.lignes).toHaveLength(apresAuto.lignes.length);
+
+    const resultats = await appelAnonyme().session.getResults({
+      resultsToken: tardive.resultsToken,
+    });
+    expect(resultats.sessionId).toBe(sessionId);
 
     await effacer(sessionId);
   });

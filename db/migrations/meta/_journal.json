@@ -57,6 +57,13 @@
       "when": 1788096923925,
       "tag": "0007_retrait_dette_anticheat",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1788110359366,
+      "tag": "0008_copies_a_corriger",
+      "breakpoints": true
     }
   ]
 }

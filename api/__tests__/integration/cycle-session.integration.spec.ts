@@ -113,12 +113,14 @@ describe("remise", () => {
     ).rejects.toThrow(/introuvable/i);
   });
 
-  it("refuse une seconde remise", async () => {
+  it("redonne la première remise plutôt que de refuser la seconde", async () => {
+    // Une copie déjà rendue ne se rend pas deux fois — mais la refuser laissait
+    // l'élève sans note et sans jeton de résultats quand la réponse s'était
+    // simplement perdue en chemin.
     const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Deux fois"));
-    await appelEleve(jeton).session.submit({ answers: [], timeSpent: 10 });
-    await expect(
-      appelEleve(jeton).session.submit({ answers: [], timeSpent: 10 }),
-    ).rejects.toThrow(/terminée/i);
+    const premiere = await appelEleve(jeton).session.submit({ answers: [], timeSpent: 10 });
+    const seconde = await appelEleve(jeton).session.submit({ answers: [], timeSpent: 10 });
+    expect(seconde).toEqual(premiere);
     await effacer(sessionId);
   });
 });

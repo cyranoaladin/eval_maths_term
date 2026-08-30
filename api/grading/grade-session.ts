@@ -348,6 +348,7 @@ export async function gradeSessionResponses(
         totalScore: toDecimal(totalScore),
         maxScore,
         normalizedScore: toDecimal(normalizedScore),
+        needsManualReview,
       })
       .where(eq(sessions.id, sessionId));
   });

@@ -123,6 +123,15 @@ export const sessions = mysqlTable("sessions", {
   userAgent: text("userAgent"),
   fingerprintHash: varchar("fingerprintHash", { length: 64 }),
   status: mysqlEnum("status", ["in_progress", "completed", "timed_out", "cheating_detected", "auto_submitted_idle"]).default("in_progress").notNull(),
+  /**
+   * Nombre de réponses laissées à l'enseignant : barème absent, illisible, ou
+   * correction assistée non aboutie.
+   *
+   * Écrit par le moteur, qui est le seul à le savoir. Il figurait dans la
+   * réponse à la remise sans être conservé : une remise rejouée après une
+   * coupure ne pouvait donc pas rendre la même réponse que la première.
+   */
+  needsManualReview: int("needsManualReview").default(0).notNull(),
   /** Somme des points obtenus — décimale pour la même raison que `responses.score`. */
   totalScore: decimal("totalScore", { precision: 7, scale: 2 }),
   maxScore: int("maxScore"),

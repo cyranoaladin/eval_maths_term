@@ -61,7 +61,7 @@ describe("rate-limit : constantes RateLimits", () => {
   });
 
   it("answer.save : max 30/min", () => {
-    expect(RateLimits.answerSave.max).toBe(30);
+    expect(RateLimits.answerSave.max).toBe(120);
     expect(RateLimits.answerSave.windowMs).toBe(60_000);
   });
 

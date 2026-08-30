@@ -15,11 +15,13 @@
  * celles de la remise.
  */
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { createRouter, studentQuery } from "../middleware";
 import { getDb } from "../queries/connection";
 import { answerDrafts } from "@db/schema";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { checkRateLimit, RateLimits } from "../lib/rate-limit";
 import {
   assertQuestionDeLEvaluation,
   assertSessionActive,
@@ -47,6 +49,21 @@ export const answerRouter = createRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { sessionId, evaluationId } = ctx.studentSession;
+
+      // La seule écriture qu'un élève peut répéter à volonté : sans borne, une
+      // boucle côté client sollicite la base pour toute la salle.
+      if (
+        !checkRateLimit(
+          `answer-draft:${sessionId}`,
+          RateLimits.answerSave.max,
+          RateLimits.answerSave.windowMs,
+        )
+      ) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: "Trop d'enregistrements successifs",
+        });
+      }
 
       await assertSessionActive(sessionId);
       await assertQuestionDeLEvaluation(input.questionId, evaluationId);

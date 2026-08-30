@@ -12,6 +12,7 @@ import {
   appelEleve, creerEnseignant, creerEvaluation, db, nettoyer, ouvrirSession, unique,
 } from "./harnais";
 import { answerDrafts, cheatEvents, responses, sessions } from "@db/schema";
+import { RateLimits } from "../../lib/rate-limit";
 import type { User } from "@db/schema";
 
 let prof: User;
@@ -278,4 +279,42 @@ describe("signalements d'incidents", () => {
     await expect(appelEleve(jeton).cheat.report({ events: trop })).rejects.toThrow();
     await effacer(sessionId);
   });
+});
+
+describe("bornes de l'écriture", () => {
+  it("arrête une boucle qui enregistre sans fin", async () => {
+    /*
+      L'enregistrement d'un brouillon est la seule écriture qu'un élève peut
+      répéter à volonté. La limite existait dans les constantes et n'était
+      appliquée nulle part : une boucle côté client sollicitait la base pour
+      toute la salle.
+
+      Le seuil laisse passer le pire cas honnête — l'enregistrement automatique
+      part après deux secondes de silence par question — avec une marge du
+      simple au double.
+    */
+    const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Boucle"));
+    const eleve = appelEleve(jeton);
+
+    let acceptes = 0;
+    let refus: string | null = null;
+    for (let i = 0; i < RateLimits.answerSave.max + 5; i++) {
+      try {
+        await eleve.answer.saveDraft({ questionId: questionIds[0], answer: `essai ${i}` });
+        acceptes++;
+      } catch (e) {
+        refus = e instanceof Error ? e.message : String(e);
+        break;
+      }
+    }
+
+    expect(acceptes).toBe(RateLimits.answerSave.max);
+    expect(refus).toMatch(/enregistrements successifs/i);
+
+    // La copie reste lisible : ce qui a été accepté est bien là.
+    const brouillons = await eleve.answer.listDrafts();
+    expect(brouillons).toHaveLength(1);
+
+    await effacer(sessionId);
+  }, 60_000);
 });
