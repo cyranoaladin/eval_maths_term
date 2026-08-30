@@ -5,7 +5,7 @@
  * une ligne par élève de la classe, sa note, et la mention d'une éventuelle
  * reprise manuelle. Il ne s'éprouve qu'avec de vraies lignes en base.
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import { eq, inArray } from "drizzle-orm";
 import {
   appelEnseignant, creerEnseignant, creerEvaluation, db, nettoyer, unique,
@@ -205,5 +205,40 @@ describe("évaluation de référence", () => {
         .set({ title: EVALUATION_TITLE })
         .where(eq(evaluations.id, reference.id));
     }
+  });
+});
+
+describe("la commande de semis", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("sème et rend zéro", async () => {
+    const sortie = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { main } = await import("@db/seed");
+
+    await expect(main()).resolves.toBe(0);
+
+    // Ce que la commande imprime est ce qu'un installateur relit pour savoir
+    // si l'évaluation de référence est en place.
+    expect(sortie.mock.calls.map((c) => String(c[0])).join(" ")).toMatch(
+      /Évaluation \d+[\s\S]*questions créées/,
+    );
+  });
+
+  it("rend un code d'échec plutôt qu'une trace illisible", async () => {
+    const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.resetModules();
+    vi.doMock("@db/seed-evaluation", () => ({
+      seedEvaluation: () => Promise.reject(new Error("base injoignable")),
+    }));
+    const { main } = await import("@db/seed");
+
+    // Le script de déploiement regarde ce code : une trace de pile sur la
+    // sortie d'erreur ne lui dirait rien.
+    await expect(main()).resolves.toBe(1);
+    expect(erreur.mock.calls[0][0]).toMatch(/Semis échoué/);
+    expect(erreur.mock.calls[0][1]).toBe("base injoignable");
+
+    vi.doUnmock("@db/seed-evaluation");
+    vi.resetModules();
   });
 });

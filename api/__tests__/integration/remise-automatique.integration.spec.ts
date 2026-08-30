@@ -155,7 +155,7 @@ describe("ce que la remise automatique sait traverser", () => {
       points: 4,
       order: 1,
       gradingRubric: {
-        mode: { kind: "text", expected: ["récurrence"] },
+        mode: { kind: "exact" }, acceptableForms: ["récurrence"],
         llmReviewRequired: true,
         weight: 4,
       },
@@ -172,9 +172,95 @@ describe("ce que la remise automatique sait traverser", () => {
 
     const [notee] = await db.select().from(responses).where(eq(responses.sessionId, sessionId));
     // La remise automatique ne fait pas appel au modèle : la copie attend une
-    // relecture humaine plutôt que de recevoir une note improvisée.
-    expect(notee.llmFeedback).toMatch(/corriger manuellement/);
+    // relecture humaine plutôt que de recevoir une note improvisée. Le mode
+    // le dit — sans quoi « à corriger manuellement » pourrait tout aussi bien
+    // désigner un barème illisible.
+    expect(notee.gradingMode).toBe("pending_llm");
+    expect(notee.llmFeedback).toBe("À corriger manuellement par l'enseignant.");
+    expect(Number(notee.score)).toBe(0);
     expect(notee.justification).toMatch(/rang 0/);
+    await effacer(sessionId);
+  });
+
+  it("ne corrige pas dans cette copie le brouillon d'une autre évaluation", async () => {
+    // Rien dans le schéma ne lie un brouillon à l'évaluation de sa copie : la
+    // clé étrangère ne porte que sur la question. Une réponse écrite pour une
+    // autre épreuve ne doit pas entrer dans cette note.
+    const sienne = await creerEvaluation(prof, "La sienne");
+    const autre = await creerEvaluation(prof, "Une autre");
+    evaluationsCreees.push(sienne.evaluationId, autre.evaluationId);
+    const { jeton, sessionId } = await ouvrirSession(sienne.evaluationId, unique("Mélange"));
+    await appelEleve(jeton).answer.saveDraft({
+      questionId: sienne.questionIds[0],
+      answer: "1",
+    });
+    await db.insert(answerDrafts).values({
+      sessionId,
+      questionId: autre.questionIds[0],
+      answer: "1",
+    });
+
+    await autoSubmitSession(sessionId, { reason: "idle_disconnect" });
+
+    const notees = await db.select().from(responses).where(eq(responses.sessionId, sessionId));
+    expect(notees.map((r) => r.questionId)).toEqual([sienne.questionIds[0]]);
+    await effacer(sessionId);
+  });
+
+  it("corrige un brouillon ouvert mais laissé vide", async () => {
+    const ev = await creerEvaluation(prof, "Brouillon vide");
+    evaluationsCreees.push(ev.evaluationId);
+    const { sessionId } = await ouvrirSession(ev.evaluationId, unique("Rien écrit"));
+    // L'élève a ouvert la question, puis n'a rien saisi : la colonne accepte
+    // l'absence de réponse, et la correction doit la traiter comme telle.
+    await db.insert(answerDrafts).values({
+      sessionId,
+      questionId: ev.questionIds[0],
+      answer: null,
+    });
+
+    await autoSubmitSession(sessionId, { reason: "idle_disconnect" });
+
+    const [notee] = await db.select().from(responses).where(eq(responses.sessionId, sessionId));
+    expect(notee.answer).toBe("");
+    expect(Number(notee.score)).toBe(0);
+    const [apres] = await db.select().from(sessions).where(eq(sessions.id, sessionId));
+    // La durée passée est mesurée depuis l'ouverture, pas laissée vide.
+    expect(apres.timeSpent).toBeGreaterThanOrEqual(0);
+    await effacer(sessionId);
+  });
+
+  it("met de côté une question sans barème au lieu de la noter au hasard", async () => {
+    const [ev] = await db.insert(evaluations).values({
+      title: unique("Barème absent"),
+      duration: 30,
+      isActive: true,
+      ownerId: prof.id,
+    });
+    const evaluationId4 = Number(ev.insertId);
+    evaluationsCreees.push(evaluationId4);
+    const [q] = await db.insert(questions).values({
+      evaluationId: evaluationId4,
+      type: "qcm",
+      question: "Question dont le barème a disparu",
+      options: JSON.stringify(["A", "B"]),
+      correctAnswer: "0",
+      points: 3,
+      order: 1,
+      gradingRubric: null,
+    } as never);
+    const questionId = Number(q.insertId);
+    const { sessionId } = await ouvrirSession(evaluationId4, unique("Sans barème"));
+    await db.insert(answerDrafts).values({ sessionId, questionId, answer: "0" });
+
+    await autoSubmitSession(sessionId, { reason: "idle_disconnect" });
+
+    const [notee] = await db.select().from(responses).where(eq(responses.sessionId, sessionId));
+    // Zéro point et un motif lisible : la copie attend l'enseignant plutôt que
+    // de recevoir une note qu'aucun barème ne justifie.
+    expect(Number(notee.score)).toBe(0);
+    expect(notee.gradingMode).toBe("missing_rubric");
+    expect(notee.llmFeedback).toMatch(/Rubric manquante/);
     await effacer(sessionId);
   });
 

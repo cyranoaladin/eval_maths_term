@@ -12,7 +12,7 @@ import {
   appelAnonyme, appelEleve, appelEnseignant, creerEnseignant, creerEvaluation,
   db, nettoyer, ouvrirSession, unique,
 } from "./harnais";
-import { cheatEvents, evaluations, responses, sessions } from "@db/schema";
+import { cheatEvents, evaluations, questions, responses, sessions } from "@db/schema";
 import type { User } from "@db/schema";
 import { signResultsToken } from "../../anticheat/session-token";
 import type { FingerprintComponents } from "@contracts/fingerprint-canonical";
@@ -138,6 +138,28 @@ describe("ouverture d'une copie", () => {
   });
 });
 
+describe("plafond par réseau", () => {
+  it("refuse une ouverture de plus quand le réseau a atteint son plafond", async () => {
+    // Le plafond par adresse est dimensionné pour un établissement entier. On
+    // le remplit ici sans ouvrir six cents copies : le compteur est le même,
+    // qu'il soit incrémenté par une requête ou directement.
+    const { checkRateLimit, RateLimits } = await import("../../lib/rate-limit");
+    const ip = "198.51.100.200";
+    for (let i = 0; i < RateLimits.sessionStartPerIp.max; i += 1) {
+      checkRateLimit(
+        `session-start-ip:${ip}`,
+        RateLimits.sessionStartPerIp.max,
+        RateLimits.sessionStartPerIp.windowMs,
+      );
+    }
+    const api = await appelDepuis(ip);
+
+    await expect(
+      api.session.start({ evaluationId, studentName: unique("Élève de trop") }),
+    ).rejects.toThrow(/Trop d'ouvertures simultanées depuis ce réseau/);
+  });
+});
+
 describe("suivi pendant l'épreuve", () => {
   it("consigne un changement d'appareil comme un incident", async () => {
     const api = await appelDepuis("203.0.113.30");
@@ -205,12 +227,20 @@ describe("remise", () => {
     const { sessionId, jeton } = await ouvrirSession(evaluationId, unique("Élève hésitant"));
     const api = appelEleve(jeton);
 
-    // Une première réponse est déjà en base — l'élève avait répondu, puis s'est
-    // ravisé avant de rendre.
+    // Deux réponses sont déjà en base — l'élève avait répondu, puis s'est
+    // ravisé avant de rendre. La seconde ne change que sa justification.
     await db.insert(responses).values({
       sessionId,
       questionId: questionIds[0],
       answer: "0",
+      maxScore: 0,
+      partialCreditApplied: false,
+    });
+    await db.insert(responses).values({
+      sessionId,
+      questionId: questionIds[1],
+      answer: "false",
+      justification: "Un premier jet.",
       maxScore: 0,
       partialCreditApplied: false,
     });
@@ -231,6 +261,11 @@ describe("remise", () => {
     // Deux réponses, pas trois : celle qui existait a été reprise.
     expect(ecrites).toHaveLength(2);
     expect(ecrites.find((r) => r.questionId === questionIds[0])!.answer).toBe("1");
+    // La justification reprise remplace la précédente : c'est elle que
+    // l'enseignant lira.
+    expect(ecrites.find((r) => r.questionId === questionIds[1])!.justification).toBe(
+      "La fonction décroît sur les négatifs.",
+    );
     expect(rendu.totalScore).toBeGreaterThan(0);
   });
 
@@ -261,6 +296,32 @@ describe("remise", () => {
 
     const [apres] = await db.select().from(sessions).where(eq(sessions.id, sessionId));
     expect(apres.status).toBe("timed_out");
+  });
+
+  it("marque une copie dont la surveillance a relevé trop d'incidents", async () => {
+    const { sessionId, jeton } = await ouvrirSession(evaluationId, unique("Élève signalé"));
+    // Un changement d'appareil et l'ouverture des outils de développement :
+    // pris ensemble, ils dépassent le seuil du verdict le plus grave.
+    for (const type of ["multi_device", "devtools_open"] as const) {
+      await db.insert(cheatEvents).values({ sessionId, type, timestamp: new Date() });
+    }
+
+    // L'index soumis est celui de l'ordre affiché à l'élève, pas celui de la
+    // base : le mélange dépend de l'identifiant de la question, qui change à
+    // chaque exécution.
+    const eleve = appelEleve(jeton);
+    const qs = await eleve.question.getForActiveSession();
+    const qcm = qs.find((q) => q.type === "qcm")!;
+    await eleve.session.submit({
+      answers: [{ questionId: qcm.id, answer: String(qcm.options!.indexOf("$4$")) }],
+    });
+
+    const [apres] = await db.select().from(sessions).where(eq(sessions.id, sessionId));
+    expect(apres.status).toBe("cheating_detected");
+    expect(apres.suspicionVerdict).toBe("severe");
+    // La copie est corrigée quand même : c'est l'enseignant qui tranche, pas
+    // le compteur d'incidents.
+    expect(Number(apres.totalScore)).toBeGreaterThan(0);
   });
 
   it("rend la même chose à une remise rejouée", async () => {
@@ -328,6 +389,36 @@ describe("consultation des résultats", () => {
 
     expect(releve).toMatchObject({ sessionId, cheatEventCount: 1 });
     expect(releve.responses[0].score).toBeTypeOf("number");
+  });
+
+  it("rend à l'enseignant le détail d'une copie, propositions comprises", async () => {
+    const { sessionId, jeton } = await ouvrirSession(evaluationId, unique("Élève détaillé"));
+    await appelEleve(jeton).session.submit({
+      answers: [
+        { questionId: questionIds[0], answer: "1" },
+        // Un vrai/faux ne porte aucune proposition en base : l'écran ne doit
+        // pas en inventer, ni buter sur leur absence.
+        { questionId: questionIds[1], answer: "false" },
+      ],
+    });
+    // Selon la version et le pilote, MySQL rend le JSON décodé ou en chaîne.
+    // L'écran de correction doit afficher les propositions dans les deux cas :
+    // ici telles qu'elles sont rangées, plus bas une fois décodées.
+    const brut = await appelEnseignant(prof).session.getDetailsForTeacher({ sessionId });
+    expect(brut.responses.find((r) => r.questionId === questionIds[0])!.options).toHaveLength(4);
+
+    await db
+      .update(questions)
+      .set({ options: ["$3$", "$4$", "$5$", "$6$"] as never })
+      .where(eq(questions.id, questionIds[0]));
+
+    const detail = await appelEnseignant(prof).session.getDetailsForTeacher({ sessionId });
+
+    expect(detail.responses[0].options).toHaveLength(4);
+    // La bonne réponse accompagne la question : c'est l'écran de correction de
+    // l'enseignant, le seul endroit où elle a sa place.
+    expect(detail.responses[0].question).toHaveProperty("correctAnswer");
+    expect(detail.responses.find((r) => r.questionId === questionIds[1])!.options).toBeNull();
   });
 
   it("refuse à l'enseignant le détail d'une copie qui n'existe pas", async () => {

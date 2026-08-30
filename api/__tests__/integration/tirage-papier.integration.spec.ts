@@ -399,7 +399,7 @@ describe("la grille de saisie", () => {
         correctAnswer: "récurrence",
         points: 5,
         gradingRubric: {
-          mode: { kind: "text", expected: ["récurrence"] },
+          mode: { kind: "exact" }, acceptableForms: ["récurrence"],
           llmReviewRequired: true,
           weight: 5,
         },

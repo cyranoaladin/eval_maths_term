@@ -203,11 +203,18 @@ export async function autoSubmitSession(
         normalizedScore: toDecimal(normalizedScore),
         suspicionScore: suspicion.score,
         suspicionVerdict: suspicion.verdict,
-        timeSpent: session.startedAt
-          ? Math.floor(
-              (Date.now() - new Date(session.startedAt).getTime()) / 1000,
-            )
-          : null,
+        /*
+          `startedAt` est posée à l'ouverture et ne peut pas manquer.
+
+          Le plancher n'est pas décoratif : la colonne ne retient que la
+          seconde, et MySQL arrondit — une copie ouverte à 12:00:00,7 est
+          enregistrée à 12:00:01. Remise dans la même seconde, elle affichait
+          une durée de −1 seconde sur le relevé.
+        */
+        timeSpent: Math.max(
+          0,
+          Math.floor((Date.now() - new Date(session.startedAt).getTime()) / 1000),
+        ),
       })
       .where(eq(sessions.id, sessionId));
 

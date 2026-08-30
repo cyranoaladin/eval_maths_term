@@ -164,3 +164,18 @@ describe("suspicionDeLaSession", () => {
     expect(r.verdict).toBe("clean");
   });
 });
+
+describe("un incident qui ne pèse rien", () => {
+  it("n'apparaît pas dans les motifs", () => {
+    // Un événement coalescé peut arriver avec un compte nul — deux battements
+    // qui se recouvrent, par exemple. Il ne doit pas figurer parmi les motifs
+    // d'un verdict : un enseignant y lirait un incident qui n'a pas eu lieu.
+    const r = computeSuspicionScore([
+      { type: "blur", count: 0 },
+      { type: "tab_switch", count: 1 },
+    ]);
+
+    expect(r.reasons.map((m) => m.type)).toEqual(["tab_switch"]);
+    expect(r.score).toBe(8);
+  });
+});

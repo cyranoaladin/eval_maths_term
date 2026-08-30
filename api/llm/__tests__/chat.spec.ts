@@ -7,6 +7,7 @@
  * transforment une indisponibilité en note fausse.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { env } from "../../lib/env";
 import {
   chatCompletion, stripJsonFences, withRetry, isLlmConfigured, currentModel,
   LlmNotConfiguredError, LlmTruncatedError,
@@ -76,6 +77,58 @@ describe("chatCompletion", () => {
       },
     });
     await expect(chatCompletion({ messages })).rejects.toBeInstanceOf(LlmTruncatedError);
+  });
+
+  it("annonce l'application au service qui le demande, et se tait ailleurs", async () => {
+    // OpenRouter attribue les appels à l'application déclarée. Ces en-têtes
+    // n'ont de sens que chez lui : les envoyer partout ferait fuiter le nom du
+    // produit et son adresse vers n'importe quel fournisseur.
+    const entetesEnvoyes = () =>
+      (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1]
+        .headers as Record<string, string>;
+
+    servir({ corps: { choices: [{ message: { content: "ok" } }] } });
+    await chatCompletion({ messages });
+    const ailleurs = entetesEnvoyes();
+    expect(ailleurs["HTTP-Referer"]).toBeUndefined();
+    expect(ailleurs["X-Title"]).toBeUndefined();
+    expect(ailleurs.Authorization).toMatch(/^Bearer /);
+
+    const urlInitiale = env.llm.apiUrl;
+    (env.llm as { apiUrl: string }).apiUrl = "https://openrouter.ai/api/v1";
+    try {
+      servir({ corps: { choices: [{ message: { content: "ok" } }] } });
+      await chatCompletion({ messages });
+      const chezOpenRouter = entetesEnvoyes();
+      expect(chezOpenRouter["HTTP-Referer"]).toBe(env.allowedOrigins[0]);
+      expect(chezOpenRouter["X-Title"]).toBe(env.brandName);
+    } finally {
+      (env.llm as { apiUrl: string }).apiUrl = urlInitiale;
+    }
+  });
+
+  it("signale une troncature même quand le service ne dit pas ce qu'il a consommé", async () => {
+    servir({
+      corps: { choices: [{ message: { content: "{" }, finish_reason: "length" }] },
+    });
+
+    // Sans compteur de jetons, la troncature reste une troncature : la
+    // signaler à zéro vaut mieux que rendre un JSON coupé au correcteur.
+    await expect(chatCompletion({ messages })).rejects.toMatchObject({
+      name: "LlmTruncatedError",
+    });
+  });
+
+  it("n'appelle rien quand la clef est absente", async () => {
+    const cle = env.llm.apiKey ?? "";
+    (env.llm as { apiKey: string }).apiKey = "";
+    servir({ corps: { choices: [{ message: { content: "ok" } }] } });
+    try {
+      await expect(chatCompletion({ messages })).rejects.toBeInstanceOf(LlmNotConfiguredError);
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    } finally {
+      (env.llm as { apiKey: string }).apiKey = cle;
+    }
   });
 
   it("signale une réponse vide", async () => {

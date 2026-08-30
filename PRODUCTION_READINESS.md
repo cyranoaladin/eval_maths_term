@@ -18,7 +18,7 @@ sur le chemin fonctionnel.
 |---|---|
 | Branche | `release/production-hardening` |
 | Base | `90fb380` (`main`, tag `v1.0.0-rc1`) |
-| Dernière mise à jour | 2026-08-30 — CI complète au vert |
+| Dernière mise à jour | 2026-08-31 — couverture au gate |
 
 ---
 
@@ -144,7 +144,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P19 | Observabilité — 0 `console.*`, supervision d'erreurs | **PASS** | `journalisation.spec.ts` : 0 appel direct ; supervision branchée sur `logger.error`, 9 tests de nettoyage, `scripts/verifier-supervision.ts` |
 | P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | **PASS** | exécution 33336108963 : les cinq jobs verts, aucun `continue-on-error` |
 | P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | **PASS** | 899 tests, 63 parcours sur trois moteurs, `retries=0` en CI — §8 pour ce que les instabilités cachaient |
-| P22 | Couverture : 100 % sur les domaines critiques, ≥ 95 % global serveur | IN_PROGRESS | seuils actuels : 100 % sur `api/grading`, 80 % global |
+| P22 | Couverture : 100 % sur les domaines critiques, ≥ 95 % global serveur | **PASS** | 98,4 % / 96,4 % / 97,5 % / 98,6 % ; seuils posés dans `vitest.config.ts` — voir §9 |
 | P23 | Accessibilité — 0 violation critique ou sérieuse | **PASS** | `e2e/accessibilite.spec.ts` : axe sur 10 écrans, 3 moteurs, plus deux parcours au clavier seul — voir §7 |
 | P24 | Régression visuelle sur les écrans critiques | IN_PROGRESS | — |
 | P25 | Aucune erreur navigateur inattendue tolérée | **PASS** | surveillance installée sur chaque test sans qu'il ait à la demander ; exceptions, pageerror, `console.error` et 5xx ; aucun filtre global |
@@ -158,7 +158,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 24 / 34. IN_PROGRESS : 8. BLOCKED_EXTERNAL : 2.**
+**PASS : 25 / 34. IN_PROGRESS : 7. BLOCKED_EXTERNAL : 2.**
 
 ---
 
@@ -329,3 +329,64 @@ jusqu'à sa cause ; aucun n'a été absorbé par une reprise. Ce qu'ils cachaien
 | Une navigation qui expire à quatre-vingt-dix secondes | L'état hors ligne d'un test débordait sur le suivant, sous Gecko |
 
 Aucune de ces lignes n'aurait été écrite si la suite avait eu le droit de réessayer.
+
+
+---
+
+## 9. Couverture : ce qui est atteint, et ce qui ne l'est pas
+
+Mesure du 31 août 2026, sur `api/**`, `contracts/**` et `db/*` — 1 143 tests,
+89 fichiers :
+
+| Métrique | Global | Exigence |
+|---|---|---|
+| Instructions | 98,44 % | ≥ 95 % |
+| Branches | 96,36 % | ≥ 95 % |
+| Fonctions | 97,53 % | ≥ 95 % |
+| Lignes | 98,58 % | ≥ 95 % |
+
+Les seuils sont posés dans `vitest.config.ts` et font échouer la suite : ce
+n'est pas une mesure, c'est un gate. **100 %** sur les quatre métriques est
+exigé de :
+
+`api/grading/**` · `api/anticheat/**` · `api/kimi/**` · `api/queries/ownership`
+· `api/queries/session-access` · `api/queries/connection` · `api/lib/csrf` ·
+`api/lib/security-headers` · `api/lib/cookies` · `api/lib/base-url` ·
+`api/lib/rate-limit` · `api/paper/paper-service` · `api/paper/manual-entry` ·
+`api/paper/amc-runner` · `api/paper/parse-roster`
+
+Aucune directive `c8 ignore` ou `istanbul ignore` n'existe dans le dépôt, et
+aucune exclusion n'a été ajoutée au rapport pour arranger un chiffre.
+
+### Ce qui reste, et pourquoi
+
+Trois familles, énumérées plutôt que dissimulées.
+
+**Ce qui est éprouvé, mais pas par Vitest.** Le démarrage de production de
+`api/boot.ts` (lignes 209-236) ne s'exécute que sous `NODE_ENV=production` : il
+est éprouvé par la recette Docker, qui lance l'image réelle, et par les
+parcours navigateur exécutés contre la construction de production.
+`installerArretGracieux` pose des gestionnaires de signaux : il est éprouvé par
+`scripts/smoke-arret-gracieux.ts`, qui envoie un vrai SIGTERM à un vrai serveur
+pendant une remise de copie. Les gardes d'entrée en ligne de commande de
+`db/migrate.ts` et `db/seed.ts` ne se déclenchent que lancées par `node` : la
+recette Docker et le travail Migrations les exécutent l'une et l'autre.
+
+**Ce qui demande une panne matérielle.** `api/lib/readiness.ts` distingue
+« dégradé » de « hors service » pour le pool saturé, le disque plein et
+l'absence d'AMC. Provoquer ces états en test demanderait de remplir un disque
+ou d'épuiser un pool ; le chemin nominal et l'échec de la base sont éprouvés,
+les états intermédiaires ne le sont pas.
+
+**Des gardes que rien ne peut atteindre aujourd'hui.** `requireActive` et
+`requireRole` revérifient la présence de l'utilisateur que `requireAuth` a déjà
+imposée. Ces deux lignes sont conservées : elles protègent un second site
+d'appel qui composerait les intergiciels autrement, et retirer une vérification
+d'autorisation pour gagner un point de couverture serait exactement le mauvais
+échange. Le même raisonnement vaut pour une poignée de replis `?? …` placés
+derrière une validation qui les rend inaccessibles.
+
+Ce qui n'entrait dans aucune de ces trois familles a été **supprimé** :
+`contracts/errors.ts` en entier, le repli du niveau de journal, la garde du
+barème de suspicion, les onze variantes du message d'erreur, et le repli de
+durée d'une session dont la colonne ne peut pas être nulle.

@@ -154,6 +154,12 @@ describe("revendications du jeton d'accès", () => {
     ).toThrow(/autre émetteur/);
   });
 
+  it("refuse un émetteur qui n'est même pas une adresse", () => {
+    expect(() =>
+      validerRevendicationsJeton({ user_id: "u1", client_id: env.appId, iss: "pas-une-url" }),
+    ).toThrow(/émetteur illisible/);
+  });
+
   it("accepte l'émetteur attendu", () => {
     const attendu = new URL(env.kimiAuthUrl).origin;
     expect(

@@ -180,6 +180,21 @@ describe("ce que le nettoyage traverse sans s'y perdre", () => {
     expect(courant).toBe("[retiré]");
   });
 
+  it("garde la méthode d'une requête sans URL, et une exception sans message", () => {
+    // Sentry n'envoie pas toujours tout : un événement partiel ne doit pas
+    // faire échouer le nettoyage, sinon l'erreur qu'on voulait lire est perdue.
+    const nettoye = nettoyerEvenement({
+      request: { method: "POST" },
+      exception: { values: [{ type: "TypeError" }] },
+    } as unknown as ErrorEvent) as unknown as {
+      request: { method: string; url?: string };
+      exception: { values: Array<{ type: string; value?: string }> };
+    };
+
+    expect(nettoye.request).toEqual({ method: "POST", url: undefined });
+    expect(nettoye.exception.values[0]).toMatchObject({ type: "TypeError" });
+  });
+
   it("laisse intacts les nombres, les booléens et l'absence de valeur", () => {
     expect(nettoyerValeur(42)).toBe(42);
     expect(nettoyerValeur(true)).toBe(true);

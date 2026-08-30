@@ -36,6 +36,20 @@ describe("authenticateRequest", () => {
     expect(u.role).toBe("teacher");
   });
 
+  it("refuse un jeton bien signé dont la charge est incomplète", async () => {
+    // La signature ne dit que d'où vient le jeton. Sans `clientId`, rien ne
+    // rattache la session à cette application-ci.
+    const jose = await import("jose");
+    const { env } = await import("../../lib/env");
+    const incomplet = await new jose.SignJWT({ unionId: prof.unionId })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("1h")
+      .sign(new TextEncoder().encode(env.teacherSessionSecret));
+
+    await expect(authenticateRequest(entetes(`kimi_sid=${incomplet}`))).rejects.toThrow();
+  });
+
   it("refuse une requête sans cookie", async () => {
     await expect(authenticateRequest(entetes(""))).rejects.toThrow();
   });

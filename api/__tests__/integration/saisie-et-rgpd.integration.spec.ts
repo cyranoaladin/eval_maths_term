@@ -66,7 +66,7 @@ async function evaluationMixte(): Promise<{ evaluationId: number; qcm: number[];
       question: "Démontrer que la suite est croissante.",
       correctAnswer: "récurrence",
       points: 5,
-      gradingRubric: { mode: { kind: "text", expected: ["récurrence"] }, llmReviewRequired: true, weight: 5 },
+      gradingRubric: { mode: { kind: "exact" }, acceptableForms: ["récurrence"], llmReviewRequired: true, weight: 5 },
     },
   ].entries()) {
     const [q] = await db.insert(questions).values({ ...def, evaluationId, order: i + 1 } as never);
@@ -287,6 +287,30 @@ describe("saisie d'une copie", () => {
     ).toHaveLength(0);
   });
 
+  it("attribue la correction à celui qui saisit, faute d'un autre auteur", async () => {
+    const { evaluationId, redigee } = await evaluationMixte();
+    const { classId, studentId } = await classeAvecEleve("Girard", "Elsa");
+    const paperExamId = await tirageGenere(evaluationId, classId);
+    const { saveManualEntry } = await import("../../paper/manual-entry");
+
+    // Appelée hors de la route — par un script de reprise, par exemple — la
+    // fonction n'a pas d'acteur distinct : c'est le compte qui saisit.
+    const saisie = await saveManualEntry({
+      paperExamId,
+      studentId,
+      studentName: "Elsa Girard",
+      answers: [],
+      openMarks: [{ questionId: redigee, score: 5 }],
+      enteredById: prof.id,
+    });
+
+    const [journal] = await db
+      .select()
+      .from(gradeAudit)
+      .where(eq(gradeAudit.sessionId, saisie.sessionId));
+    expect(journal).toMatchObject({ actorId: prof.id, actorEmail: null });
+  });
+
   it("refuse une saisie sur un tirage inconnu", async () => {
     const { evaluationId } = await evaluationMixte();
     const { classId, studentId } = await classeAvecEleve("Klein", "Théo");
@@ -372,6 +396,24 @@ describe("données personnelles", () => {
     // pouvoir les connaître.
     expect(dossier.sessionsEnLigne.methodeDeRapprochement).toMatch(/homonymes/);
     expect(dossier.reponses.length).toBeGreaterThan(0);
+  });
+
+  it("dit qu'une copie existe même si elle n'a jamais été saisie", async () => {
+    const { evaluationId } = await evaluationMixte();
+    const { classId, studentId } = await classeAvecEleve("Attente", "Noé");
+    await tirageGenere(evaluationId, classId);
+
+    const dossier = await appelEnseignant(prof).paper.exportStudentData({ studentId });
+
+    // Une copie imprimée mais pas encore corrigée fait partie de ce que
+    // l'établissement détient : elle apparaît, sans note.
+    expect(dossier.copiesPapier).toHaveLength(1);
+    expect(dossier.copiesPapier[0]).toMatchObject({
+      numeroDeCopie: 1,
+      saisieLe: null,
+      note20: null,
+      points: null,
+    });
   });
 
   it("rend un dossier vide pour un élève qui n'a rien passé", async () => {

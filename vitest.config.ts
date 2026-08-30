@@ -25,32 +25,70 @@ export default defineConfig({
     // (Vitest 4 : `poolOptions.forks.singleFork` a été remplacé par cette
     // option de premier niveau, qui exécute les fichiers l'un après l'autre.)
     fileParallelism: false,
+    /*
+      Les tests d'intégration parlent à une vraie base : ouvrir une copie, la
+      remettre, la corriger et relire le tout demande plusieurs dizaines
+      d'allers-retours. Cinq secondes — le défaut, pensé pour des tests
+      unitaires — sont trop justes dès que la machine exécute la suite entière.
+      Vingt secondes laissent la place à ce travail réel sans rien masquer :
+      un test réellement bloqué échoue toujours, un peu plus tard.
+    */
+    testTimeout: 20_000,
     /**
-     * Seuils de couverture — critère 12 de PLAN.md.
+     * Seuils de couverture.
      *
-     * Le texte dit « ≥ 80 % global, 100 % sur api/grading ». Il ne nomme pas
-     * de métrique : on retient la lecture la plus stricte, c'est-à-dire les
-     * quatre. Aucune exclusion n'est posée pour arranger le chiffre ; le code
-     * qui n'était atteignable par rien a été supprimé plutôt que contourné.
+     * Deux exigences, toutes deux sur les quatre métriques — instructions,
+     * branches, fonctions, lignes : 95 % sur l'ensemble du serveur et des
+     * contrats, 100 % sur les domaines où une erreur ne se rattrape pas.
+     *
+     * Aucune exclusion n'est posée pour arranger un chiffre, et aucune
+     * directive d'ignorance n'existe dans le code : ce qui n'était atteignable
+     * par rien a été supprimé plutôt que contourné. Les quelques gardes qui
+     * restent inatteignables sont énumérées, une par une, dans
+     * PRODUCTION_READINESS.md.
      */
     coverage: {
       provider: "v8",
       all: true,
       include: ["api/**/*.ts", "contracts/**/*.ts", "db/*.ts"],
       exclude: ["**/__tests__/**", "**/*.spec.ts", "**/*.test.ts"],
-      thresholds: {
-        lines: 80,
-        statements: 80,
-        functions: 80,
-        branches: 80,
-        // Le moteur de correction décide des notes : rien n'y reste inexploré.
-        "api/grading/**/*.ts": {
-          lines: 100,
-          statements: 100,
-          functions: 100,
-          branches: 100,
-        },
-      },
+      thresholds: (() => {
+        const complet = { lines: 100, statements: 100, functions: 100, branches: 100 };
+        return {
+          lines: 95,
+          statements: 95,
+          functions: 95,
+          branches: 95,
+
+          /* Le moteur de correction décide des notes. */
+          "api/grading/**/*.ts": complet,
+
+          /* La surveillance et la remise automatique décident d'une copie. */
+          "api/anticheat/**/*.ts": complet,
+
+          /* L'authentification et la session enseignant décident de qui entre. */
+          "api/kimi/**/*.ts": complet,
+
+          /* La propriété : ce qui empêche un enseignant d'atteindre les copies
+             d'un collègue. */
+          "api/queries/ownership.ts": complet,
+          "api/queries/session-access.ts": complet,
+          "api/queries/connection.ts": complet,
+
+          /* Les gardes de sécurité posées sur chaque requête. */
+          "api/lib/csrf.ts": complet,
+          "api/lib/security-headers.ts": complet,
+          "api/lib/cookies.ts": complet,
+          "api/lib/base-url.ts": complet,
+          "api/lib/rate-limit.ts": complet,
+
+          /* La chaîne papier : ce qui est imprimé, et ce qui est saisi. */
+          "api/paper/paper-service.ts": complet,
+          "api/paper/manual-entry.ts": complet,
+          "api/paper/amc-runner.ts": complet,
+          "api/paper/parse-roster.ts": complet,
+        };
+      })(),
     },
   },
 });

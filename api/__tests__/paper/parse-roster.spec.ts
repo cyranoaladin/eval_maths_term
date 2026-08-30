@@ -46,6 +46,35 @@ describe("autres formats", () => {
     ]);
   });
 
+  it("accepte une liste collée depuis un tableur, séparée par des tabulations", () => {
+    // Un enseignant qui copie sa liste depuis Excel obtient des tabulations,
+    // pas des points-virgules.
+    const r = parseRoster("nom\tprenom\tclasse\nBenkhelifa\tAïcha\tT.01\nZidane\tYasmine\tT.01");
+
+    expect(r.separator).toBe("\t");
+    expect(r.students).toEqual([
+      { lastName: "Benkhelifa", firstName: "Aïcha", email: undefined },
+      { lastName: "Zidane", firstName: "Yasmine", email: undefined },
+    ]);
+  });
+
+  it("rend son guillemet à un nom qui en contient", () => {
+    // La convention CSV double le guillemet à l'intérieur d'un champ cité.
+    const r = parseRoster('nom;prenom\n"D""Angelo";"Marie"\n');
+
+    expect(r.students).toHaveLength(1);
+    expect(r.students[0].lastName).toBe('D"Angelo');
+  });
+
+  it("ne bute pas sur une ligne plus courte que ses en-têtes", () => {
+    // Une ligne tronquée par un export partiel : la colonne du nom n'existe
+    // pas sur cette ligne-là. Elle est signalée, pas devinée.
+    const r = parseRoster("classe;nom;prenom\nT.01\nT.01;Nour;Sami\n");
+
+    expect(r.students).toEqual([{ lastName: "Nour", firstName: "Sami", email: undefined }]);
+    expect(r.skipped).toEqual([{ line: 2, reason: "Nom vide" }]);
+  });
+
   it("accepte des colonnes nom et prénom séparées", () => {
     const r = parseRoster("nom;prénom\nBEN ALI;Youcef");
     expect(r.students[0]).toMatchObject({ lastName: "BEN ALI", firstName: "Youcef" });

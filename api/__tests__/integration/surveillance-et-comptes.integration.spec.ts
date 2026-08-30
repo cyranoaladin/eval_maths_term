@@ -12,7 +12,7 @@ import {
   appelAnonyme, appelEleve, appelEnseignant, creerEnseignant, creerEvaluation,
   db, nettoyer, ouvrirSession, unique,
 } from "./harnais";
-import { answerDrafts, cheatEvents, sessions, users } from "@db/schema";
+import { answerDrafts, cheatEvents, evaluations, questions, sessions, users } from "@db/schema";
 import type { User } from "@db/schema";
 
 let prof: User;
@@ -206,6 +206,19 @@ describe("tableau de surveillance", () => {
     ).rejects.toThrow(/déjà terminée/);
   });
 
+  it("montre le score de suspicion d'une copie déjà corrigée", async () => {
+    const { sessionId } = await ouvrirSession(evaluationId, "Élève corrigé");
+    await appelEnseignant(prof).teacherLive.forceSubmit({ sessionId });
+
+    const vue = await appelEnseignant(prof).teacherLive.snapshot({ evaluationId });
+
+    const ligne = vue.sessions.find((s) => s.sessionId === sessionId)!;
+    // Le verdict vient de la base, pas d'un défaut d'affichage : une copie
+    // corrigée porte le sien.
+    expect(ligne.suspicionVerdict).toMatch(/clean|minor|moderate|severe/);
+    expect(ligne.suspicionScore).toBeGreaterThanOrEqual(0);
+  });
+
   it("refuse de forcer une copie qui n'existe pas", async () => {
     await expect(
       appelEnseignant(prof).teacherLive.forceSubmit({ sessionId: 999_999_999 }),
@@ -225,6 +238,52 @@ describe("ce que l'élève reçoit", () => {
     await expect(
       appelAnonyme().question.getPublicInfo({ evaluationId: 999_999_999 }),
     ).resolves.toBeNull();
+  });
+
+  it("décrit une évaluation sans description sans inventer de texte", async () => {
+    const [ev] = await db.insert(evaluations).values({
+      title: unique("Sans description"),
+      duration: 20,
+      isActive: true,
+      ownerId: prof.id,
+    });
+    const sansDescription = Number(ev.insertId);
+    evaluationsCreees.push(sansDescription);
+
+    const info = await appelAnonyme().question.getPublicInfo({ evaluationId: sansDescription });
+
+    expect(info).toMatchObject({ description: null, questionCount: 0, maxScore: 0 });
+  });
+
+  it("lit des propositions déjà décodées comme celles rangées en texte", async () => {
+    // Selon la version et le pilote, MySQL rend le JSON décodé ou en chaîne.
+    // L'élève doit voir les mêmes propositions dans les deux cas.
+    const [ev] = await db.insert(evaluations).values({
+      title: unique("Propositions décodées"),
+      duration: 20,
+      isActive: true,
+      ownerId: prof.id,
+    });
+    const evId = Number(ev.insertId);
+    evaluationsCreees.push(evId);
+    await db.insert(questions).values({
+      evaluationId: evId,
+      type: "qcm",
+      question: "Combien font deux et deux ?",
+      options: ["$3$", "$4$", "$5$", "$6$"] as never,
+      correctAnswer: "1",
+      points: 2,
+      order: 1,
+      justificationRequired: null as never,
+      gradingRubric: { mode: { kind: "qcm", correctIndex: 1 }, llmReviewRequired: false, weight: 2 },
+    } as never);
+    const { jeton } = await ouvrirSession(evId, "Élève décodage");
+
+    const qs = await appelEleve(jeton).question.getForActiveSession();
+
+    expect(qs[0].options).toHaveLength(4);
+    // Une colonne laissée vide n'est pas une exigence de justification.
+    expect(qs[0].justificationRequired).toBe(false);
   });
 
   it("mélange les questions et les propositions, sans les bonnes réponses", async () => {
