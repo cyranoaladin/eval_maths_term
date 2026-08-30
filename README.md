@@ -23,7 +23,7 @@ corrigés par le même moteur.
 Branche : `main`, taguée `v1.0.0-rc1`.
 
 **État.** Phases 1 à 5 terminées. `npm run check`, `npm run lint`,
-**868 tests**, `npm run test:coverage` et `npm run build` sont verts, ainsi que
+**876 tests**, `npm run test:coverage` et `npm run build` sont verts, ainsi que
 **39 scénarios navigateur** sur Chromium, Firefox et WebKit contre le build de
 production. **Les 23 critères de mise en service sont satisfaits.**
 
@@ -208,13 +208,13 @@ La génération **retourne des propositions**. L'enregistrement repasse par
 | Authentification | OAuth Kimi, session JWT (`jose`) |
 | Modèle de langage | API compatible OpenAI — OpenRouter par défaut |
 | Impression | `auto-multiple-choice` 1.6.0 piloté en ligne de commande |
-| Tests | Vitest (868 tests, dont un socle d'intégration sur base réelle), Playwright (39 scénarios, trois moteurs), neuf recettes de bout en bout, k6 |
+| Tests | Vitest (876 tests, dont un socle d'intégration sur base réelle), Playwright (39 scénarios, trois moteurs), neuf recettes de bout en bout, k6 |
 
 ### 5.2 Arborescence
 
 ```
 api/
-  boot.ts                 application Hono : CORS, OAuth, /api/health, tRPC,
+  boot.ts                 application Hono : CORS, OAuth, santé, tRPC,
                           téléchargement des documents de tirage
   router.ts               assemblage des 9 sous-routeurs
   middleware.ts           publicQuery / studentQuery / teacherQuery / adminQuery
@@ -472,9 +472,22 @@ et nom de fichier pris dans une **liste fermée** — `sujet.pdf`, `corrige.pdf`
 `catalog.pdf`, plus `resultats.pdf` et `resultats.csv` produits à la demande.
 Aucun segment de chemin ne vient de l'URL.
 
-`GET /api/health` — état, uptime, heure serveur, **version et empreinte Git**
-du binaire qui répond. Utilisé par le healthcheck du conteneur, et par
-quiconque doit rattacher une anomalie à un commit précis.
+`GET /api/health` — **vivacité**. Le processus répond-il ? Ne dépend de rien
+d'extérieur : une base momentanément injoignable ne justifie pas de tuer un
+serveur qui, lui, fonctionne. Rend aussi la version et l'empreinte Git du
+binaire, pour rattacher une anomalie à un commit précis.
+
+`GET /api/ready` — **disponibilité**. Le service peut-il prendre du trafic ?
+Éprouve la base, le schéma et son journal de migrations, le pool, le dossier des
+tirages, l'espace disque et la présence d'`auto-multiple-choice`. Répond `503`
+si l'un de ces contrôles est hors service, ou dès qu'un arrêt est demandé — ce
+qui permet à un répartiteur de cesser d'envoyer des élèves avant la fermeture.
+L'absence d'AMC dégrade sans rendre indisponible : une évaluation en ligne
+fonctionne sans impression. Aucune réponse ne contient d'adresse de base,
+d'identifiant ni de chemin absolu.
+
+C'est `/api/ready` que le conteneur interroge : un conteneur qui répond mais
+dont la base est injoignable ne doit pas être déclaré sain.
 
 ---
 
@@ -674,7 +687,7 @@ npm run check   # tsc -b
 npm run lint    # eslint (0 erreur, 3 avertissements react-hooks connus)
 # Les tests d'intégration parlent à une vraie base. `scripts/bootstrap-dev.sh`
 # a écrit TEST_DATABASE_URL dans `.env` ; la base est créée si elle manque.
-npm test        # 868 tests, 67 fichiers
+npm test        # 876 tests, 68 fichiers
 npm run build   # vite + esbuild
 ```
 

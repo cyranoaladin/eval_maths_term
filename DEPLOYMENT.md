@@ -227,7 +227,7 @@ Les migrations sont additives et rejouables. Sauvegardez avant, malgré tout.
 ## Vérification
 
 ```bash
-curl -s https://qcm.exemple.fr/api/health
+curl -s https://qcm.exemple.fr/api/ready
 ```
 
 Trois scripts rejouent les parcours complets contre une instance démarrée —

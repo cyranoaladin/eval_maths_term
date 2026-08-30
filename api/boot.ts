@@ -46,8 +46,14 @@ app.use("/api/*", cors({
 app.get("/api/oauth/login", createOAuthInitHandler());
 app.get(Paths.oauthCallback, createOAuthCallbackHandler());
 
-// Contrôle de santé — dit aussi ce qui tourne, pour qu'un incident puisse être
-// rattaché à une version et à un commit précis.
+/**
+ * Vivacité : le processus répond-il ?
+ *
+ * Ne dépend de rien d'extérieur, volontairement. Une base momentanément
+ * injoignable ne justifie pas de tuer un serveur qui, lui, fonctionne — et un
+ * orchestrateur qui redémarre en boucle sur une panne de base transforme une
+ * indisponibilité en incident.
+ */
 app.get("/api/health", async (c) => {
   return c.json({
     status: "ok",
@@ -56,6 +62,30 @@ app.get("/api/health", async (c) => {
     version: VERSION_APPLICATION,
     gitSha: EMPREINTE_GIT,
   });
+});
+
+/**
+ * Disponibilité : le service peut-il prendre du trafic ?
+ *
+ * Base, schéma, pool, dossier des tirages, disque, outil d'impression. Un
+ * `503` retire l'instance de la rotation sans la tuer. Pendant un arrêt en
+ * cours, la réponse est `503` dès la première sollicitation : c'est ce qui
+ * permet au répartiteur de cesser d'envoyer des élèves avant que le serveur ne
+ * ferme.
+ */
+app.get("/api/ready", async (c) => {
+  const { evaluerDisponibilite } = await import("./lib/readiness");
+  const { arretDemande } = await import("./lib/arret-gracieux");
+
+  if (arretDemande()) {
+    return c.json(
+      { pret: false, raison: "arrêt en cours", version: VERSION_APPLICATION },
+      503,
+    );
+  }
+
+  const bilan = await evaluerDisponibilite();
+  return c.json(bilan, bilan.pret ? 200 : 503);
 });
 
 // tRPC — avec vérification CSRF sur les mutations
@@ -188,11 +218,16 @@ if (env.isProduction) {
   serveStaticFiles(app);
 
   const port = env.port;
-  serve({ fetch: app.fetch, port }, () => {
+  const serveur = serve({ fetch: app.fetch, port }, () => {
     logger.info("Serveur démarré", {
       port,
       version: VERSION_APPLICATION,
       gitSha: EMPREINTE_GIT,
     });
   });
+
+  // Un redéploiement ou un arrêt de machine ne doit pas couper une remise de
+  // copie en deux.
+  const { installerArretGracieux } = await import("./lib/arret-gracieux");
+  installerArretGracieux(serveur);
 }

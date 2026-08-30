@@ -58,7 +58,15 @@ ENV PAPER_OUTPUT_DIR=/data/paper-exams
 USER evalapp
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+# Le contrôle interroge la disponibilité, pas la vivacité : un conteneur qui
+# répond mais dont la base est injoignable ne doit pas être déclaré sain. Le
+# délai de grâce couvre le démarrage ; au-delà, l'écart se voit.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+# Un `docker stop` envoie SIGTERM puis attend : le serveur cesse d'accepter,
+# laisse finir les remises en cours et rend ses connexions. Sans ce délai,
+# Docker tue au bout de dix secondes.
+STOPSIGNAL SIGTERM
 
 CMD ["node", "dist/boot.js"]

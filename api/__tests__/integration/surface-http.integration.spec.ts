@@ -265,3 +265,57 @@ describe("en-têtes de sécurité", () => {
     expect(r.headers.get("x-content-type-options")).toBe("nosniff");
   });
 });
+
+describe("vivacité et disponibilité", () => {
+  /*
+    `/api/health` répondait « ok » quoi qu'il arrive, y compris avec une base
+    tombée : un déploiement pouvait être déclaré sain et servir des erreurs.
+    Les deux questions sont désormais distinctes — le processus est-il vivant,
+    et le service peut-il prendre du trafic.
+  */
+  it("la vivacité ne dépend de rien d'extérieur", async () => {
+    const r = await requete("/api/health");
+    expect(r.status).toBe(200);
+    const corps = (await r.json()) as { status: string; version: string; gitSha: string };
+    expect(corps.status).toBe("ok");
+    expect(corps.version).toBeTruthy();
+    expect(corps.gitSha).toBeTruthy();
+  });
+
+  it("la disponibilité éprouve réellement la base, le schéma et le disque", async () => {
+    const r = await requete("/api/ready");
+    const bilan = (await r.json()) as {
+      pret: boolean;
+      version: string;
+      controles: Array<{ nom: string; etat: string; detail: string; dureeMs: number }>;
+    };
+
+    const noms = bilan.controles.map((c) => c.nom).sort();
+    expect(noms).toEqual(["base", "disque", "impression", "pool", "schema", "tirages"]);
+    expect(bilan.controles.every((c) => typeof c.dureeMs === "number")).toBe(true);
+
+    // La base d'intégration est migrée : ces deux-là doivent passer.
+    expect(bilan.controles.find((c) => c.nom === "base")?.etat).toBe("ok");
+    expect(bilan.controles.find((c) => c.nom === "schema")?.etat).toBe("ok");
+  });
+
+  it("l'absence d'impression dégrade sans rendre indisponible", async () => {
+    // Une évaluation en ligne fonctionne sans AMC, et l'interface le signale
+    // au lieu d'échouer : ce n'est pas une panne.
+    const r = await requete("/api/ready");
+    const bilan = (await r.json()) as {
+      pret: boolean;
+      controles: Array<{ nom: string; etat: string }>;
+    };
+    const impression = bilan.controles.find((c) => c.nom === "impression")!;
+    expect(["ok", "degrade"]).toContain(impression.etat);
+    if (impression.etat === "degrade") expect(bilan.pret).toBe(true);
+  });
+
+  it("ne divulgue ni adresse de base, ni identifiant, ni chemin absolu", async () => {
+    const texte = await (await requete("/api/ready")).text();
+    expect(texte).not.toMatch(/mysql:\/\//);
+    expect(texte).not.toMatch(/password/i);
+    expect(texte).not.toMatch(/\/home\/|\/var\/lib\//);
+  });
+});

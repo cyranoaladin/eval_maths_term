@@ -138,8 +138,8 @@ Huit procédures ne sont appelées par aucun écran :
 | P13 | Chaîne d'approvisionnement — 0 vulnérabilité HIGH/CRITICAL, SBOM | IN_PROGRESS | `npm audit` : 0 vulnérabilité, production et développement. SBOM et scan d'image restants |
 | P14 | Build reproductible, images épinglées par empreinte | IN_PROGRESS | — |
 | P15 | Une seule image canonique de production, avec impression | IN_PROGRESS | — |
-| P16 | Vivacité et disponibilité distinctes et réelles | IN_PROGRESS | `/api/health` expose version et empreinte ; la distinction reste à faire |
-| P17 | Arrêt gracieux | IN_PROGRESS | — |
+| P16 | Vivacité et disponibilité distinctes et réelles | **PASS** | `/api/health` et `/api/ready` ; 4 vérifications HTTP dans `surface-http.integration.spec.ts` ; le conteneur interroge la disponibilité |
+| P17 | Arrêt gracieux | **PASS** | `scripts/smoke-arret-gracieux.ts` : SIGTERM pendant une remise en vol, copie entière, sortie 0 ; 4 tests unitaires sur l'ordre |
 | P18 | Contre-pression, remise idempotente | IN_PROGRESS | — |
 | P19 | Observabilité — 0 `console.*`, supervision d'erreurs | IN_PROGRESS | `journalisation.spec.ts` : 0 appel direct. Supervision non branchée |
 | P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | IN_PROGRESS | identifiants éphémères faits ; matrice de jobs à faire |
@@ -158,7 +158,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 11 / 34. IN_PROGRESS : 21. BLOCKED_EXTERNAL : 2.**
+**PASS : 13 / 34. IN_PROGRESS : 19. BLOCKED_EXTERNAL : 2.**
 
 ---
 

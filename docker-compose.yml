@@ -51,6 +51,10 @@ services:
       - paper_exams:/data/paper-exams
     ports:
       - "127.0.0.1:3000:3000"
+    # Le temps qu'une remise de copie en cours aille à son terme avant que
+    # Docker ne tue le conteneur. La séquence d'arrêt s'en tient à vingt
+    # secondes ; on lui laisse dix de marge.
+    stop_grace_period: 30s
 
 volumes:
   mysql_data:

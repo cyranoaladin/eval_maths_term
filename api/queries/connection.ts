@@ -95,6 +95,22 @@ export function getPool(): mysql.Pool {
   return pool;
 }
 
+/**
+ * Ferme le pool.
+ *
+ * Appelé à l'arrêt : sans cela, les connexions sont coupées par la fin du
+ * processus plutôt que rendues, et MySQL les garde ouvertes le temps de son
+ * propre délai d'expiration. Sur un redémarrage rapide, le nouveau processus
+ * trouve alors moins de connexions disponibles qu'il n'en demande.
+ */
+export async function fermerPool(): Promise<void> {
+  if (!pool) return;
+  const aFermer = pool;
+  pool = undefined;
+  instance = undefined as unknown as typeof instance;
+  await aFermer.end();
+}
+
 export function getDb() {
   if (!instance) {
     // Le pilote expose deux visages du même pool — l'un à promesses, l'autre à
