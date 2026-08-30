@@ -125,20 +125,40 @@ jobs:
       #
       # `retries` reste à zéro : une instabilité masquée par une reprise est une
       # instabilité qu'on retrouvera un jour d'épreuve.
+      # Un fichier à la fois, dans un navigateur neuf.
+      #
+      # Gecko se fermait vers la vingtième page — « Target page, context or
+      # browser has been closed » — et les tests suivants échouaient sur un
+      # navigateur mort. Les pages de cette application chargent KaTeX et
+      # MathLive ; enchaînées dans un seul navigateur, elles dépassent ce dont
+      # dispose un runner. Une exécution par fichier borne la mémoire sans rien
+      # retirer au gate.
       - name: Chromium
         env:
           E2E_BASE_URL: http://127.0.0.1:3200
-        run: npx playwright test --project=chromium --retries=0
+        run: |
+          for fichier in e2e/*.spec.ts; do
+            echo "── $fichier"
+            npx playwright test --project=chromium --retries=0 "$fichier"
+          done
 
       - name: Firefox
         env:
           E2E_BASE_URL: http://127.0.0.1:3200
-        run: npx playwright test --project=firefox --retries=0
+        run: |
+          for fichier in e2e/*.spec.ts; do
+            echo "── $fichier"
+            npx playwright test --project=firefox --retries=0 "$fichier"
+          done
 
       - name: WebKit
         env:
           E2E_BASE_URL: http://127.0.0.1:3200
-        run: npx playwright test --project=webkit --retries=0
+        run: |
+          for fichier in e2e/*.spec.ts; do
+            echo "── $fichier"
+            npx playwright test --project=webkit --retries=0 "$fichier"
+          done
 
       - uses: actions/upload-artifact@v7
         if: failure()
