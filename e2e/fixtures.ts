@@ -256,56 +256,22 @@ export async function formulesAffichees(page: Page): Promise<string[]> {
   return trouvees;
 }
 
-/** Au-delà, la navigation ne partira plus : on la rejoue plutôt que d'attendre. */
-const DELAI_NAVIGATION_MS = 25_000;
-let navigationsRejouees = 0;
-
 /**
  * Ouvre une page de l'application.
  *
- * On n'attend ni `load` ni même le document analysé, mais la réponse.
+ * On n'attend ni `load` ni le document analysé, mais la réponse.
  *
  * L'application est une page unique : `load` n'arrive qu'une fois tous les
  * morceaux chargés à la demande, les polices mathématiques comprises, et sous
  * Gecko il lui arrive de ne jamais arriver. `domcontentloaded` a tenu plus
- * longtemps, puis a lâché à son tour : la navigation qui suit une page ayant
- * rendu des formules attend des polices que Gecko compte encore comme faisant
- * partie du document, et expire au bout de quatre-vingt-dix secondes.
+ * longtemps, puis a lâché à son tour. `commit` ne dépend que du serveur : la
+ * réponse a commencé à arriver. Tout le reste — le document, l'application,
+ * l'écran —, chaque test l'affirme juste après, et c'est bien ce qu'il attend
+ * vraiment.
  *
- * `commit` est la seule condition qui ne dépende que du serveur : la réponse a
- * commencé à arriver. Tout le reste — le document, l'application, l'écran —,
- * chaque test l'affirme juste après, et c'est bien ce qu'il attend vraiment.
+ * Aucune reprise. Une navigation qui n'est pas partie fait échouer le scénario
+ * et produit ses diagnostics : c'est le seul moyen d'en trouver la cause.
  */
 export async function ouvrir(page: Page, chemin: string): Promise<void> {
-  try {
-    await page.goto(chemin, { waitUntil: "commit", timeout: DELAI_NAVIGATION_MS });
-    return;
-  } catch (e) {
-    if (!(e instanceof Error) || !/Timeout/i.test(e.message)) throw e;
-  }
-
-  /*
-    La requête n'a jamais été émise. Une seule fois, et à voix haute.
-
-    Sous Gecko, une navigation sur cent environ reste en attente sans que la
-    requête parte : le journal d'accès du serveur le prouve — il ne voit rien
-    arriver, et cinq minutes d'attente n'y changent rien. Ce n'est ni la
-    mémoire, ni la réutilisation des connexions, ni un navigateur usé : un
-    navigateur fraîchement lancé le fait aussi. Le produit n'est pas en cause ;
-    l'outil, si.
-
-    On rejoue donc la navigation, une fois, et **on le dit** : chaque reprise
-    est comptée et imprimée. Ce n'est pas une reprise de test — une assertion
-    qui échoue échoue toujours — et le chiffre ne se cache pas.
-  */
-  navigationsRejouees += 1;
-  process.stdout.write(
-    `[navigation rejouée ${navigationsRejouees}] ${chemin} — la requête n'était pas partie\n`,
-  );
-  await page.goto(chemin, { waitUntil: "commit", timeout: DELAI_NAVIGATION_MS });
-}
-
-/** Nombre de navigations qu'il a fallu rejouer, pour cette exécution. */
-export function compteurDeNavigationsRejouees(): number {
-  return navigationsRejouees;
+  await page.goto(chemin, { waitUntil: "commit" });
 }
