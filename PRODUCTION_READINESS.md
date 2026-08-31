@@ -153,7 +153,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P10 | OAuth durci — `PUBLIC_BASE_URL`, cookie `Secure`, validation du jeton | **PASS** | `api/__tests__/security/oauth-durcissement.spec.ts` — 18 cas |
 | P11 | En-têtes de sécurité HTTP, CSP sans `unsafe-eval` | **PASS** | `surface-http.integration.spec.ts` sur du vrai HTTP + 39 parcours sur le build de production, trois moteurs |
 | P12 | Analyse de secrets dans notre CI | **PASS** | job `Sécurité` : gitleaks sur tout l'historique, `--exit-code 1` ; 6 empreintes historiques exactes dans `.gitleaksignore`, aucune règle désactivée, aucun chemin exclu, aucune wildcard |
-| P13 | Chaîne d'approvisionnement — 0 vulnérabilité HIGH/CRITICAL, SBOM | **FAIL** | le gate d'image n'exige que 0 vulnérabilité **corrigeable** : `scripts/scan-image.sh` écarte celles sans correctif amont. Le contrat exige 0 HIGH et 0 CRITICAL, sans exception — voir §17 |
+| P13 | Chaîne d'approvisionnement — 0 vulnérabilité HIGH/CRITICAL, SBOM | **FAIL** | le runtime a été réduit par la mesure : 443 → 179 paquets, 3 307 → 988 Mo, 32 → 14 CRITICAL, 139 → 48 HIGH. Il reste 26 CVE distinctes, toutes sans correctif amont, dont 13 déjà présentes dans l'image *sans impression* (`perl-base` est `Essential`). Analyse par CVE dans `docs/VEX-CANDIDATES.md` ; le seuil n'a pas été touché — voir §17 |
 | P14 | Build reproductible, images épinglées par empreinte | **FAIL** | l'image de base est épinglée par empreinte, mais **dix actions GitHub sont épinglées par tag mutable** (`@v7`, `@v4`), de même que les images MySQL, Playwright, gitleaks et trivy du gate — voir §17 |
 | P15 | Une seule image canonique de production, avec impression | **PASS** | un seul `Dockerfile`, étage `production` avec AMC ; compose, recette et CI construisent le même artefact ; recette **28/28**, dont l'annonce de version par l'image |
 | P16 | Vivacité et disponibilité distinctes et réelles | **PASS** | `/api/health` et `/api/ready` ; 4 vérifications HTTP dans `surface-http.integration.spec.ts` ; le conteneur interroge la disponibilité |
@@ -161,7 +161,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P18 | Contre-pression, remise idempotente | **PASS** | `remise-concurrente.integration.spec.ts` : une remise rejouée rend mot pour mot la même réponse ; audit des files en §5 |
 | P19 | Observabilité — 0 `console.*`, supervision d'erreurs | **PASS** | `journalisation.spec.ts` : 0 appel direct ; supervision branchée sur `logger.error`, 9 tests de nettoyage, `scripts/verifier-supervision.ts` |
 | P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | IN_PROGRESS | aucun `continue-on-error`, cinq travaux requis ; mais le gate demande **trois exécutions vertes consécutives** sur le HEAD candidat, et une seule est acquise |
-| P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | **FAIL** | `retries = 0`, mais la dernière exécution CI a imprimé **une reprise de navigation** : `E2E_FLAKY_RETRY_REQUIRED` n'est pas satisfait. La reprise a été retirée du code ; la cause reste à trouver — voir §16 |
+| P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | **FAIL** | la reprise de navigation est retirée du code (`CUSTOM_NAVIGATION_RETRY = 0`, `PLAYWRIGHT_RETRIES = 0`) et la cause est trouvée : un défaut du pilote Firefox de Playwright face à l'échange de groupe de contextes que provoque COOP. Preuve indépendante faite — Firefox de série piloté par Marionette, 400 navigations, 0 blocage. Reste le seul élément manquant : **trois exécutions CI vertes consécutives**, sans code entre elles et sans relance manuelle — voir §16 |
 | P22 | Couverture : 100 % sur les domaines critiques, ≥ 95 % global serveur | **PASS** | 98,4 % / 96,4 % / 97,5 % / 98,6 % ; seuils posés dans `vitest.config.ts` — voir §9 |
 | P23 | Accessibilité — 0 violation critique ou sérieuse | **PASS** | `e2e/accessibilite.spec.ts` : axe sur 10 écrans, 3 moteurs, plus deux parcours au clavier seul — voir §7 |
 | P24 | Régression visuelle sur les écrans critiques | **PASS** | sept écrans, références produites dans l'image Docker de Playwright, comparées par la CI — voir §13 |
@@ -831,9 +831,56 @@ E2E_SKIP = 0
 Reste à confirmer sur la CI, où le gate exige trois exécutions vertes
 consécutives sans intervention.
 
-Le seul fait établi est que le serveur ne voit jamais la requête — son journal
-d'accès, au niveau `debug`, le montre. Cela dit où la requête n'est pas ; cela
-ne dit pas pourquoi.
+### La contrepartie : Firefox de série, COOP appliquée
+
+Désactiver l'application de COOP dans le navigateur de test creuse un trou dans
+la couverture. Ce trou est comblé par une preuve indépendante, exigée comme
+portail à part entière : **si elle échoue, P21 reste `FAIL`**, quelle que soit
+la couleur des parcours Playwright.
+
+`scripts/smoke-firefox-coop.mjs` pilote un Firefox **de série** — celui du
+système, ou le Firefox ESR de Debian en CI, jamais la variante corrigée
+qu'embarque Playwright — par **Marionette**, le protocole d'automatisation de
+Gecko lui-même, en TCP, sans geckodriver, sans WebDriver et sans une ligne de
+Playwright. Il commence par vérifier que
+`Cross-Origin-Opener-Policy: same-origin` est réellement présent sur chacune des
+routes visitées : sans cela il refuse de tourner, car il ne prouverait rien.
+
+Il distingue deux échecs, et la distinction est le cœur du sujet : une
+navigation qui rend une erreur (la chaîne fonctionne), et une navigation qui ne
+rend jamais la main (le défaut traqué).
+
+| Passage | Navigateur | Navigations | `…NAVIGATION_FAIL` | `…HANG` | Médiane |
+|---|---|---|---|---|---|
+| 1 | Firefox 154.0.1 (système) | 100 | 0 | 0 | 85 ms |
+| 2 | Firefox 154.0.1 (système) | 100 | 0 | 0 | 84 ms |
+| 3 | Firefox 154.0.1 (système) | 100 | 0 | 0 | 83 ms |
+| 4 | Firefox ESR 140.14.0 (conteneur CI) | 100 | 0 | 0 | 97 ms |
+
+```
+FIREFOX_NATIVE_COOP_NAVIGATION_FAIL = 0
+FIREFOX_NATIVE_COOP_HANG = 0
+```
+
+Quatre cents navigations cumulées, deux versions de Gecko, COOP bel et bien
+appliquée, aucun blocage. **Le défaut est dans le pilote de Playwright, pas
+dans Gecko** — et l'application, elle, se comporte normalement sous l'en-tête
+qu'elle envoie en production.
+
+Le portail est câblé dans la CI (« Firefox de série, COOP appliquée »), sans
+`continue-on-error`, et l'image de test est décrite par
+`docker/firefox-natif.Dockerfile`.
+
+### Et pour que la dérogation ne s'étende pas
+
+`api/lib/__tests__/coop-inconditionnelle.spec.ts` échoue si :
+
+- l'en-tête cesse d'être posé dans l'une des quatre configurations réelles
+  (production ou non, adresse sécurisée ou non) ;
+- la préférence Gecko apparaît ailleurs que dans `e2e/fixtures.ts` — la
+  documentation exceptée, qui a le droit d'en parler ;
+- le commentaire qui l'accompagne cesse de dire qu'elle ne vaut que pour le
+  navigateur de test.
 
 ---
 
@@ -889,20 +936,70 @@ apportées par la chaîne de dépendances d'`auto-multiple-choice` :
 | glib, gir | 14 | tiré par la chaîne AMC |
 | GDCM, libraw, autres | reste | formats d'image exotiques (DICOM, RAW) |
 
-**C'est un blocage réel, pas une formalité.** Les issues, dans l'ordre où elles
-doivent être examinées :
+**C'est un blocage réel, pas une formalité.**
 
-1. **Retirer ce qui n'est pas nécessaire.** L'image de production ne fait que
-   *produire* des sujets — `prepare`, `meptex` — et jamais *analyser* des copies
-   scannées : la saisie se fait à la main dans l'interface. ImageMagick,
-   OpenEXR, GDCM et libraw servent à l'analyse. S'ils peuvent être écartés
-   — installation sans recommandations, ou retrait après installation — la
-   majorité des 171 disparaît avec eux. À valider par la recette : les vingt-huit
-   vérifications doivent continuer de passer, génération AMC réelle comprise.
-2. **Changer de base** si la distribution de base porte encore des CVE
-   critiques après ce retrait.
-3. **Rester bloqué** si aucune de ces voies n'aboutit. Une CVE connue ne devient
-   pas un `PASS` documentaire.
+#### Ce qui a été fait : réduire le runtime par la mesure
+
+La première issue — retirer ce qui ne sert pas — a été instruite, et elle a
+donné beaucoup. L'analyse complète est dans
+[docs/AMC-RUNTIME.md](docs/AMC-RUNTIME.md) ; en bref :
+
+Une composition réelle a été tracée sur trois plans — les programmes exécutés
+(`execve`), les modules Perl chargés (`%INC`), les bibliothèques natives
+chargées (`LD_DEBUG=libs`). `auto-multiple-choice prepare --mode s` n'exécute
+que `perl`, `pdflatex`, les outils `kpse*` et la génération de polices ; il ne
+charge **aucun** module GTK, GraphicsMagick ou OpenCV, et **aucune** des
+bibliothèques `libgio`, `libxml2`, `libexpat`, `libncurses`, `libpython3`.
+Les deux seuls binaires compilés d'AMC, `AMC-detect` et `AMC-buildpdf`, sont
+ceux de la lecture optique et de l'annotation ; ce sont eux qui font entrer
+OpenCV.
+
+L'image de production installe désormais les seules dépendances mesurées comme
+nécessaires, et pose les fichiers d'AMC depuis ses paquets officiels épinglés à
+`1.7.0-3` et vérifiés par SHA-256. Pas de `--force-depends`, pas de faux
+paquet, pas de purge après coup, pas de `.so` supprimée à la main.
+
+| | Avant | Après |
+|---|---|---|
+| `IMAGE_PACKAGES` | 443 | **179** |
+| `IMAGE_SIZE` | 3 307 Mo | **988 Mo** |
+| `IMAGE_CRITICAL` | 32 | **14** |
+| `IMAGE_HIGH` | 139 | **48** |
+
+La preuve fonctionnelle a été refaite en entier sur l'image réduite :
+
+- matrice de six tirages — un élève, trente élèves, formules (`\dfrac`,
+  racines, exposants, intégrale, `\mathbb{R}`), accents français, énoncé long
+  multi-pages, vrai/faux : `MATRICE_PAPIER = PASS` ;
+- **équivalence** avec l'image complète : même nombre de pages et texte extrait
+  identique mot pour mot, sur les six cas — comparé sur les invariants
+  fonctionnels, jamais sur l'empreinte des PDF, que `pdflatex` horodate ;
+- deux tirages simultanés : aucun mélange, chacun identique à son tirage isolé ;
+- recette Docker : **28 étapes sur 28**, chaîne enseignant complète comprise
+  — imprimer, saisir les copies, relire les notes, « copie juste : 20/20 ».
+
+#### Ce qui reste, et pourquoi P13 reste FAIL
+
+Les 62 occurrences restantes — 26 CVE distinctes — sont analysées une par une
+dans [docs/VEX-CANDIDATES.md](docs/VEX-CANDIDATES.md) :
+
+```
+RAW           = 62 occurrences (26 CVE distinctes)
+NOT_AFFECTED  = 14 CVE
+APPLICABLE    =  0 CVE
+UNKNOWN       = 12 CVE
+```
+
+**Aucune n'a de correctif amont.** Et surtout, un fait qui change la nature du
+problème : l'image *sans aucune impression* — l'application seule — porte déjà
+**3 CRITICAL et 12 HIGH**, dont les huit CVE de `perl-base`, paquet `Essential`
+de Debian présent dans toute image Debian. Le seuil « zéro HIGH, zéro
+CRITICAL » est donc inatteignable sur une base Debian stable, avec ou sans AMC.
+
+**Le gate n'a pas été modifié et P13 reste `FAIL`.** Décider d'accepter un
+risque résiduel, de changer de distribution de base, ou d'attendre les
+correctifs amont n'est pas une décision d'ingénierie à prendre seul : les trois
+voies sont posées en fin de `docs/VEX-CANDIDATES.md`, avec ce qu'elles coûtent.
 
 ### PROCESS_HYGIENE — rouvert
 

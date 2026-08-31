@@ -202,6 +202,17 @@ jobs:
             npx playwright test --project=webkit --retries=0 "$fichier"
           done
 
+      # Le Firefox de Playwright n'applique pas COOP : son pilote s'y perd, et
+      # la dérogation est documentée dans `e2e/fixtures.ts`. Elle ne vaut que
+      # si quelqu'un vérifie ailleurs que Gecko, lui, se comporte normalement
+      # quand l'en-tête est bien appliqué. Firefox ESR de série, piloté par
+      # Marionette, sans Playwright, contre le même artefact de production.
+      - name: Firefox de série, COOP appliquée
+        run: |
+          docker build -f docker/firefox-natif.Dockerfile -t firefox-natif .
+          docker run --rm --network host --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "$PWD/scripts":/app/scripts:ro firefox-natif \
+            node scripts/smoke-firefox-coop.mjs http://127.0.0.1:3200 100
 
       # Toujours, succès ou échec : le runner n'a pas à ramasser derrière nous.
       - name: Arrêter le serveur et vérifier qu'il ne reste rien

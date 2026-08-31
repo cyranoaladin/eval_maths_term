@@ -54,6 +54,19 @@ export const PREFERENCES_GECKO = {
     l'en-tête lui-même est vérifiée par
     `api/lib/__tests__/en-tetes-de-securite.spec.ts`, qui exige `same-origin`
     sur une réponse réelle.
+
+    Le trou est bouché ailleurs, par deux garde-fous :
+
+      `scripts/smoke-firefox-coop.mjs` pilote un Firefox de série — celui du
+      système, pas la variante corrigée qu'embarque Playwright — par
+      Marionette, le protocole de Gecko lui-même, contre le vrai artefact de
+      production et COOP bel et bien appliquée. Cent navigations par passage,
+      zéro échec, zéro blocage. Le défaut est donc dans le pilote de
+      Playwright, pas dans Gecko.
+
+      `api/lib/__tests__/coop-inconditionnelle.spec.ts` échoue si cette
+      préférence apparaît ailleurs que dans ce fichier, ou si un chemin de
+      configuration cesse de poser l'en-tête.
   */
   "browser.tabs.remote.useCrossOriginOpenerPolicy": false,
 } as const;
