@@ -40,7 +40,7 @@ trap 'kill $ECHANTILLONNEUR 2>/dev/null' EXIT
 
 docker run --rm -i --network host \
   -e BASE_URL="$BASE" -e DUREE="$DUREE" -e CADENCE="$CADENCE" \
-  grafana/k6 run - < load/endurance.k6.js 2>&1 \
+  grafana/k6@sha256:5221b620a4f874faff6e32ba597aa667c058391fe4898b1c6f6377f062c6cdec run - < load/endurance.k6.js 2>&1 \
   | grep -E "http_req_duration\.\.|http_req_failed\.\.|echec_metier\.|refus_quota_429\.|remises\.|remise\.\.|iterations\.\." \
   | sed 's/^ *//'
 

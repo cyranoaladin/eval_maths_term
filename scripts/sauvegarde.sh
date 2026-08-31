@@ -27,7 +27,7 @@ set -euo pipefail
 DESTINATION="${1:-./sauvegardes}"
 URL="${DATABASE_URL:?DATABASE_URL est requise}"
 TIRAGES="${PAPER_OUTPUT_DIR:-./.paper-exams}"
-IMAGE_MYSQL="${IMAGE_MYSQL:-mysql:8.4}"
+IMAGE_MYSQL="${IMAGE_MYSQL:-mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb}"
 
 # Décomposition de l'URL sans dépendre d'un outil externe.
 sans_schema="${URL#mysql://}"

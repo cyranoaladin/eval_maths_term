@@ -42,9 +42,21 @@ ok() {
 nettoyer() {
   docker rm -f "$APP" "$BASE" >/dev/null 2>&1 || true
   docker network rm "$RESEAU" >/dev/null 2>&1 || true
+  # Les deux volumes, pas seulement celui de la base : dix-sept volumes de
+  # tirages ont été retrouvés sur ce poste, un par recette exécutée, aucun
+  # jamais retiré. Un test qui laisse des traces finit par mesurer ses propres
+  # traces.
   docker volume rm "${PROJET}-data" >/dev/null 2>&1 || true
+  docker volume rm "${PROJET}-data-paper" >/dev/null 2>&1 || true
 }
 trap nettoyer EXIT
+
+# Rien du projet ne doit survivre à une recette précédente.
+residus=$(docker volume ls --format '{{.Name}}' | grep -c '^recette-eval-' || true)
+if [ "${residus:-0}" -gt 0 ]; then
+  echo "  ⚠ $residus volume(s) de recette antérieure encore présents ; retrait."
+  docker volume ls --format '{{.Name}}' | grep '^recette-eval-' | xargs -r docker volume rm >/dev/null 2>&1 || true
+fi
 
 echo "▶ Recette Docker — runtime de production"
 echo
@@ -78,7 +90,7 @@ docker run -d --name "$BASE" --network "$RESEAU" \
   -e MYSQL_DATABASE=eval_maths \
   -e MYSQL_USER=eval -e MYSQL_PASSWORD="$MDP_APP" \
   -v "${PROJET}-data:/var/lib/mysql" \
-  mysql:8.4 >/dev/null 2>&1
+  mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb >/dev/null 2>&1
 pret=1
 for _ in $(seq 1 60); do
   if docker exec "$BASE" mysqladmin ping -h 127.0.0.1 -u root -p"$MDP_ROOT" >/dev/null 2>&1; then pret=0; break; fi

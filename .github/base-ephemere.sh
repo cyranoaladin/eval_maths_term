@@ -17,7 +17,7 @@ docker run -d --name mysql-ci \
   -e MYSQL_ROOT_PASSWORD="$MDP" \
   -e MYSQL_DATABASE="$BASE" \
   -p 127.0.0.1:3306:3306 \
-  mysql:8.4 >/dev/null
+  mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb >/dev/null
 
 for _ in $(seq 1 60); do
   if docker exec mysql-ci mysqladmin ping -h 127.0.0.1 -u root -p"$MDP" >/dev/null 2>&1; then

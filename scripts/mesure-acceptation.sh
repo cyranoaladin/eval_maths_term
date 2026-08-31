@@ -32,7 +32,7 @@ echo
 
 echo "── préchauffage ──"
 docker run --rm -i --network host -e BASE_URL="$BASE" -e VUS=20 -e COMPOSITION_S=4 -e ETALEMENT_S=3 \
-  grafana/k6 run - < "$SCENARIO" 2>&1 | grep -E "echec_metier\." | sed 's/^ *//'
+  grafana/k6@sha256:5221b620a4f874faff6e32ba597aa667c058391fe4898b1c6f6377f062c6cdec run - < "$SCENARIO" 2>&1 | grep -E "echec_metier\." | sed 's/^ *//'
 
 for n in $(seq 1 "$EXECUTIONS"); do
   echo
@@ -40,5 +40,5 @@ for n in $(seq 1 "$EXECUTIONS"); do
   sleep "$ATTENTE_QUOTA"
   echo "── exécution $n / $EXECUTIONS ──"
   docker run --rm -i --network host -e BASE_URL="$BASE" \
-    grafana/k6 run - < "$SCENARIO" 2>&1 | resume
+    grafana/k6@sha256:5221b620a4f874faff6e32ba597aa667c058391fe4898b1c6f6377f062c6cdec run - < "$SCENARIO" 2>&1 | resume
 done

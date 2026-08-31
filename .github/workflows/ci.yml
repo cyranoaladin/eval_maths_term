@@ -1,5 +1,12 @@
 name: CI
 
+#
+# Toutes les actions sont épinglées par empreinte de commit complète, jamais par
+# étiquette : `@v7` se déplace, une empreinte non. Le commentaire qui suit
+# chaque empreinte donne la version lisible, et c'est lui qu'on relit lors d'une
+# montée de version — voir `docs/DEPENDANCES.md` pour la procédure.
+#
+
 on:
   push:
     branches: [main, "release/*"]
@@ -28,8 +35,8 @@ jobs:
     timeout-minutes: 25
 
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -70,8 +77,8 @@ jobs:
     timeout-minutes: 40
 
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -87,7 +94,17 @@ jobs:
       - name: Navigateurs
         run: npx playwright install --with-deps chromium firefox webkit
 
+      - name: Version attendue de l'artefact
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # La version du produit vient de `package.json`, pas du nom de la
+      # référence git : une branche n'est pas une version, et le serveur doit
+      # annoncer la même chose ici, dans l'image et sur la machine de recette.
       - name: Construire l'artefact de production
+        env:
+          APP_VERSION: ${{ steps.version.outputs.version }}
+          GIT_SHA: ${{ github.sha }}
         run: npm run build
 
       # Migrations, puis un jeu de données déterministe : sans lui, les écrans
@@ -103,17 +120,15 @@ jobs:
       # Le serveur de production, pas celui de développement : la politique de
       # contenu, le découpage du bundle et les consignes de cache n'y sont pas
       # les mêmes, et trois défauts s'y étaient déjà cachés.
+      # Le serveur de production, pas celui de développement — et avec un cycle
+      # de vie explicite : port vérifié libre, aucun résidu du projet, pid
+      # capturé, disponibilité attendue, version et empreinte contrôlées.
       - name: Démarrer le serveur de production
-        run: |
-          NODE_ENV=production PORT=3200 \
-          PUBLIC_BASE_URL=http://127.0.0.1:3200 \
-          ALLOWED_ORIGINS=http://127.0.0.1:3200,http://localhost:3200 \
-          node dist/boot.js > serveur.log 2>&1 &
-          for _ in $(seq 1 60); do
-            curl -sf http://127.0.0.1:3200/api/ready >/dev/null && exit 0
-            sleep 1
-          done
-          echo "Le serveur n'est pas devenu disponible :"; cat serveur.log; exit 1
+        env:
+          PORT_E2E: "3200"
+          APP_VERSION_ATTENDUE: ${{ steps.version.outputs.version }}
+          GIT_SHA_ATTENDU: ${{ github.sha }}
+        run: bash scripts/serveur-e2e.sh demarrer
 
       # Régression visuelle, avant les parcours.
       #
@@ -188,7 +203,14 @@ jobs:
           done
 
 
-      - uses: actions/upload-artifact@v7
+      # Toujours, succès ou échec : le runner n'a pas à ramasser derrière nous.
+      - name: Arrêter le serveur et vérifier qu'il ne reste rien
+        if: always()
+        env:
+          PORT_E2E: "3200"
+        run: bash scripts/serveur-e2e.sh arreter
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
           name: playwright-report
@@ -204,8 +226,8 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -242,8 +264,8 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -252,26 +274,30 @@ jobs:
       # du client tRPC du dépôt, pas seulement de l'image.
       - run: npm ci --no-audit --no-fund
 
-      - uses: docker/setup-buildx-action@v4
+      - name: Version attendue de l'artefact
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       # L'image de production embarque `auto-multiple-choice` : c'est le même
       # artefact qui est construit ici, éprouvé par la recette et démarré par le
       # compose. Il y en avait deux, et ce qui était vérifié n'était pas ce qui
       # était déployé.
       - name: Construire l'image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           push: false
           load: true
           tags: atelier-qcm:ci
           build-args: |
-            APP_VERSION=${{ github.ref_name }}
+            APP_VERSION=${{ steps.version.outputs.version }}
             GIT_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Vingt-sept vérifications sur le runtime réel : base vierge, migrations
+      # Vingt-huit vérifications sur le runtime réel : base vierge, migrations
       # depuis l'image, garde-fous de production, démarrage, chaîne papier
       # complète avec une génération AMC réelle.
       - name: Recette de mise en service
@@ -284,12 +310,12 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # L'analyse de secrets lit l'historique, pas seulement la pointe.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -298,10 +324,15 @@ jobs:
 
       # Chaque signalement écarté l'est nominativement, dans `.gitleaksignore`,
       # avec sa raison : ni règle désactivée, ni chemin exclu, ni motif ignoré.
+      # Rien de ce qui entre dans un artefact ou dans un gate ne doit être
+      # désigné par une étiquette : `@v7` se déplace, une empreinte non.
+      - name: Épinglage des dépendances
+        run: bash scripts/verifier-epinglage.sh
+
       - name: Analyse de secrets
         run: |
           docker run --rm -v "$PWD:/repo" \
-            ghcr.io/gitleaks/gitleaks:v8.29.0 \
+            ghcr.io/gitleaks/gitleaks:v8.29.0@sha256:71d3ee5990f2176f763b438298453fc37e87b119122045e176ca9d44ff00b08b \
             detect --source=/repo --redact --exit-code 1
 
       - name: Vulnérabilités des dépendances de production
@@ -310,15 +341,15 @@ jobs:
       - name: Nomenclature logicielle
         run: npm run sbom
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sbom
           path: sbom.json
           retention-days: 90
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
       - name: Construire l'image à analyser
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           push: false
