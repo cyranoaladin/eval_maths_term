@@ -72,6 +72,42 @@ entrerait.
 L'application écoute sur `127.0.0.1:3000`. Elle n'est pas exposée directement :
 placez un reverse proxy devant.
 
+## Délais de connexion
+
+Le serveur garde une connexion inactive **125 secondes** — `KEEP_ALIVE_MS` dans
+`api/lib/reglages-http.ts`. Ce n'est pas un nombre choisi au hasard : il découle
+d'une règle unique.
+
+> Un serveur doit garder ses connexions ouvertes plus longtemps que le plus
+> patient de ses clients.
+
+| Client | Délai avant d'abandonner une connexion inactive |
+|---|---|
+| Gecko (Firefox) | 115 s |
+| Chromium | ~60 s |
+| WebKit | ~60 s |
+
+Le défaut de Node est de cinq secondes, et il a coûté une remise de copie sur
+deux cents lors d'une mesure de charge : refusée en une milliseconde, sans la
+moindre erreur applicative — le serveur n'avait rien vu passer.
+
+**Si vous placez un reverse proxy devant**, son propre délai d'inactivité doit
+rester **inférieur** à 125 secondes, sinon c'est lui qui ferme en premier et le
+problème remonte d'un cran :
+
+```nginx
+keepalive_timeout 75s;   # < 125 s
+proxy_read_timeout 120s; # au moins la durée d'une remise de copie
+```
+
+Le délai d'arrivée des en-têtes est fixé juste au-dessus (126 s), sans quoi
+c'est lui qui coupe. `api/lib/__tests__/reglages-http.spec.ts` fait respecter
+ces relations.
+
+Pendant un arrêt gracieux, ces délais ne prolongent rien : le serveur cesse
+d'accepter, laisse finir les échanges en cours et ferme les connexions
+inactives sans attendre leur expiration.
+
 ## Reverse proxy
 
 ```nginx

@@ -14,6 +14,7 @@ import { enTetesDeSecurite } from "./lib/security-headers";
 import { REQUEST_ID_HEADER, normaliserRequestId, withRequestId } from "./lib/request-id";
 import { Paths } from "@contracts/constants";
 import { EMPREINTE_GIT, VERSION_APPLICATION } from "./lib/version";
+import { HEADERS_TIMEOUT_MS, KEEP_ALIVE_MS } from "./lib/reglages-http";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
@@ -252,32 +253,16 @@ if (env.isProduction) {
   });
 
   /*
-    Le serveur garde ses connexions ouvertes plus longtemps que ceux qui les
-    réutilisent.
+    Les délais viennent de `lib/reglages-http.ts`, avec la règle qui les fixe :
+    le serveur tient plus longtemps que le plus patient de ses clients. Un
+    nombre isolé ici ne se relirait pas.
 
-    Node ferme une connexion inactive au bout de cinq secondes. Un élève qui
-    réfléchit plus longtemps entre deux requêtes retrouve une connexion que le
-    serveur vient de fermer : sa requête suivante part dans un tuyau déjà clos
-    et revient en erreur de transport, sans qu'aucune trace n'apparaisse côté
-    serveur — il n'a rien vu passer. Une mesure de charge l'a montré : une
-    remise sur deux cents, refusée en une milliseconde, sans erreur applicative.
-
-    Le serveur doit tenir **plus longtemps que le plus patient de ses clients**,
-    et c'est ce qui fixe la valeur. Gecko garde une connexion inactive cent
-    quinze secondes ; Chromium et WebKit, une soixantaine. Un premier réglage à
-    soixante-cinq secondes a supprimé les erreurs de transport sous Chromium
-    mais laissait Gecko dans la même situation, en pire : il réutilise une
-    connexion que le serveur vient de clore et attend, sans rien dire, qu'un
-    délai bien plus long l'en avertisse — une navigation entière peut y passer.
-    Cent vingt-cinq secondes passent après tout le monde.
-
-    Le délai d'en-têtes reste au-dessus, sans quoi c'est lui qui coupe.
+    `serve` peut rendre un serveur HTTP/2, qui n'expose pas ces réglages : on ne
+    les pose que là où ils ont un sens.
   */
-  // `serve` peut rendre un serveur HTTP/2, qui n'expose pas ces réglages ; on
-  // ne les pose que là où ils ont un sens.
   const reglages = serveur as { keepAliveTimeout?: number; headersTimeout?: number };
-  if ("keepAliveTimeout" in serveur) reglages.keepAliveTimeout = 125_000;
-  if ("headersTimeout" in serveur) reglages.headersTimeout = 126_000;
+  if ("keepAliveTimeout" in serveur) reglages.keepAliveTimeout = KEEP_ALIVE_MS;
+  if ("headersTimeout" in serveur) reglages.headersTimeout = HEADERS_TIMEOUT_MS;
 
   // Un redéploiement ou un arrêt de machine ne doit pas couper une remise de
   // copie en deux.
