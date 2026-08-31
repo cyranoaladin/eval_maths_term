@@ -146,7 +146,15 @@ ok "une valeur de remplissage est refusée en production" $? \
 echo
 echo "Démarrage"
 depart=$(date +%s%N)
+# Les mêmes restrictions que `docker-compose.yml` : la recette doit éprouver
+# le conteneur tel qu'il tournera, pas une version plus permissive. Le
+# durcissement se vérifie ici — si l'application ou la composition avaient
+# besoin d'un privilège, les vingt-huit étapes le diraient.
 docker run -d --name "$APP" --network "$RESEAU" -p 127.0.0.1:3100:3000 \
+  --read-only --tmpfs /tmp:rw,size=512m,mode=1777 \
+  --tmpfs /home/evalapp:rw,size=64m,mode=0700,uid=10001,gid=999 \
+  --cap-drop ALL --security-opt no-new-privileges \
+  --pids-limit 512 --memory 2g --cpus 2 \
   $(env_app) -v "${PROJET}-data-paper:/data/paper-exams" "$IMAGE" >/dev/null 2>&1
 sain=1
 for _ in $(seq 1 60); do

@@ -191,4 +191,11 @@ RUN which auto-multiple-choice \
       | grep -Ei 'opencv|graphicsmagick|graphics-magick|imagemagick|gtk3-perl|openexr|libraw|gdcm')" \
  && test -z "$(find / -xdev \( -name 'libopencv*' -o -name 'libGraphicsMagick*' \) -print -quit)"
 
+# TeX engendre à la demande les polices bitmap qui lui manquent, et les écrit
+# dans `TEXMFVAR` — sous le répertoire personnel par défaut. Le conteneur de
+# production monte sa racine en lecture seule : sans cette redirection vers
+# `/tmp`, monté en mémoire, `mktexpk` échoue et aucun document n'est produit.
+ENV TEXMFVAR=/tmp/texmf-var \
+    TEXMFCACHE=/tmp/texmf-var
+
 USER evalapp

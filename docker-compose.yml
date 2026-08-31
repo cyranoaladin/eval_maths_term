@@ -57,6 +57,36 @@ services:
       - paper_exams:/data/paper-exams
     ports:
       - "127.0.0.1:3000:3000"
+    # ── Moindre privilège ────────────────────────────────────────────────
+    #
+    # L'application tourne sous `evalapp`, écoute sur 3000 — un port non
+    # privilégié — et n'a besoin d'aucune capacité du noyau. La composition
+    # AMC non plus : une génération complète a été éprouvée racine en lecture
+    # seule, sans capacité, sans réseau, et elle produit ses trois documents.
+    #
+    # Ce qui reste inscriptible, et rien d'autre : le volume des tirages, et
+    # `/tmp`, dont TeX se sert pour engendrer les polices manquantes.
+    read_only: true
+    # Les deux seuls répertoires que la composition doit pouvoir écrire, et
+    # rien d'autre : `/tmp`, où TeX engendre les polices qui lui manquent
+    # (`TEXMFVAR`), et le répertoire personnel d'`evalapp`, où AMC crée son
+    # `.AMC.d` au premier lancement. Les deux sont en mémoire, remis à zéro à
+    # chaque démarrage : rien de ce que le produit conserve n'y vit.
+    tmpfs:
+      - /tmp:rw,size=512m,mode=1777
+      - /home/evalapp:rw,size=64m,mode=0700,uid=10001,gid=999
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Un enseignant authentifié fournit indirectement du LaTeX. Les bornes de
+    # `api/paper/amc-template.ts` l'empêchent de demander l'impossible ; ces
+    # trois-ci bornent ce que la machine y consacre s'il y parvient malgré
+    # tout — mémoire, processeur, et le nombre de processus, qui ferme la
+    # porte à une bombe de duplication.
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 512
     # Le temps qu'une remise de copie en cours aille à son terme avant que
     # Docker ne tue le conteneur. La séquence d'arrêt s'en tient à vingt
     # secondes ; on lui laisse dix de marge.

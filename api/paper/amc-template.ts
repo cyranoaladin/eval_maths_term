@@ -78,6 +78,111 @@ const PRIMITIVES_INTERDITES = [
   "\\documentclass",
 ];
 
+/*
+  Ce qu'un enseignant peut demander à la composition.
+
+  Ces bornes ne sont pas décoratives. Sans elles, un enseignant authentifié
+  fait tomber la chaîne d'une manière que personne ne sait lire : un nom
+  d'élève de 400 ko fait sortir pdfTeX sur « Unable to read an entire
+  line---bufsize=200000 », et AMC rend malgré tout un code de sortie nul sans
+  produire le moindre document. Le tirage échoue, mais sur un message qui ne
+  désigne ni l'élève, ni la cause.
+
+  Les valeurs sont choisies au-dessus de tout usage scolaire réel, et très
+  au-dessous de ce qui casse :
+
+  - `eleves` — 500 copies, soit un lycée entier sur une même épreuve ;
+  - `nomEleve` — 120 caractères ; échappé, un caractère occupe au pire 16
+    octets, soit 1 920 octets contre les 200 000 du tampon de pdfTeX ;
+  - `enonce` et `proposition` — un énoncé de mathématiques, même long avec ses
+    formules, tient largement dedans ;
+  - `propositionsParQuestion` — AMC étiquette les réponses de A à Z ;
+  - `questions`, `titre`, `sousTitre` — bon sens.
+
+  Elles bornent aussi ce qu'une donnée d'enseignant peut atteindre en taille,
+  ce dont dépend l'analyse d'applicabilité de CVE-2026-13221 : voir
+  `docs/VEX-CANDIDATES.md`.
+*/
+export const LIMITES = {
+  eleves: 500,
+  nomEleve: 120,
+  questions: 300,
+  enonce: 5_000,
+  proposition: 1_000,
+  propositionsParQuestion: 26,
+  titre: 200,
+  sousTitre: 200,
+} as const;
+
+export class LimiteDepasseeError extends Error {
+  readonly limite: keyof typeof LIMITES;
+  constructor(limite: keyof typeof LIMITES, message: string) {
+    super(message);
+    this.name = "LimiteDepasseeError";
+    this.limite = limite;
+  }
+}
+
+/** Vérifie que la demande tient dans ce que la composition sait faire. */
+function verifierLesBornes(input: TemplateInput): void {
+  if (input.students.length > LIMITES.eleves) {
+    throw new LimiteDepasseeError(
+      "eleves",
+      `Cette classe compte ${input.students.length} élèves ; un tirage en accepte au plus ${LIMITES.eleves}. Scindez la classe en plusieurs groupes.`,
+    );
+  }
+  for (const e of input.students) {
+    const nom = `${e.lastName} ${e.firstName}`.trim();
+    if (nom.length > LIMITES.nomEleve) {
+      throw new LimiteDepasseeError(
+        "nomEleve",
+        `Le nom « ${nom.slice(0, 40)}… » est trop long : ${nom.length} caractères pour un maximum de ${LIMITES.nomEleve}. Corrigez la liste d'élèves.`,
+      );
+    }
+  }
+  if (input.questions.length > LIMITES.questions) {
+    throw new LimiteDepasseeError(
+      "questions",
+      `Cette évaluation compte ${input.questions.length} questions ; un sujet en accepte au plus ${LIMITES.questions}.`,
+    );
+  }
+  if (input.title.length > LIMITES.titre) {
+    throw new LimiteDepasseeError(
+      "titre",
+      `Le titre fait ${input.title.length} caractères pour un maximum de ${LIMITES.titre}.`,
+    );
+  }
+  if ((input.subtitle?.length ?? 0) > LIMITES.sousTitre) {
+    throw new LimiteDepasseeError(
+      "sousTitre",
+      `Le sous-titre fait ${input.subtitle!.length} caractères pour un maximum de ${LIMITES.sousTitre}.`,
+    );
+  }
+  for (const q of input.questions) {
+    if (q.question.length > LIMITES.enonce) {
+      throw new LimiteDepasseeError(
+        "enonce",
+        `L'énoncé de la question ${q.id} fait ${q.question.length} caractères pour un maximum de ${LIMITES.enonce}.`,
+      );
+    }
+    const options = q.options ?? [];
+    if (options.length > LIMITES.propositionsParQuestion) {
+      throw new LimiteDepasseeError(
+        "propositionsParQuestion",
+        `La question ${q.id} porte ${options.length} propositions ; AMC ne sait en étiqueter que ${LIMITES.propositionsParQuestion}, de A à Z.`,
+      );
+    }
+    for (const o of options) {
+      if (o.length > LIMITES.proposition) {
+        throw new LimiteDepasseeError(
+          "proposition",
+          `Une proposition de la question ${q.id} fait ${o.length} caractères pour un maximum de ${LIMITES.proposition}.`,
+        );
+      }
+    }
+  }
+}
+
 export class UnsafeLatexError extends Error {
   readonly offending: string;
   readonly questionId: number;
@@ -165,6 +270,8 @@ function renderTrueFalse(q: TemplateQuestion): string {
 }
 
 export function buildAmcDocument(input: TemplateInput): TemplateOutput {
+  verifierLesBornes(input);
+
   const included: TemplateQuestion[] = [];
   const excluded: Array<{ id: number; reason: string }> = [];
 

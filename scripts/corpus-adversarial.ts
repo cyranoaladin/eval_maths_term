@@ -51,11 +51,11 @@ const LONGUE = "Lo" + "n".repeat(400) + "g";
 
 /** Ce qui traverse l'échappement LaTeX : noms, titres, consignes. */
 const hostileTexte = (etiquette: string) =>
-  `${MARQUEUR}_${etiquette} ${METACARACTERES} ${ACCENTS} & % $ # _ { } ~ ^ \\`;
+  `${MARQUEUR}-${etiquette} ${METACARACTERES} ${ACCENTS} & % $ # _ { } ~ ^ \\`;
 
 /** Ce qui est inséré tel quel : énoncés et propositions, qui sont du LaTeX. */
 const hostileLatex = (etiquette: string) =>
-  `${MARQUEUR}_${etiquette} ${ACCENTS} — ` +
+  `${MARQUEUR}-${etiquette} ${ACCENTS} — ` +
   `$\\dfrac{a|b}{c^{2}}$ et $[x_{1}, x_{2}]$ et $(p+q)^{*}$ et $\\alpha \\ne \\beta$`;
 
 const qcm = (correctIndex: number): GradingRubric => ({
@@ -80,7 +80,7 @@ const questions: TemplateQuestion[] = [
   {
     id: 2,
     type: "qcm",
-    question: `${MARQUEUR}_long ${LONGUE} ?`,
+    question: `${MARQUEUR}-long ${LONGUE} ?`,
     options: [`${LONGUE}-a`, `${LONGUE}-b`],
     order: 2,
     points: 1,
@@ -104,8 +104,8 @@ const questions: TemplateQuestion[] = [
 */
 const eleves = [
   { lastName: hostileTexte("nom1"), firstName: hostileTexte("prenom1") },
-  { lastName: `${MARQUEUR}_nom2 ${LONGUE}`, firstName: `${MARQUEUR}_prenom2` },
-  { lastName: `${MARQUEUR}_nom3 ${ACCENTS}`, firstName: `${MARQUEUR}_prenom3 ${METACARACTERES}` },
+  { lastName: `${MARQUEUR}-nom2 ${LONGUE}`, firstName: `${MARQUEUR}-prenom2` },
+  { lastName: `${MARQUEUR}-nom3 ${ACCENTS}`, firstName: `${MARQUEUR}-prenom3 ${METACARACTERES}` },
 ];
 
 const doc = buildAmcDocument({
@@ -114,7 +114,7 @@ const doc = buildAmcDocument({
   durationMinutes: 90,
   questions,
   students: eleves,
-  instructions: [hostileTexte("consigne1"), `${MARQUEUR}_consigne2 ${LONGUE}`],
+  instructions: [hostileTexte("consigne1"), `${MARQUEUR}-consigne2 ${LONGUE}`],
 });
 
 await rm(racine, { recursive: true, force: true });

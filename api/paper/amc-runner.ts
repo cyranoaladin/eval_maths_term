@@ -43,6 +43,15 @@ import { logger } from "../lib/logger";
 const run = promisify(execFile);
 
 const AMC = "auto-multiple-choice";
+
+/*
+  Ce qu'on accepte de garder de la parole d'AMC. Le journal de LaTeX est
+  bavard — quelques centaines de kilo-octets pour un sujet ordinaire — mais il
+  n'a aucune raison d'atteindre huit méga-octets. Sans borne explicite, Node
+  s'en tient à un méga-octet et tue le processus par `ENOBUFS` : le tirage
+  échouerait sur la taille du journal plutôt que sur son contenu.
+*/
+const SORTIE_MAX = 8 * 1024 * 1024;
 const TEX_NAME = "sujet.tex";
 const CSV_NAME = "eleves.csv";
 
@@ -125,7 +134,11 @@ export async function runAmc(input: RunAmcInput): Promise<AmcResult> {
 
   for (const etape of etapes) {
     try {
-      const { stdout, stderr } = await run(AMC, etape.args, { cwd: workdir, timeout });
+      const { stdout, stderr } = await run(AMC, etape.args, {
+        cwd: workdir,
+        timeout,
+        maxBuffer: SORTIE_MAX,
+      });
       journal.push(`$ ${AMC} ${etape.args.join(" ")}\n${stdout}${stderr}`);
     } catch (e) {
       const err = e as { stdout?: string; stderr?: string; message?: string };

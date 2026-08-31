@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAmcDocument,
+  LIMITES,
   assertSafeLatex,
   escapeLatexText,
   UnsafeLatexError,
@@ -214,6 +215,76 @@ describe("sûreté du LaTeX", () => {
     expect(() =>
       buildAmcDocument(input({ questions: [{ ...QCM, options: ["$1$", "\\input{secret}"] }] })),
     ).toThrow(UnsafeLatexError);
+  });
+
+  describe("bornes de composition", () => {
+    /*
+      Ces bornes existent pour une raison mesurée : sans elles, un enseignant
+      authentifié peut faire échouer la composition d'une manière que personne
+      ne sait lire. Un nom d'élève de 400 ko fait sortir pdfTeX sur
+      « Unable to read an entire line---bufsize=200000 » — et AMC rend malgré
+      tout un code de sortie nul, sans produire le moindre document.
+
+      Elles bornent aussi ce qu'une donnée d'enseignant peut atteindre en
+      taille, ce dont dépend l'analyse d'applicabilité de CVE-2026-13221
+      (voir docs/VEX-CANDIDATES.md).
+    */
+    const eleve = (i: number) => ({ lastName: `NOM${i}`, firstName: `Prenom${i}` });
+
+    it("refuse une classe démesurée en nommant la borne", () => {
+      const trop = Array.from({ length: LIMITES.eleves + 1 }, (_, i) => eleve(i));
+      expect(() => buildAmcDocument(input({ students: trop }))).toThrow(
+        /501 élèves.*500/s,
+      );
+    });
+
+    it("accepte exactement la borne", () => {
+      const pile = Array.from({ length: LIMITES.eleves }, (_, i) => eleve(i));
+      expect(() => buildAmcDocument(input({ students: pile }))).not.toThrow();
+    });
+
+    it("refuse un nom d'élève qui déborderait le tampon de pdfTeX", () => {
+      const long = "N".repeat(LIMITES.nomEleve + 1);
+      expect(() =>
+        buildAmcDocument(input({ students: [{ lastName: long, firstName: "Amina" }] })),
+      ).toThrow(/nom.*trop long/i);
+    });
+
+    it("refuse un énoncé démesuré en nommant la question", () => {
+      const enonce = "x".repeat(LIMITES.enonce + 1);
+      expect(() =>
+        buildAmcDocument(input({ questions: [{ ...QCM, question: enonce }] })),
+      ).toThrow(/question 1/i);
+    });
+
+    it("refuse une proposition démesurée", () => {
+      const option = "y".repeat(LIMITES.proposition + 1);
+      expect(() =>
+        buildAmcDocument(input({ questions: [{ ...QCM, options: ["$1$", option] }] })),
+      ).toThrow(/proposition/i);
+    });
+
+    it("refuse plus de propositions qu'AMC ne sait étiqueter", () => {
+      const trop = Array.from({ length: LIMITES.propositionsParQuestion + 1 }, (_, i) => `c${i}`);
+      expect(() =>
+        buildAmcDocument(input({ questions: [{ ...QCM, options: trop }] })),
+      ).toThrow(/proposition/i);
+    });
+
+    it("refuse un questionnaire démesuré", () => {
+      const trop = Array.from({ length: LIMITES.questions + 1 }, (_, i) => ({
+        ...QCM,
+        id: i + 1,
+        order: i + 1,
+      }));
+      expect(() => buildAmcDocument(input({ questions: trop }))).toThrow(/questions/i);
+    });
+
+    it("refuse un titre démesuré", () => {
+      expect(() =>
+        buildAmcDocument(input({ title: "T".repeat(LIMITES.titre + 1) })),
+      ).toThrow(/titre/i);
+    });
   });
 
   it("échappe les textes qui ne sont pas du LaTeX", () => {
