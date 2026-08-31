@@ -77,6 +77,63 @@ describe("arrêt gracieux", () => {
     expect(fermetureDuPool).toHaveBeenCalledOnce();
   });
 
+  it("ferme les connexions inactives sans attendre leur délai de garde", async () => {
+    /*
+      `server.close()` attend que **toutes** les connexions se ferment, y
+      compris celles qui ne portent aucune requête et que le client garde
+      ouvertes pour la suivante. Le délai de garde du serveur a été porté à
+      125 secondes — au-delà des 115 du client le plus patient — et une
+      connexion inactive retenait donc l'arrêt bien après les vingt secondes
+      accordées.
+
+      `closeIdleConnections()` ferme celles-là, et celles-là seulement : une
+      requête en cours va toujours à son terme. Vu en vrai sur le smoke d'arrêt
+      gracieux, qui a commencé à signaler « des requêtes n'ont pas fini » alors
+      que la copie, elle, était bien complète.
+    */
+    const { arreter } = await moduleNeuf();
+    const appels: string[] = [];
+    let rappelFermeture: (() => void) | undefined;
+
+    /*
+      Le point délicat : au moment du signal, la connexion qui porte la remise
+      n'est pas inactive. Elle le devient une fois la réponse partie. Un seul
+      appel, fait trop tôt, ne la voit pas — c'est ce qui restait en échec
+      après un premier correctif.
+    */
+    let requeteEnVol = true;
+    const serveur = {
+      close(rappel?: () => void) {
+        appels.push("close");
+        rappelFermeture = rappel;
+      },
+      closeIdleConnections() {
+        appels.push("closeIdleConnections");
+        // Tant que la requête vole, il n'y a rien d'inactif à relâcher.
+        if (!requeteEnVol) rappelFermeture?.();
+      },
+    };
+
+    const fin = arreter(serveur, 2_000);
+    // La remise aboutit après le premier passage : la connexion devient inactive.
+    await new Promise((r) => setTimeout(r, 250));
+    requeteEnVol = false;
+
+    await fin;
+
+    expect(appels[0]).toBe("close");
+    expect(appels.filter((a) => a === "closeIdleConnections").length).toBeGreaterThan(1);
+  });
+
+  it("s'accommode d'un serveur qui ne sait pas fermer ses connexions inactives", async () => {
+    // HTTP/2 et les serveurs de test n'exposent pas toujours cette méthode.
+    const { arreter } = await moduleNeuf();
+    const serveur = serveurQuiFerme(5);
+
+    await expect(arreter(serveur, 1_000)).resolves.toBeUndefined();
+    expect(serveur.appels).toEqual(["close"]);
+  });
+
   it("ne s'exécute qu'une fois, même si le signal se répète", async () => {
     const { arreter } = await moduleNeuf();
     const serveur = serveurQuiFerme(5);

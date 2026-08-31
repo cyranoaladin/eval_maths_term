@@ -39,7 +39,19 @@ export function arretDemande(): boolean {
  */
 export interface ServeurArretable {
   close(rappel?: (erreur?: Error) => void): unknown;
+  /**
+   * Ferme les connexions qui ne portent aucune requête. Node l'expose sur ses
+   * serveurs HTTP/1 ; HTTP/2 et les doublures de test, non — d'où l'optionnel.
+   */
+  closeIdleConnections?(): void;
 }
+
+/**
+ * À quelle cadence relâcher les connexions devenues inactives. Assez court
+ * pour ne pas retarder l'arrêt d'une remise qui vient de finir, assez long
+ * pour ne rien coûter.
+ */
+const RELEVE_INACTIVES_MS = 100;
 
 export async function arreter(
   serveur: ServeurArretable,
@@ -58,6 +70,26 @@ export async function arreter(
     serveur.close(() => resoudre());
   });
 
+  /*
+    3. Et on relâche, sans relâche, celles qui n'attendent rien.
+
+    `close()` attend que **toutes** les connexions se ferment, y compris celles
+    qu'un client garde ouvertes pour sa requête suivante sans rien y faire
+    circuler. Le délai de garde du serveur vaut 125 secondes — il doit dépasser
+    les 115 du client le plus patient, voir `reglages-http.ts` — de sorte
+    qu'une seule connexion inactive retenait l'arrêt bien au-delà des vingt
+    secondes accordées, et le serveur se déclarait en retard alors que plus
+    aucune requête ne tournait.
+
+    `closeIdleConnections()` ne ferme que celles-là ; une requête en cours va
+    toujours à son terme. Mais l'appeler une fois ne suffit pas : au moment du
+    signal, la connexion qui porte la remise n'est justement pas inactive. Elle
+    le devient quand la réponse part — après notre appel. On repasse donc
+    régulièrement, jusqu'à ce que la fermeture aboutisse.
+  */
+  const balai = setInterval(() => serveur.closeIdleConnections?.(), RELEVE_INACTIVES_MS);
+  balai.unref?.();
+
   let expire = false;
   const echeance = new Promise<void>((resoudre) => {
     const minuteur = setTimeout(() => {
@@ -68,6 +100,7 @@ export async function arreter(
   });
 
   await Promise.race([fermeture, echeance]);
+  clearInterval(balai);
 
   if (expire) {
     logger.warn("Des requêtes n'ont pas fini dans le délai imparti", { delaiMs });
@@ -75,7 +108,7 @@ export async function arreter(
     logger.info("Toutes les requêtes en cours sont terminées");
   }
 
-  // 3. Rendre les connexions à la base plutôt que les laisser couper, et
+  // 4. Rendre les connexions à la base plutôt que les laisser couper, et
   //    laisser partir ce qui attendait dans la file de supervision : une
   //    erreur perdue à l'arrêt est précisément celle qu'on aurait voulu lire.
   await fermerPool();
