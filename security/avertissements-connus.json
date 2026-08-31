@@ -1,0 +1,45 @@
+{
+  "commentaire": [
+    "Les avertissements que la construction émet et qu'on ne peut pas faire taire en les corrigeant.",
+    "Chacun porte son origine et la raison pour laquelle il subsiste. Tout avertissement qui n'est pas",
+    "dans cette liste fait échouer scripts/verifier-avertissements.mjs : la liste ne masque rien, elle",
+    "nomme. Elle se relit à chaque montée de version des outils cités."
+  ],
+  "connus": [
+    {
+      "motif": "npm warn deprecated @esbuild-kit/core-utils",
+      "source": "drizzle-kit 0.31.10",
+      "chaine": "drizzle-kit → @esbuild-kit/esm-loader → @esbuild-kit/core-utils",
+      "raison": "Transitif, et outil de développement seulement : ne part pas dans l'image livrée. Les auteurs ont fondu @esbuild-kit dans tsx ; drizzle-kit ne l'a suivi que dans sa série 1.0, qui n'a que des versions candidates. Passer une release sur une version candidate d'outil de migration n'est pas raisonnable.",
+      "a_revoir_quand": "drizzle-kit publie une 1.0 stable"
+    },
+    {
+      "motif": "npm warn deprecated @esbuild-kit/esm-loader",
+      "source": "drizzle-kit 0.31.10",
+      "chaine": "drizzle-kit → @esbuild-kit/esm-loader",
+      "raison": "Même origine et même raison que la précédente.",
+      "a_revoir_quand": "drizzle-kit publie une 1.0 stable"
+    },
+    {
+      "motif": "npm warn deprecated prebuild-install",
+      "source": "@cyclonedx/cyclonedx-npm 6.0.1",
+      "chaine": "@cyclonedx/cyclonedx-npm → libxmljs2 → prebuild-install",
+      "raison": "Transitif, outil de développement seulement. 6.0.1 est la dernière version publiée : il n'existe pas de correctif amont à prendre.",
+      "a_revoir_quand": "@cyclonedx/cyclonedx-npm publie une version qui abandonne libxmljs2"
+    },
+    {
+      "motif": "npm warn deprecated glob@10",
+      "source": "@cyclonedx/cyclonedx-npm 6.0.1",
+      "chaine": "@cyclonedx/cyclonedx-npm → libxmljs2 → node-gyp → make-fetch-happen → cacache → glob",
+      "raison": "Cinq niveaux sous une dépendance de développement dont 6.0.1 est la dernière version. Aucune prise.",
+      "a_revoir_quand": "@cyclonedx/cyclonedx-npm publie une version qui abandonne libxmljs2"
+    },
+    {
+      "motif": "update-alternatives: warning: skip creation of /usr/share/man",
+      "source": "Debian, à l'installation de texlive et xdg-utils",
+      "chaine": "apt-get install → update-alternatives",
+      "raison": "L'image de base écarte les pages de manuel ; update-alternatives signale qu'il ne peut pas créer un lien vers une page absente. C'est le comportement attendu d'une image réduite, et rien dans le produit ne peut le changer.",
+      "a_revoir_quand": "jamais — conséquence directe du choix d'une base sans documentation"
+    }
+  ]
+}

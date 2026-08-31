@@ -47,3 +47,5 @@ playwright-report/
 sbom.json
 sbom-image.json
 rapport-trivy.json
+install.log
+build.log

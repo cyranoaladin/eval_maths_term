@@ -42,7 +42,9 @@ jobs:
           cache: npm
 
       - name: Installer les dépendances
-        run: npm ci --no-audit --no-fund
+        # Le journal est gardé : les dépréciations de dépendances n'apparaissent
+        # qu'à l'installation, et le portail des avertissements les relit.
+        run: npm ci --no-audit --no-fund 2>&1 | tee install.log
 
       # Les tests d'intégration parlent à une vraie base : la moitié de la
       # logique métier — propriété des données, transactions, invariants de
@@ -68,7 +70,21 @@ jobs:
         run: npm run test:coverage
 
       - name: Build
-        run: npm run build
+        run: npm run build 2>&1 | tee build.log
+
+      # Un journal de construction qui imprime six avertissements à chaque
+      # exécution finit par en imprimer sept sans que personne ne le remarque.
+      # Tout avertissement absent de security/avertissements-connus.json — qui
+      # nomme l'origine, la chaîne et la raison de chacun — ferme la porte.
+      - name: Avertissements
+        run: node scripts/verifier-avertissements.mjs install.log build.log
+
+      # Ce qu'un élève télécharge avant de voir sa première question. Le seuil
+      # de Rollup ne distingue pas un fichier chargé à la demande d'un fichier
+      # imposé à tous ; celui-ci mesure le premier chargement, et refuse qu'une
+      # bibliothèque lourde s'y invite.
+      - name: Budget du premier chargement
+        run: node scripts/verifier-budget-chargement.mjs
 
   # ── Parcours navigateur, contre le build de production ──────────────────────
   e2e:
