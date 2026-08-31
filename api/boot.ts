@@ -230,6 +230,27 @@ if (env.isProduction) {
     });
   });
 
+  /*
+    Le serveur garde ses connexions ouvertes plus longtemps que ceux qui les
+    réutilisent.
+
+    Node ferme une connexion inactive au bout de cinq secondes. Un élève qui
+    réfléchit plus longtemps entre deux requêtes retrouve une connexion que le
+    serveur vient de fermer : sa requête suivante part dans un tuyau déjà clos
+    et revient en erreur de transport, sans qu'aucune trace n'apparaisse côté
+    serveur — il n'a rien vu passer. Une mesure de charge l'a montré : une
+    remise sur deux cents, refusée en une milliseconde, sans erreur applicative.
+
+    Soixante-cinq secondes dépassent le délai d'inactivité des clients usuels et
+    celui d'un répartiteur placé devant. Le délai d'en-têtes doit rester
+    au-dessus, sans quoi c'est lui qui coupe.
+  */
+  // `serve` peut rendre un serveur HTTP/2, qui n'expose pas ces réglages ; on
+  // ne les pose que là où ils ont un sens.
+  const reglages = serveur as { keepAliveTimeout?: number; headersTimeout?: number };
+  if ("keepAliveTimeout" in serveur) reglages.keepAliveTimeout = 65_000;
+  if ("headersTimeout" in serveur) reglages.headersTimeout = 66_000;
+
   // Un redéploiement ou un arrêt de machine ne doit pas couper une remise de
   // copie en deux.
   const { installerArretGracieux } = await import("./lib/arret-gracieux");

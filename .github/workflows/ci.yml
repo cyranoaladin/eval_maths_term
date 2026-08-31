@@ -160,6 +160,17 @@ jobs:
             npx playwright test --project=webkit --retries=0 "$fichier"
           done
 
+      # Régression visuelle, dans l'image officielle de Playwright.
+      #
+      # Les références sont produites dans cette image-là et nulle part
+      # ailleurs : comparées depuis un poste ou un runner, elles compareraient
+      # d'abord des polices. Aucune n'est mise à jour ici — une différence doit
+      # être regardée par quelqu'un.
+      - name: Régression visuelle
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3200
+        run: npm run e2e:visuel
+
       - uses: actions/upload-artifact@v7
         if: failure()
         with:

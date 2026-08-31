@@ -149,16 +149,16 @@ Huit procédures ne sont appelées par aucun écran :
 | P24 | Régression visuelle sur les écrans critiques | IN_PROGRESS | — |
 | P25 | Aucune erreur navigateur inattendue tolérée | **PASS** | surveillance installée sur chaque test sans qu'il ait à la demander ; exceptions, pageerror, `console.error` et 5xx ; aucun filtre global |
 | P26 | 0 code mort, 0 dépendance inutilisée, 0 duplication métier | **PASS** | `knip` ne signale plus rien ; `jscpd` 1,34 % — voir §4 |
-| P27 | `main` protégée, tags protégés | IN_PROGRESS | — |
+| P27 | `main` protégée, tags protégés | **PASS** | protection posée et éprouvée : poussée directe refusée, réécriture de `v1.0.0-rc1` refusée — voir §11 |
 | P28 | Sauvegarde et restauration éprouvées | **PASS** | `scripts/sauvegarde.sh` et `scripts/restauration.sh` ; répétition réelle — base détruite puis restaurée, application redémarrée dessus — voir §10 |
 | P29 | Migration de production : sauvegarde → préflight → migration → postflight | **PASS** | `scripts/migration-production.sh`, jouée d'un schéma rc1 portant des copies : 6 → 10 migrations, incidents JSON recopiés — voir §10 |
 | P30 | Retour arrière éprouvé | **PASS** | `scripts/repli-production.sh` ; répétition avec incident simulé, retour sur l'empreinte précédente — voir §10 |
-| P31 | Performance non régressée (p95 < 500 ms, 0 erreur) | IN_PROGRESS | à rejouer après les changements de base |
+| P31 | Performance non régressée (p95 < 500 ms, 0 erreur) | **PASS** | trois campagnes : p95 39,1 / 36,7 / 36,6 ms, 0 erreur, 200 copies — parité avec rc1, voir §12 |
 | P32 | Endurance sans fuite | IN_PROGRESS | — |
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 28 / 34. IN_PROGRESS : 4. BLOCKED_EXTERNAL : 2.**
+**PASS : 30 / 34. IN_PROGRESS : 2. BLOCKED_EXTERNAL : 2.**
 
 ---
 
@@ -460,3 +460,76 @@ Ce que la répétition a montré : `scripts/recette-docker.sh` construisait l'im
 répondait « version : "" » — pas celui qui part en production. La recette passe
 désormais les mêmes arguments que la CI, et vérifie que l'image annonce sa
 version et son empreinte.
+
+
+---
+
+## 11. Ce que le dépôt refuse désormais
+
+| Objet | Règle | Éprouvée |
+|---|---|---|
+| `main` | les cinq travaux de la CI doivent être verts, et la branche à jour | une poussée directe est refusée |
+| `main` | ni poussée forcée, ni suppression | la remise en arrière est refusée |
+| `main` | **les administrateurs y sont soumis** | vérifié depuis un compte administrateur |
+| `refs/tags/v*` | ni suppression, ni réécriture, ni mise à jour | une réécriture de `v1.0.0-rc1` est refusée |
+
+Les administrateurs sont soumis à la règle. C'est un choix, et il a un coût :
+le propriétaire du dépôt ne peut plus corriger `main` en poussant directement,
+il lui faut une branche et une demande de fusion — ou desserrer la règle le
+temps d'un geste. Le contraire aurait rendu la protection décorative : la
+première vérification, faite depuis un compte administrateur, est passée à
+travers.
+
+Un incident au passage, consigné ici parce qu'il fait partie de ce qui a été
+appris : cette première vérification a **poussé la branche de durcissement sur
+`main`** — en avance rapide, sans rien réécrire ni perdre. `main` a été remise
+à `90fb380`, la protection resserrée, et la vérification refaite : elle échoue
+maintenant, comme elle le doit.
+
+
+---
+
+## 12. Charge : la mesure rejouée, et ce qu'elle a trouvé
+
+Le schéma a changé — quatre migrations, trois contraintes d'unicité — et le
+chemin de remise aussi : prise atomique de la copie, score de suspicion,
+jeton de résultats. La mesure d'acceptation a donc été rejouée en entier.
+
+### Trois campagnes consécutives
+
+`bash scripts/mesure-acceptation.sh 3`, 200 élèves, contre la construction de
+production sur base migrée.
+
+| Exécution | p50 | p95 | p99 | Erreurs HTTP | Échecs métier | Copies remises | Remise seule (p95) |
+|---|---|---|---|---|---|---|---|
+| 1 | 7,56 ms | **39,08 ms** | 51,72 ms | 0 / 2600 | 0 / 200 | 200 | 55,00 ms |
+| 2 | 6,58 ms | **36,74 ms** | 48,86 ms | 0 / 2600 | 0 / 200 | 200 | 54,04 ms |
+| 3 | 6,53 ms | **36,58 ms** | 48,63 ms | 0 / 2600 | 0 / 200 | 200 | 52,04 ms |
+
+Pour mémoire, `v1.0.0-rc1` sur la même machine : p95 36,02 / 35,60 / 39,65 ms,
+remise seule 52 / 52 / 58 ms. **Parité**, à l'intérieur du bruit de mesure : la
+dégradation est inférieure à 10 % sur les trois exécutions, et la remise elle-même
+est légèrement plus rapide qu'à rc1 malgré la prise atomique et le score de
+suspicion ajoutés depuis.
+
+### Ce que la mesure a trouvé
+
+Les premières campagnes étaient erratiques : p95 de 298 ms, puis 36 ms, puis
+273 ms, et une remise sur deux cents **refusée en une milliseconde**, sans la
+moindre erreur côté serveur — le serveur n'avait rien vu passer.
+
+Node ferme une connexion inactive au bout de **cinq secondes**. Un élève qui
+réfléchit plus longtemps entre deux gestes retrouve une connexion que le serveur
+vient de fermer : sa requête suivante part dans un tuyau déjà clos et revient en
+erreur de transport. Sur une remise de copie, cela veut dire une copie qui ne
+part pas, et rien dans les journaux pour l'expliquer.
+
+Le serveur garde désormais ses connexions ouvertes soixante-cinq secondes, avec
+un délai d'en-têtes juste au-dessus — au-delà du délai d'inactivité des clients
+usuels et de celui d'un répartiteur placé devant. Les trois campagnes qui
+suivent ce changement sont propres et régulières ; les tails ont disparu en même
+temps que l'erreur.
+
+C'est le genre de défaut qu'aucune relecture ne trouve et qu'aucun test
+fonctionnel ne reproduit : il faut deux cents élèves qui prennent le temps de
+réfléchir.

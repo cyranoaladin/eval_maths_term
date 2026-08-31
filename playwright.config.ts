@@ -25,9 +25,10 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "chromium", use: { ...devices["Desktop Chrome"] }, testIgnore: /regression-visuelle\.spec\.ts/ },
     {
       name: "firefox",
+      testIgnore: /regression-visuelle\.spec\.ts/,
       use: {
         ...devices["Desktop Firefox"],
         /*
@@ -49,6 +50,30 @@ export default defineConfig({
         },
       },
     },
-    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    { name: "webkit", use: { ...devices["Desktop Safari"] }, testIgnore: /regression-visuelle\.spec\.ts/ },
+
+    /*
+      Régression visuelle.
+
+      Un seul moteur et une seule taille : ce qu'on compare est la mise en page,
+      pas le rendu de trois moteurs — celui-là est éprouvé par les parcours. La
+      taille et le facteur d'échelle sont fixés, faute de quoi deux postes
+      comparent deux images de dimensions différentes.
+
+      Ce projet est exclu des exécutions ordinaires : les références sont
+      produites dans l'image Docker de Playwright, la même ici et sur la CI.
+    */
+    {
+      name: "visuel",
+      testMatch: /regression-visuelle\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1280, height: 900 },
+        deviceScaleFactor: 1,
+      },
+    },
   ],
+  /* Les références vivent à côté des tests, pas dans un dossier par plateforme :
+     elles sont produites dans un environnement unique et unique elles restent. */
+  snapshotPathTemplate: "{testDir}/references-visuelles/{arg}{ext}",
 });
