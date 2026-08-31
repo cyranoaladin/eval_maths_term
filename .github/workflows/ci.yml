@@ -159,6 +159,8 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:3200
         run: |
           for fichier in e2e/*.spec.ts; do
+            # La régression visuelle a son propre projet, exécuté plus haut.
+            case "$fichier" in *regression-visuelle*) continue ;; esac
             echo "── $fichier"
             npx playwright test --project=chromium --retries=0 "$fichier"
           done
@@ -168,6 +170,8 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:3200
         run: |
           for fichier in e2e/*.spec.ts; do
+            # La régression visuelle a son propre projet, exécuté plus haut.
+            case "$fichier" in *regression-visuelle*) continue ;; esac
             echo "── $fichier"
             npx playwright test --project=firefox --retries=0 "$fichier"
           done
@@ -177,6 +181,8 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:3200
         run: |
           for fichier in e2e/*.spec.ts; do
+            # La régression visuelle a son propre projet, exécuté plus haut.
+            case "$fichier" in *regression-visuelle*) continue ;; esac
             echo "── $fichier"
             npx playwright test --project=webkit --retries=0 "$fichier"
           done
