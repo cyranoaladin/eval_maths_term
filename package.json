@@ -22,8 +22,8 @@
     "sbom": "cyclonedx-npm --omit dev --output-format JSON --output-file sbom.json",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "scan:image": "bash scripts/scan-image.sh",
-    "e2e:visuel": "docker run --rm --network host -v \"$PWD\":/app -w /app -e E2E_BASE_URL=${E2E_BASE_URL:-http://127.0.0.1:3200} -e CI=1 mcr.microsoft.com/playwright:v1.62.1-noble npx playwright test --project=visuel --retries=0",
-    "e2e:visuel:references": "docker run --rm --network host -v \"$PWD\":/app -w /app -e E2E_BASE_URL=${E2E_BASE_URL:-http://127.0.0.1:3200} mcr.microsoft.com/playwright:v1.62.1-noble npx playwright test --project=visuel --update-snapshots"
+    "e2e:visuel": "docker run --rm --network host -v \"$PWD\":/app -w /app -e E2E_BASE_URL=${E2E_BASE_URL:-http://127.0.0.1:3200} -e E2E_COOKIE_ENSEIGNANT -e CI=1 mcr.microsoft.com/playwright:v1.62.1-noble npx playwright test --project=visuel --retries=0",
+    "e2e:visuel:references": "docker run --rm --network host -v \"$PWD\":/app -w /app -e E2E_BASE_URL=${E2E_BASE_URL:-http://127.0.0.1:3200} -e E2E_COOKIE_ENSEIGNANT mcr.microsoft.com/playwright:v1.62.1-noble npx playwright test --project=visuel --update-snapshots"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",

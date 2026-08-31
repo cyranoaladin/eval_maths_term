@@ -14,6 +14,20 @@ let cookieCache: string | null = null;
 
 export function cookieEnseignant(): string {
   if (cookieCache) return cookieCache;
+
+  /*
+    Fourni de l'extérieur quand les tests s'exécutent dans un conteneur.
+
+    La régression visuelle tourne dans l'image de Playwright, qui n'a ni la
+    configuration du serveur ni ses secrets : `dev-session.ts` y refuserait de
+    démarrer. Le cookie est alors fabriqué par l'appelant, qui les a.
+  */
+  const fourni = process.env.E2E_COOKIE_ENSEIGNANT;
+  if (fourni) {
+    cookieCache = fourni;
+    return cookieCache;
+  }
+
   const sortie = execFileSync("npx", ["tsx", "scripts/dev-session.ts"], {
     encoding: "utf8",
     cwd: process.cwd(),

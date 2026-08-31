@@ -128,7 +128,13 @@ jobs:
       - name: Régression visuelle
         env:
           E2E_BASE_URL: http://127.0.0.1:3200
-        run: npm run e2e:visuel
+        run: |
+          # Le cookie est fabriqué ici, où la configuration du serveur existe :
+          # le conteneur de Playwright, lui, ne l'a pas.
+          E2E_COOKIE_ENSEIGNANT="$(npx tsx scripts/dev-session.ts | sed -n 's/.*kimi_sid=\([^;]*\).*/\1/p' | head -1)"
+          test -n "$E2E_COOKIE_ENSEIGNANT" || { echo "session enseignant introuvable"; exit 1; }
+          export E2E_COOKIE_ENSEIGNANT
+          npm run e2e:visuel
 
       # Un moteur à la fois, chacun dans son étape.
       #
