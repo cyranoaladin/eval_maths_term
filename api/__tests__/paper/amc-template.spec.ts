@@ -280,6 +280,37 @@ describe("sûreté du LaTeX", () => {
       expect(() => buildAmcDocument(input({ questions: trop }))).toThrow(/questions/i);
     });
 
+    it("refuse un caractère que la composition ne sait pas imprimer", () => {
+      /*
+        Éprouvé sur AMC 1.7.0 : « م » arrête pdfTeX sur « Unicode character not
+        set up for use with LaTeX », et le tirage entier est perdu sans que
+        rien ne désigne l'élève en cause.
+      */
+      expect(() =>
+        buildAmcDocument(input({ students: [{ lastName: "مرحبا", firstName: "Amina" }] })),
+      ).toThrow(/U\+0645/);
+    });
+
+    it("accepte tout le répertoire latin, la ponctuation et l'euro", () => {
+      // Chacun de ces caractères a été composé pour de vrai avant d'être
+      // autorisé ici : latin-1, Latin Extended-A et B, diacritique combinant,
+      // apostrophe typographique, tiret cadratin, euro.
+      expect(() =>
+        buildAmcDocument(
+          input({
+            title: "Contrôle — l\u2019épreuve à 5 € : ñ, ł, ő, ș, e\u0301",
+            students: [{ lastName: "O\u2019Neill-Dupré", firstName: "Chloé" }],
+          }),
+        ),
+      ).not.toThrow();
+    });
+
+    it("désigne la question quand le caractère vient d'un énoncé", () => {
+      expect(() =>
+        buildAmcDocument(input({ questions: [{ ...QCM, question: "Combien font 東 + 京 ?" }] })),
+      ).toThrow(/question 1/);
+    });
+
     it("refuse un titre démesuré", () => {
       expect(() =>
         buildAmcDocument(input({ title: "T".repeat(LIMITES.titre + 1) })),

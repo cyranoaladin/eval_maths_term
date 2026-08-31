@@ -112,7 +112,62 @@ export const LIMITES = {
   propositionsParQuestion: 26,
   titre: 200,
   sousTitre: 200,
+  /*
+    Pas une longueur : le répertoire de caractères. Cette entrée existe pour
+    que le refus porte un nom dans `LimiteDepasseeError`.
+  */
+  caracteres: 0,
 } as const;
+
+/*
+  Ce que la composition sait imprimer.
+
+  Le document est composé par pdfTeX avec `inputenc` en UTF-8 et `fontenc` en
+  T1 : le répertoire est latin. Éprouvé caractère par caractère sur AMC 1.7.0 —
+  passent le latin de base, les suppléments latins jusqu'à Latin Extended-B, les
+  signes diacritiques combinants, la ponctuation typographique et l'euro ;
+  échoue tout ce qui sort de là. Un « م » dans un nom d'élève arrête la
+  composition sur « Unicode character not set up for use with LaTeX », et le
+  tirage entier est perdu.
+
+  Le produit sert un lycée français de Tunis : des noms en écriture arabe sont
+  parfaitement plausibles. Les refuser ici n'est pas satisfaisant, c'est
+  seulement honnête — un refus nommé vaut mieux qu'une erreur TeX illisible.
+  Les imprimer demanderait de passer à XeLaTeX ou LuaLaTeX avec `fontspec`,
+  et de requalifier toute la chaîne : c'est une décision de version, pas une
+  correction.
+*/
+const PLAGES_IMPRIMABLES: Array<[number, number]> = [
+  [0x20, 0x7e], // latin de base imprimable
+  [0xa0, 0x24f], // suppléments latins, Latin Extended-A et B
+  [0x300, 0x36f], // diacritiques combinants
+  [0x2010, 0x2027], // tirets, guillemets simples, points de suspension
+  [0x2030, 0x205e], // pour mille, primes, espaces typographiques
+  [0x20ac, 0x20ac], // euro
+];
+
+const imprimable = (point: number) =>
+  PLAGES_IMPRIMABLES.some(([bas, haut]) => point >= bas && point <= haut);
+
+/** Le premier caractère que la composition ne saurait pas imprimer, s'il existe. */
+function caractereRefuse(texte: string): string | null {
+  for (const c of texte) {
+    const point = c.codePointAt(0)!;
+    if (point === 0x09 || point === 0x0a || point === 0x0d) continue;
+    if (!imprimable(point)) return c;
+  }
+  return null;
+}
+
+function verifierLesCaracteres(texte: string, ou: string): void {
+  const c = caractereRefuse(texte);
+  if (c === null) return;
+  const point = c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0");
+  throw new LimiteDepasseeError(
+    "caracteres",
+    `${ou} contient « ${c} » (U+${point}), que la composition ne sait pas imprimer : elle compose en alphabet latin. Remplacez ce caractère.`,
+  );
+}
 
 export class LimiteDepasseeError extends Error {
   readonly limite: keyof typeof LIMITES;
@@ -133,6 +188,7 @@ function verifierLesBornes(input: TemplateInput): void {
   }
   for (const e of input.students) {
     const nom = `${e.lastName} ${e.firstName}`.trim();
+    verifierLesCaracteres(nom, `Le nom « ${nom.slice(0, 40)} »`);
     if (nom.length > LIMITES.nomEleve) {
       throw new LimiteDepasseeError(
         "nomEleve",
@@ -146,6 +202,9 @@ function verifierLesBornes(input: TemplateInput): void {
       `Cette évaluation compte ${input.questions.length} questions ; un sujet en accepte au plus ${LIMITES.questions}.`,
     );
   }
+  verifierLesCaracteres(input.title, "Le titre");
+  if (input.subtitle) verifierLesCaracteres(input.subtitle, "Le sous-titre");
+  for (const c of input.instructions ?? []) verifierLesCaracteres(c, "Une consigne");
   if (input.title.length > LIMITES.titre) {
     throw new LimiteDepasseeError(
       "titre",
@@ -159,6 +218,10 @@ function verifierLesBornes(input: TemplateInput): void {
     );
   }
   for (const q of input.questions) {
+    verifierLesCaracteres(q.question, `L'énoncé de la question ${q.id}`);
+    for (const o of q.options ?? []) {
+      verifierLesCaracteres(o, `Une proposition de la question ${q.id}`);
+    }
     if (q.question.length > LIMITES.enonce) {
       throw new LimiteDepasseeError(
         "enonce",

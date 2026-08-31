@@ -314,6 +314,23 @@ jobs:
       - name: Recette de mise en service
         run: RECETTE_IMAGE=atelier-qcm:ci bash scripts/recette-docker.sh
 
+      # La matrice de preuve papier : six tirages — un élève, trente élèves,
+      # formules, accents, énoncé long multi-pages, vrai/faux — vérifiés sur
+      # leurs invariants fonctionnels, jamais sur l'empreinte des PDF, que
+      # pdflatex horodate.
+      - name: Matrice de preuve papier
+        run: |
+          npx tsx scripts/matrice-preuve-papier.ts /tmp/matrice
+          bash scripts/verifier-matrice-papier.sh atelier-qcm:ci /tmp/matrice
+
+      # Les entrées difficiles, en deux couches : ce que les bornes refusent en
+      # nommant la cause, et ce qu'AMC doit encaisser sans planter, sans se
+      # bloquer, sans rien exécuter et sans écrire hors de son dossier.
+      - name: Corpus des entrées limites
+        run: |
+          npx tsx scripts/corpus-limites.ts /tmp/limites
+          bash scripts/verifier-corpus-limites.sh atelier-qcm:ci /tmp/limites
+
   # ── Chaîne d'approvisionnement ──────────────────────────────────────────────
   securite:
     name: Sécurité
