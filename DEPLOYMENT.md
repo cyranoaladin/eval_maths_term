@@ -263,6 +263,19 @@ DATABASE_URL=<url> npx tsx scripts/preflight-unicite-reponses.ts
 Aucune suppression automatique, dans aucun cas. La commande de réparation ne
 figure pas dans la migration et n'y figurera pas.
 
+### Si vous montez un dossier de l'hôte plutôt qu'un volume
+
+Le conteneur s'exécute sous un utilisateur non privilégié — `evalapp`, uid
+`10001`. Les volumes nommés de `docker-compose.yml` héritent des droits du
+dossier de l'image et ne posent pas de question. Un dossier de l'hôte monté à
+la place, lui, appartient à l'utilisateur qui l'a créé : l'application ne peut
+pas y écrire, aucun sujet n'est produit, et `/api/ready` répond `503` avec
+`tirages: EACCES`. Donnez-le à l'uid du conteneur avant de démarrer :
+
+```bash
+sudo chown -R 10001:10001 /chemin/vers/tirages
+```
+
 ## Sauvegardes
 
 Deux volumes portent des données non reconstructibles :
@@ -270,14 +283,54 @@ Deux volumes portent des données non reconstructibles :
 - `mysql_data` — évaluations, copies, notes
 - `paper_exams` — sujets et corrigés produits
 
+Les deux se sauvegardent ensemble, dans une archive horodatée dont l'intégrité
+se vérifie :
+
 ```bash
-docker compose exec -T mysql mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" \
-  --single-transaction eval_maths | gzip > sauvegarde-$(date +%F).sql.gz
+DATABASE_URL=mysql://... PAPER_OUTPUT_DIR=/var/lib/atelier/tirages \
+  bash scripts/sauvegarde.sh /var/backups/atelier
 ```
+
+L'archive contient le cliché de la base — pris en une seule transaction, sans
+verrou, une épreuve peut se dérouler pendant —, l'archive des tirages, un
+manifeste (version, empreinte git, base, date) et les empreintes SHA-256. Le
+script refuse de rendre la main si le cliché ne contient pas les treize tables :
+une sauvegarde tronquée ne doit pas passer pour une sauvegarde.
+
+À automatiser par `cron`, une fois par nuit et avant chaque déploiement :
+
+```cron
+30 2 * * *  cd /opt/atelier && DATABASE_URL=... PAPER_OUTPUT_DIR=... bash scripts/sauvegarde.sh /var/backups/atelier >> /var/log/atelier-sauvegarde.log 2>&1
+```
+
+### Restaurer
+
+```bash
+DATABASE_URL=mysql://... PAPER_OUTPUT_DIR=/var/lib/atelier/tirages \
+  bash scripts/restauration.sh /var/backups/atelier/20260831T003052Z
+```
+
+La base cible est écrasée — c'est le sens d'une restauration, mais ne la
+dirigez pas vers une base en service. Le script vérifie les empreintes avant de
+toucher à quoi que ce soit, puis compte ce qu'il a remis : évaluations,
+questions, copies, réponses, interventions tracées, migrations appliquées. Une
+base restaurée vide, ou dont le journal des migrations est vide, arrête le
+script au lieu d'être déclarée bonne.
 
 Une évaluation portant des copies ne peut pas être supprimée depuis
 l'interface — mais une restauration partielle, elle, peut casser ce lien.
 Restaurez toujours la base entière.
+
+### Ce que la répétition a montré
+
+La procédure a été jouée pour de bon, pas seulement écrite : base migrée
+sauvegardée, base détruite, archive restaurée, application redémarrée dessus.
+Elle a rendu ses 20 questions, ses 2 copies, ses notes et son sujet imprimé, et
+`/api/ready` est repassé au vert sur les six contrôles. La répétition a aussi
+montré ce que la procédure oubliait : l'archive des tirages, extraite par
+l'utilisateur qui restaure, revenait avec les droits de celui-ci et non ceux du
+conteneur. Le script le corrige désormais, ou le dit à voix haute quand il ne le
+peut pas.
 
 ## Mise à jour
 
@@ -288,6 +341,64 @@ docker compose exec app node dist/migrate.js
 ```
 
 Les migrations sont additives et rejouables. Sauvegardez avant, malgré tout.
+
+### La procédure complète, sur une base qui porte de vraies copies
+
+```bash
+DATABASE_URL=mysql://... PAPER_OUTPUT_DIR=/var/lib/atelier/tirages \
+  bash scripts/migration-production.sh /var/backups/atelier
+```
+
+Cinq étapes, dans cet ordre, chacune pouvant arrêter la suivante :
+
+| # | Étape | Ce qu'elle garantit |
+|---|---|---|
+| 1 | sauvegarde | l'archive existe, s'ouvre, et contient les treize tables |
+| 2 | état avant | le nombre de migrations déjà appliquées est noté |
+| 3 | préflights | unicité des réponses, accès enseignant, incidents JSON, invariants |
+| 4 | migration | `node dist/migrate.js`, depuis l'image |
+| 5 | postflight | le journal a avancé, et les invariants tiennent |
+
+Un préflight qui relève une divergence **arrête la migration** et ne corrige
+rien : la décision revient à un opérateur. Un postflight en échec dit
+explicitement que la base a été modifiée et qu'il faut restaurer.
+
+La procédure a été jouée sur une base au schéma de `v1.0.0-rc1` portant des
+copies, des notes et des incidents rangés dans l'ancienne colonne JSON : six
+migrations sont devenues dix, et les deux incidents JSON se sont retrouvés dans
+`cheat_events` avec leur type et leur horodatage avant que la colonne ne soit
+retirée.
+
+## Revenir à la version précédente
+
+Un retour arrière n'est pas seulement une image qu'on redémarre : le schéma a
+pu changer, et l'ancienne version ne sait pas lire le nouveau. La base revient
+avec elle, depuis la sauvegarde prise juste avant la migration.
+
+```bash
+DATABASE_URL=mysql://... PAPER_OUTPUT_DIR=/var/lib/atelier/tirages \
+  bash scripts/repli-production.sh \
+    ghcr.io/…/atelier-qcm@sha256:<empreinte de la version précédente> \
+    /var/backups/atelier/20260831T003052Z
+```
+
+L'image se désigne **par son empreinte**, jamais par une étiquette : `v1.0.0`
+peut avoir été reconstruite, une empreinte non. Relevez-la avant chaque
+déploiement :
+
+```bash
+docker image inspect <image> --format '{{index .RepoDigests 0}}'
+```
+
+Le script arrête la version en place par `docker stop` — SIGTERM, donc arrêt
+gracieux : les remises en cours vont à leur terme —, restaure la base et les
+tirages, redémarre l'image précédente, puis vérifie que le service se déclare
+prêt et annonce bien la version attendue.
+
+La répétition a été faite : une version en service, une sauvegarde, un incident
+simulé (dix questions supprimées, toutes les notes remises à zéro, le sujet
+effacé), puis le repli. Le service est revenu sur `v1.0.0-rc1`, prêt sur les six
+contrôles, avec ses vingt questions, ses deux copies notées et son sujet.
 
 ## Vérification
 

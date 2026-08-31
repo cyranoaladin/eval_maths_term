@@ -55,7 +55,13 @@ if [ -n "${RECETTE_IMAGE:-}" ]; then
   docker image inspect "$IMAGE" >/dev/null 2>&1
   ok "l'image à éprouver est fournie" $? "$IMAGE — $(docker image inspect "$IMAGE" --format '{{.Size}}' 2>/dev/null | awk '{printf "%.0f Mo", $1/1048576}')"
 else
-  docker build -q -t "$IMAGE" . >/dev/null 2>&1
+  # Les mêmes arguments que la CI : sans eux, la recette éprouverait une image
+  # dépourvue de version et d'empreinte, c'est-à-dire une autre image que celle
+  # qui part en production.
+  docker build -q -t "$IMAGE" \
+    --build-arg APP_VERSION="${APP_VERSION:-$(node -p "require('./package.json').version" 2>/dev/null || echo inconnue)}" \
+    --build-arg GIT_SHA="${GIT_SHA:-$(git rev-parse HEAD 2>/dev/null || echo inconnue)}" \
+    . >/dev/null 2>&1
   ok "l'image de production se construit" $? "$(docker image inspect "$IMAGE" --format '{{.Size}}' 2>/dev/null | awk '{printf "%.0f Mo", $1/1048576}')"
 fi
 
@@ -139,6 +145,17 @@ fin=$(date +%s%N)
 ms=$(( (fin - depart) / 1000000 ))
 ok "le conteneur répond au contrôle de santé" "$sain" "${ms} ms"
 ok "le démarrage tient sous trente secondes" "$([ "$ms" -lt 30000 ] && echo 0 || echo 1)" "${ms} ms"
+
+# L'artefact dit de quelle version il est. Sans cela, une machine de production
+# ne peut pas répondre à « qu'est-ce qui tourne ici ? », et un repli se fait à
+# l'aveugle. Une image construite sans ses arguments répondrait « inconnue ».
+sante="$(curl -s http://127.0.0.1:3100/api/health)"
+version_annoncee="$(sed -n 's/.*"version":"\([^"]*\)".*/\1/p' <<< "$sante")"
+sha_annonce="$(sed -n 's/.*"gitSha":"\([^"]*\)".*/\1/p' <<< "$sante")"
+ok "l'image annonce sa version et son empreinte" \
+  "$([ -n "$version_annoncee" ] && [ "$version_annoncee" != "inconnue" ] \
+     && [ -n "$sha_annonce" ] && [ "$sha_annonce" != "inconnue" ] && echo 0 || echo 1)" \
+  "${version_annoncee:-vide} · ${sha_annonce:-vide}"
 
 # ── 7. AMC dans le runtime ───────────────────────────────────────────────────
 # On vérifie exactement ce que vérifie `isAmcAvailable()` — l'exécutable dans

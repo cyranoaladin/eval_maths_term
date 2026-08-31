@@ -150,15 +150,15 @@ Huit procédures ne sont appelées par aucun écran :
 | P25 | Aucune erreur navigateur inattendue tolérée | **PASS** | surveillance installée sur chaque test sans qu'il ait à la demander ; exceptions, pageerror, `console.error` et 5xx ; aucun filtre global |
 | P26 | 0 code mort, 0 dépendance inutilisée, 0 duplication métier | **PASS** | `knip` ne signale plus rien ; `jscpd` 1,34 % — voir §4 |
 | P27 | `main` protégée, tags protégés | IN_PROGRESS | — |
-| P28 | Sauvegarde et restauration éprouvées | IN_PROGRESS | — |
-| P29 | Migration de production : sauvegarde → préflight → migration → postflight | IN_PROGRESS | 0006 et 0007 ont chacune leur préflight ; procédure à écrire |
-| P30 | Retour arrière éprouvé | IN_PROGRESS | — |
+| P28 | Sauvegarde et restauration éprouvées | **PASS** | `scripts/sauvegarde.sh` et `scripts/restauration.sh` ; répétition réelle — base détruite puis restaurée, application redémarrée dessus — voir §10 |
+| P29 | Migration de production : sauvegarde → préflight → migration → postflight | **PASS** | `scripts/migration-production.sh`, jouée d'un schéma rc1 portant des copies : 6 → 10 migrations, incidents JSON recopiés — voir §10 |
+| P30 | Retour arrière éprouvé | **PASS** | `scripts/repli-production.sh` ; répétition avec incident simulé, retour sur l'empreinte précédente — voir §10 |
 | P31 | Performance non régressée (p95 < 500 ms, 0 erreur) | IN_PROGRESS | à rejouer après les changements de base |
 | P32 | Endurance sans fuite | IN_PROGRESS | — |
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 25 / 34. IN_PROGRESS : 7. BLOCKED_EXTERNAL : 2.**
+**PASS : 28 / 34. IN_PROGRESS : 4. BLOCKED_EXTERNAL : 2.**
 
 ---
 
@@ -390,3 +390,73 @@ Ce qui n'entrait dans aucune de ces trois familles a été **supprimé** :
 `contracts/errors.ts` en entier, le repli du niveau de journal, la garde du
 barème de suspicion, les onze variantes du message d'erreur, et le repli de
 durée d'une session dont la colonne ne peut pas être nulle.
+
+
+---
+
+## 10. Sauvegarde, migration, repli : ce que les répétitions ont montré
+
+Trois procédures, écrites puis **jouées**. Une procédure qu'on n'a jamais
+exécutée est une hypothèse, et les trois répétitions ont chacune trouvé quelque
+chose que la lecture n'aurait pas trouvé.
+
+### Sauvegarde et restauration
+
+`scripts/sauvegarde.sh` prend la base et les tirages ensemble, dans une archive
+horodatée : cliché en une seule transaction — sans verrou, une épreuve peut se
+dérouler pendant —, archive des tirages, manifeste (version, empreinte git,
+base, date) et empreintes SHA-256. Le script **refuse** de rendre la main si le
+cliché ne contient pas les treize tables.
+
+`scripts/restauration.sh` vérifie les empreintes avant de toucher à quoi que ce
+soit, restaure, puis **compte** ce qu'il a remis. Une base restaurée dont le
+journal des migrations est vide arrête le script.
+
+**Répétition** — base migrée sauvegardée, base détruite (`DROP DATABASE`),
+dossier des tirages effacé, puis restauration : 1 évaluation, 20 questions,
+2 copies, 5 réponses, 10 migrations, 1 fichier de tirage. L'application a été
+redémarrée dessus et a servi l'évaluation restaurée. `RESTORE_DRILL = PASS`.
+
+Ce que la répétition a montré : l'archive des tirages, extraite par
+l'utilisateur qui restaure, revenait avec les droits de celui-ci et non ceux du
+conteneur — `/api/ready` répondait alors « tirages : EACCES ». Le script rend
+désormais le dossier à l'uid de l'application, ou le dit à voix haute quand il
+ne le peut pas.
+
+### Migration de production
+
+`scripts/migration-production.sh` enchaîne cinq étapes dont chacune peut
+arrêter la suivante : sauvegarde vérifiée, état avant, quatre préflights,
+migration, postflight. Aucun préflight ne corrige quoi que ce soit.
+
+**Répétition** — sur une base montée au schéma de `v1.0.0-rc1` (six migrations)
+et peuplée : un enseignant, une classe, trois élèves, deux copies notées, cinq
+réponses, et deux incidents de surveillance encore rangés dans l'ancienne
+colonne JSON `sessions.cheatEvents`.
+
+| Étape | Résultat |
+|---|---|
+| Sauvegarde | archive vérifiée, treize tables |
+| Préflights | quatre passés ; un état anormal signalé sans bloquer — une copie close dont les réponses n'ont pas de date de correction |
+| Migration | 6 → 10 migrations |
+| Postflight | journal avancé, invariants tenus |
+| Incidents JSON | 2 incidents recopiés dans `cheat_events`, type et horodatage préservés, puis la colonne retirée |
+
+### Repli
+
+`scripts/repli-production.sh` arrête la version en place par `docker stop`
+— SIGTERM, donc arrêt gracieux —, restaure la base et les tirages, redémarre
+l'image **désignée par son empreinte**, puis vérifie que le service se déclare
+prêt et annonce la version attendue.
+
+**Répétition** — une version en service, une sauvegarde, puis un incident
+simulé : dix questions supprimées, toutes les notes remises à zéro, le sujet
+imprimé effacé. Après repli : service prêt sur les six contrôles, version
+annoncée `v1.0.0-rc1` avec son empreinte git, vingt questions, deux copies avec
+leurs notes, le sujet revenu. `ROLLBACK_DRILL = PASS`.
+
+Ce que la répétition a montré : `scripts/recette-docker.sh` construisait l'image
+**sans** `APP_VERSION` ni `GIT_SHA`. La recette éprouvait donc un artefact qui
+répondait « version : "" » — pas celui qui part en production. La recette passe
+désormais les mêmes arguments que la CI, et vérifie que l'image annonce sa
+version et son empreinte.
