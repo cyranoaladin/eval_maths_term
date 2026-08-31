@@ -268,7 +268,8 @@ test.describe("parcours élève", () => {
       a besoin d'un glyphe qu'elles seules portent. Une question atteinte hors
       ligne en demande une, et le navigateur signale qu'il n'a pas pu la
       chercher — chaque moteur à sa façon : « ERR_INTERNET_DISCONNECTED » sous
-      Chromium, « WebKit encountered an internal error » sous Safari. La formule
+      Chromium, « WebKit encountered an internal error » sous Safari,
+      « downloadable font: download failed » sous Gecko. La formule
       s'affiche alors dans une police de repli : c'est une dégradation
       d'apparence, pas une copie perdue — et c'est précisément ce que ce test
       vérifie ensuite.
@@ -277,7 +278,7 @@ test.describe("parcours élève", () => {
       chargement reste une anomalie.
     */
     surveillance.tolerer(
-      /Failed to load resource/,
+      /Failed to load resource|downloadable font: download failed/,
       "le réseau est coupé volontairement : les polices demandées à cet instant ne peuvent pas arriver",
     );
 

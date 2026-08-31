@@ -224,13 +224,19 @@ export async function formulesAffichees(page: Page): Promise<string[]> {
 /**
  * Ouvre une page de l'application.
  *
- * On n'attend pas l'événement `load`, mais le document. L'application est une
- * page unique : `load` n'arrive qu'une fois tous les morceaux chargés à la
- * demande, les polices mathématiques comprises, et sous Gecko il lui arrive de
- * ne jamais arriver — la navigation expirait alors au bout de quatre-vingt-dix
- * secondes sur un test qui, lui, n'attendait qu'un bouton. Ce que chaque test
- * attend vraiment, il l'affirme juste après.
+ * On n'attend ni `load` ni même le document analysé, mais la réponse.
+ *
+ * L'application est une page unique : `load` n'arrive qu'une fois tous les
+ * morceaux chargés à la demande, les polices mathématiques comprises, et sous
+ * Gecko il lui arrive de ne jamais arriver. `domcontentloaded` a tenu plus
+ * longtemps, puis a lâché à son tour : la navigation qui suit une page ayant
+ * rendu des formules attend des polices que Gecko compte encore comme faisant
+ * partie du document, et expire au bout de quatre-vingt-dix secondes.
+ *
+ * `commit` est la seule condition qui ne dépende que du serveur : la réponse a
+ * commencé à arriver. Tout le reste — le document, l'application, l'écran —,
+ * chaque test l'affirme juste après, et c'est bien ce qu'il attend vraiment.
  */
 export async function ouvrir(page: Page, chemin: string): Promise<void> {
-  await page.goto(chemin, { waitUntil: "domcontentloaded" });
+  await page.goto(chemin, { waitUntil: "commit" });
 }
