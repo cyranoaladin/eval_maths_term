@@ -18,7 +18,8 @@ sur le chemin fonctionnel.
 |---|---|
 | Branche | `release/production-hardening` |
 | Base | `90fb380` (`main`, tag `v1.0.0-rc1`) |
-| Dernière mise à jour | 2026-08-31 — couverture au gate |
+| Dernière mise à jour | 2026-08-31 — gate franchi, `v1.0.0-rc2` posé |
+| Artefact candidat | `atelier-qcm:1.0.0-rc2`, recette 28/28 |
 
 ---
 
@@ -159,6 +160,11 @@ Huit procédures ne sont appelées par aucun écran :
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
 **PASS : 32 / 34. IN_PROGRESS : 0. BLOCKED_EXTERNAL : 2.**
+
+Les deux exigences restantes — P33 déploiement de recette, P34 déploiement de
+production — ne dépendent plus du produit. Aucune infrastructure de recette
+n'est désignée à ce jour ; c'est la seule raison pour laquelle elles ne sont pas
+franchies, et c'est la raison pour laquelle **`v1.0.0` reste interdit**.
 
 ---
 
