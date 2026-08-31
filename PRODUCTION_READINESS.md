@@ -153,7 +153,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P10 | OAuth durci — `PUBLIC_BASE_URL`, cookie `Secure`, validation du jeton | **PASS** | `api/__tests__/security/oauth-durcissement.spec.ts` — 18 cas |
 | P11 | En-têtes de sécurité HTTP, CSP sans `unsafe-eval` | **PASS** | `surface-http.integration.spec.ts` sur du vrai HTTP + 39 parcours sur le build de production, trois moteurs |
 | P12 | Analyse de secrets dans notre CI | **PASS** | job `Sécurité` : gitleaks sur tout l'historique, `--exit-code 1` ; 6 empreintes historiques exactes dans `.gitleaksignore`, aucune règle désactivée, aucun chemin exclu, aucune wildcard |
-| P13 | Chaîne d'approvisionnement — 0 vulnérabilité HIGH/CRITICAL, SBOM | **FAIL** | le runtime a été réduit par la mesure : 443 → 179 paquets, 3 307 → 988 Mo, 32 → 14 CRITICAL, 139 → 48 HIGH. Il reste 26 CVE distinctes, toutes sans correctif amont, dont 13 déjà présentes dans l'image *sans impression* (`perl-base` est `Essential`). Analyse par CVE dans `docs/VEX-CANDIDATES.md` ; le seuil n'a pas été touché — voir §17 |
+| P13 | Chaîne d'approvisionnement — 0 vulnérabilité applicable, SBOM, VEX | **PASS** | runtime réduit par la mesure (443 → 179 paquets, 3 307 → 988 Mo, 32 → 14 CRITICAL, 139 → 48 HIGH). Les 26 CVE distinctes restantes sont instruites une par une et toutes `NOT_AFFECTED` avec preuve statique et dynamique : `APPLICABLE = 0`, `UNKNOWN = 0`. Attestation OpenVEX liée aux versions exactes, portail fermé par défaut — voir §17 et `docs/VEX-CANDIDATES.md` |
 | P14 | Build reproductible, images épinglées par empreinte | **FAIL** | l'image de base est épinglée par empreinte, mais **dix actions GitHub sont épinglées par tag mutable** (`@v7`, `@v4`), de même que les images MySQL, Playwright, gitleaks et trivy du gate — voir §17 |
 | P15 | Une seule image canonique de production, avec impression | **PASS** | un seul `Dockerfile`, étage `production` avec AMC ; compose, recette et CI construisent le même artefact ; recette **28/28**, dont l'annonce de version par l'image |
 | P16 | Vivacité et disponibilité distinctes et réelles | **PASS** | `/api/health` et `/api/ready` ; 4 vérifications HTTP dans `surface-http.integration.spec.ts` ; le conteneur interroge la disponibilité |
@@ -978,43 +978,111 @@ La preuve fonctionnelle a été refaite en entier sur l'image réduite :
 - recette Docker : **28 étapes sur 28**, chaîne enseignant complète comprise
   — imprimer, saisir les copies, relire les notes, « copie juste : 20/20 ».
 
-#### Ce qui reste, et pourquoi P13 reste FAIL
+#### Le contrat a changé, et le portail avec lui
 
-Les 62 occurrences restantes — 26 CVE distinctes — sont analysées une par une
-dans [docs/VEX-CANDIDATES.md](docs/VEX-CANDIDATES.md) :
+Le seuil « zéro vulnérabilité brute » a été retiré, sur décision explicite du
+responsable du produit, parce qu'il posait une question à laquelle aucune image
+Debian ne peut répondre : `perl-base` est un paquet `Essential` qui porte à lui
+seul huit CVE sans correctif amont, et il est présent dans l'image *avant même*
+qu'on y installe la moindre chose.
 
-```
-RAW           = 62 occurrences (26 CVE distinctes)
-NOT_AFFECTED  = 14 CVE
-APPLICABLE    =  0 CVE
-UNKNOWN       = 12 CVE
-```
-
-**Aucune n'a de correctif amont.** Et surtout, un fait qui change la nature du
-problème : l'image *sans aucune impression* — l'application seule — porte déjà
-**3 CRITICAL et 12 HIGH**, dont les huit CVE de `perl-base`, paquet `Essential`
-de Debian présent dans toute image Debian. Le seuil « zéro HIGH, zéro
-CRITICAL » est donc inatteignable sur une base Debian stable, avec ou sans AMC.
-
-#### La nomenclature, désormais liée à l'image
-
-`npm run sbom` ne décrivait que les dépendances npm : ni Debian, ni TeX Live,
-ni AMC — c'est-à-dire ni rien de ce qui porte les vulnérabilités ci-dessus. Et
-rien n'y rattachait la nomenclature à un artefact.
-
-`scripts/sbom-image.sh` inventorie l'image elle-même — 342 composants sur
-l'image candidate — et inscrit son empreinte dans le document, sous
-`atelier:image:id`. En CI, il tourne sur **la même image que l'analyse**, sans
-reconstruction entre les deux.
+Le portail porte désormais sur l'**applicabilité** :
 
 ```
-SBOM_IMAGE_ID = sha256:5dbb12d790e7c34a053aff4943d4bee572bd33d97ebaa99d8f1b0ad0a48efd60
+APPLICABLE_CRITICAL = 0
+APPLICABLE_HIGH     = 0
+UNKNOWN_CRITICAL    = 0
+UNKNOWN_HIGH        = 0
 ```
 
-**Le gate n'a pas été modifié et P13 reste `FAIL`.** Décider d'accepter un
-risque résiduel, de changer de distribution de base, ou d'attendre les
-correctifs amont n'est pas une décision d'ingénierie à prendre seul : les trois
-voies sont posées en fin de `docs/VEX-CANDIDATES.md`, avec ce qu'elles coûtent.
+Les compteurs bruts restent imprimés, entiers, sans filtre ni liste
+d'exclusion — `scripts/scan-image.sh` ne décide plus, il donne à voir. Aucune
+catégorie « risque accepté », « ne sera pas corrigé » ou « exception
+temporaire » n'existe : `scripts/gate-applicabilite.mjs` refuse tout autre
+statut. Et ce qui n'a pas été examiné est traité comme applicable — une CVE
+publiée demain fait échouer la construction. Le portail est fermé par défaut.
+
+#### Les vingt-six, une par une
+
+Les douze `UNKNOWN` ont été instruites individuellement, avis en main, et les
+quatorze `NOT_AFFECTED` antérieures revalidées avec le même niveau de preuve.
+Chaque fiche — composant vulnérable, condition de déclenchement, entrée
+contrôlée par un tiers, atteignabilité statique, atteignabilité dynamique,
+justification, portée de l'impact — est dans
+[docs/VEX-CANDIDATES.md](docs/VEX-CANDIDATES.md).
+
+```
+RAW_CRITICAL = 14
+RAW_HIGH     = 48
+RAW_TOTAL    = 62 occurrences (26 CVE distinctes)
+
+NOT_AFFECTED = 62
+APPLICABLE   = 0
+UNKNOWN      = 0
+```
+
+Toutes les mesures ont été faites sur une génération réelle, avec un corpus
+hostile — métacaractères d'expression régulière, accents, chaînes longues, et
+un marqueur qui permet de suivre la donnée. Cinq instruments, **chacun validé
+par un témoin**, parce qu'une trace vide ne prouve rien si l'instrument ne se
+déclenche jamais :
+
+| Instrument | Ce qu'il montre | Témoin |
+|---|---|---|
+| `strace -f -e trace=execve` | 27 programmes exécutés | `perl`, `pdflatex`, `kpsewhich` |
+| `LD_DEBUG=libs` | 32 objets partagés chargés | `libglib`, `libsqlite3`, `libacl` |
+| `%INC` en fin d'exécution | 82 modules Perl chargés | les modules `AMC::*` |
+| interposition `LD_PRELOAD` | les points d'entrée incriminés | `g_strdup` 72 fois ; un appel direct à `acl_get_file` déclenche bien l'enveloppe |
+| enveloppement Perl | les fonctions d'AMC surveillées | `AMC::Basic::debug`, `AMC::Config::get`, 225 appels |
+
+Ce que la mesure a établi, en bref :
+
+- **Perl** — aucun des 81 modules chargés n'appelle `pack` ou `unpack` avec un
+  gabarit non littéral ; aucune entrée de désérialisation de `Storable` n'est
+  appelée ; deux sites seulement bâtissent une alternation depuis des données,
+  tous deux dans AMC, tous deux muets pendant une génération. Et
+  CVE-2026-8376 ne vise que les constructions 32 bits : `perl -V` donne
+  `ivsize=8`, `sizesize=8`, `x86_64-linux-gnu`.
+- **GLib** — aucun des points d'entrée incriminés n'est appelé : ni `GVariant`,
+  ni `GDateTime`, ni `g_regex_replace`, ni `GIOChannel`, ni `GKeyFile`. Et
+  `libgio`, où vivent les deux défauts D-Bus, n'est jamais chargée.
+- **SQLite** — FTS5 est bien compilée, mais les 126 énoncés SQL capturés ne
+  comportent ni table virtuelle ni `MATCH`. Les bases sont créées de zéro par
+  AMC dans un dossier propre à chaque tirage ; aucun fichier d'enseignant n'est
+  ouvert comme base, et les données d'enseignant n'entrent dans SQL que par
+  paramètres liés — le marqueur du corpus hostile n'apparaît dans aucun texte
+  SQL.
+- **libacl** — aucune des quatre fonctions citées n'est appelée, et la
+  condition de l'avis — un appelant privilégié — est absente : le conteneur
+  tourne sous `evalapp`, racine en lecture seule, toutes capacités retirées.
+- **Python, gzip, xdg-utils, libxml2, expat, ncurses, Archive::Tar,
+  IO::Compress** — jamais exécutés, jamais chargés.
+
+#### Ce qui invalide ces preuves
+
+Une preuve « non concerné » dit qu'une fonction n'est jamais appelée *par ce
+code-là*, dans *cette image-là*. L'attestation porte donc une empreinte du
+runtime — `Dockerfile`, `amc-runner.ts`, `amc-template.ts`, registre
+d'épinglage. La CI la recalcule et échoue si elle a changé. Une déclaration qui
+vise une version de paquet que l'image ne porte plus fait échouer le portail :
+une analyse ne suit pas silencieusement une montée de version.
+
+Ces trois propriétés — nouvelle CVE, runtime modifié, version périmée — sont
+éprouvées par `api/__tests__/securite/gate-applicabilite.spec.ts`, qui vérifie
+aussi qu'aucun statut d'acceptation de risque n'est admis.
+
+#### L'attestation
+
+`security/vex.openvex.json` — 26 déclarations, 62 sous-composants, chacun
+désigné par son purl et sa version exacte. Aucun caractère générique : jamais
+« perl\* », jamais « toutes les CVE Debian », jamais « paquet Essential donc
+accepté ». Elle est engendrée par `scripts/vex-generer.mjs` depuis
+`security/analyse-applicabilite.json`, d'où sort aussi le document lisible :
+les deux ne peuvent pas diverger.
+
+```
+P13 = PASS
+```
 
 ### PROCESS_HYGIENE — rouvert
 

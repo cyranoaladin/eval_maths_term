@@ -362,24 +362,33 @@ jobs:
           tags: atelier-qcm:securite
           cache-from: type=gha
 
-      # Le seuil est **zéro** vulnérabilité élevée ou critique. Sans exception,
-      # et notamment sans celle qui a longtemps figuré ici : « seulement celles
-      # qui ont un correctif ». Une faille sans correctif reste une faille dans
-      # l'image qui sert des copies d'élèves.
-      - name: Analyse de l'image
-        run: bash scripts/scan-image.sh atelier-qcm:securite
+      # ── Deux vues, et une seule qui décide ───────────────────────────────
+      #
+      # La première est brute : Trivy rapporte toutes les vulnérabilités
+      # élevées et critiques, sans filtre, sans exclusion, sans liste
+      # d'exceptions. Elle ne ferme aucune porte — elle donne à voir.
+      - name: Analyse de l'image, brute
+        run: bash scripts/scan-image.sh atelier-qcm:securite rapport-trivy.json
 
-      # La même image, jamais reconstruite entre les deux : la nomenclature
-      # porte l'empreinte de celle qui vient d'être analysée.
+      # La même image, jamais reconstruite entre les étapes : la nomenclature
+      # et le verdict portent sur l'artefact qui vient d'être analysé.
       - name: Nomenclature de l'image
-        if: always()
         run: bash scripts/sbom-image.sh atelier-qcm:securite sbom-image.json
+
+      # La seconde décide. Elle croise le rapport brut, la nomenclature et
+      # l'attestation VEX, et échoue sur toute vulnérabilité applicable — ou
+      # seulement indéterminée. Une CVE publiée demain, que personne n'a
+      # examinée, ferme la porte : le portail est fermé par défaut.
+      - name: Applicabilité des vulnérabilités
+        run: node scripts/gate-applicabilite.mjs rapport-trivy.json sbom-image.json
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: sbom
+          name: securite
           path: |
             sbom.json
             sbom-image.json
+            rapport-trivy.json
+            security/vex.openvex.json
           retention-days: 90

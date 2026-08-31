@@ -46,3 +46,4 @@ test-results/
 playwright-report/
 sbom.json
 sbom-image.json
+rapport-trivy.json

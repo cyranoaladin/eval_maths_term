@@ -2,29 +2,35 @@
 #
 # scripts/scan-image.sh
 #
-# Analyse de vulnérabilités de l'image de production.
+# La vue brute des vulnérabilités de l'image. **Ce script ne décide plus.**
 #
-# Le seuil est **zéro vulnérabilité élevée ou critique**. Sans exception, et
-# notamment sans l'exception qui figurait ici : « celles pour lesquelles aucun
-# correctif amont n'existe sont portées et surveillées ». Une faille sans
-# correctif reste une faille dans l'image qui sert des copies d'élèves ; ce qui
-# manque, c'est un correctif, pas une raison de l'accepter.
+# Il a longtemps porté le seuil, et l'a porté de deux façons successivement
+# fausses. D'abord « zéro vulnérabilité *corrigeable* » : une faille sans
+# correctif amont était écartée, ce qui revient à accepter ce qu'on ne sait pas
+# réparer. Puis « zéro, sans exception » : un seuil que le contrat exigeait mais
+# qu'aucune image Debian ne peut tenir, `perl-base` étant un paquet Essential
+# qui porte à lui seul huit CVE sans correctif.
 #
-# Quand une vulnérabilité apparaît sans correctif disponible, les issues sont :
-# changer d'image de base, mettre le paquet à jour depuis une autre source,
-# retirer le composant s'il n'est pas nécessaire — ou tenir l'artefact bloqué.
+# Les deux seuils posaient la mauvaise question. La bonne est :
 #
-#   bash scripts/scan-image.sh [image]
+#   cette vulnérabilité est-elle atteignable dans cet artefact-ci ?
 #
-# Sortie 0 : aucune HIGH ni CRITICAL. Sortie 1 : au moins une, listée.
+# Elle se tranche par `scripts/gate-applicabilite.mjs`, qui croise ce rapport,
+# la nomenclature de l'image et l'attestation VEX, et qui échoue sur toute
+# vulnérabilité applicable ou seulement indéterminée.
+#
+# Ce script-ci produit le rapport et imprime les compteurs bruts, entiers, sans
+# filtre ni exclusion. C'est ce que le portail examinera ensuite.
+#
+#   bash scripts/scan-image.sh [image] [rapport.json]
+#
+# Sortie 0 : le rapport a été produit. Sortie 1 : l'analyse a échoué.
 set -uo pipefail
 
 IMAGE="${1:-atelier-qcm:production}"
 TRIVY="aquasec/trivy:0.69.1@sha256:1c78ed1ef824ab8bb05b04359d186e4c1229d0b3e67005faacb54a7d71974f73"
 CACHE="${HOME}/.cache/trivy"
-RAPPORT="${RAPPORT_SCAN:-$(mktemp)}"
-GARDER_RAPPORT="${RAPPORT_SCAN:-}"
-[ -z "$GARDER_RAPPORT" ] && trap 'rm -f "$RAPPORT"' EXIT
+RAPPORT="${2:-${RAPPORT_SCAN:-rapport-trivy.json}}"
 mkdir -p "$CACHE"
 
 echo "▶ Analyse de $IMAGE"
@@ -59,21 +65,13 @@ const ligne = (v) =>
 if (toutes.length === 0) {
   console.log("\naucune vulnérabilité élevée ou critique");
 } else {
-  console.log(`\nÀ traiter (${toutes.length}) :`);
+  console.log(`\nRelevé brut (${toutes.length} occurrences, ${new Set(toutes.map(v => v.VulnerabilityID)).size} CVE distinctes) :`);
   for (const v of [...critiques, ...elevees]) console.log(ligne(v));
 }
-console.log(`\nIMAGE_CRITICAL = ${critiques.length}`);
-console.log(`IMAGE_HIGH = ${elevees.length}`);
-process.exit(toutes.length === 0 ? 0 : 1);
+console.log(`\nRAW_CRITICAL = ${critiques.length}`);
+console.log(`RAW_HIGH = ${elevees.length}`);
 ' "$RAPPORT"
-code=$?
 
 echo
-if [ $code -eq 0 ]; then
-  echo "✅ IMAGE_HIGH = 0 · IMAGE_CRITICAL = 0"
-else
-  echo "❌ L'image porte des vulnérabilités élevées ou critiques."
-  echo "   Aucune n'est acceptable, avec ou sans correctif amont."
-fi
-[ -n "$GARDER_RAPPORT" ] && echo "   rapport : $RAPPORT"
-exit $code
+echo "   rapport : $RAPPORT"
+echo "   Le verdict appartient à scripts/gate-applicabilite.mjs."

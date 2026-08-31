@@ -1,0 +1,236 @@
+{
+  "CVE-2026-8376": {
+    "composant": "Perl_study_chunk (regcomp_study.c), compilation d'expression régulière",
+    "declencheur": "Compiler un motif comportant une chaîne fixe répétée avec un compte minimal élevé, sur une construction 32 bits, de sorte que mincount * l déborde SSize_t.",
+    "entree_controlee": "Un motif d'expression régulière.",
+    "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+    "impact": "L'image est amd64 : perl -V donne ptrsize=8, ivsize=8, sizesize=8. Le débordement décrit exige un SSize_t de 32 bits ; sur cette construction, mincount * l ne peut atteindre 2^63. Aucune entrée ne peut porter le calcul jusqu'au débordement.",
+    "statique": "L'avis restreint le défaut aux constructions 32 bits.",
+    "dynamique": "perl -V:ptrsize -V:ivsize -V:sizesize -V:archname dans l'image livrée : 8, 8, 8, x86_64-linux-gnu-thread-multi."
+  },
+  "CVE-2026-13221": {
+    "composant": "Perl_study_chunk, construction du trie d'alternation",
+    "declencheur": "Compiler un motif dont l'alternation compte plus de 65 535 branches de chaînes fixes.",
+    "entree_controlee": "Un motif d'expression régulière bâti depuis des données.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Sur les 81 modules chargés par une génération, deux seulement bâtissent une alternation depuis des données : AMC::Config::csv_build_0 et AMC::Basic::check_fonts. Les deux sont muettes pendant une génération complète. Les bornes de api/paper/amc-template.ts plafonnent par ailleurs chaque champ d'enseignant très au-dessous de 65 535 branches.",
+    "statique": "Recherche exhaustive de join('|') sur les 81 fichiers de modules chargés : deux occurrences, toutes deux dans AMC. 61 motifs interpolés recensés, aucun ne bâtit d'alternation.",
+    "dynamique": "Enveloppement des deux fonctions pendant une génération avec corpus hostile : zéro appel, alors que les témoins AMC::Basic::debug et AMC::Config::get sont appelés 225 fois. Une entrée de 70 000 branches dans un nom d'élève n'atteint aucun motif Perl : la chaîne s'arrête dans pdfTeX."
+  },
+  "CVE-2026-57432": {
+    "composant": "S_measure_struct, opérations pack et unpack",
+    "declencheur": "Un gabarit pack/unpack dérivé d'une entrée non fiable, portant un compte de répétition assez grand pour faire déborder le total SSize_t.",
+    "entree_controlee": "Le gabarit, et non les données empaquetées.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Aucun des 81 modules chargés n'appelle pack ou unpack avec un gabarit non littéral. Le seul gabarit interpolé, Storable.pm ligne 200 (a${len}CCC), appartient à read_magic, qui n'est jamais appelée ; $len y vaut au plus 255.",
+    "statique": "Recherche de (pack|unpack) suivi de $ ou @ sur les 81 fichiers : zéro occurrence. Tous les gabarits relevés sont des littéraux constants.",
+    "dynamique": "Storable::read_magic enveloppée pendant une génération : zéro appel."
+  },
+  "CVE-2026-57433": {
+    "composant": "Storable, retrieve_hook_common sur un enregistrement SX_HOOK",
+    "declencheur": "Passer un blob fabriqué à thaw ou retrieve.",
+    "entree_controlee": "Un blob Storable sérialisé.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Storable est chargé parce qu'Encode le charge, pas parce qu'AMC s'en sert. Aucune de ses entrées de désérialisation n'est appelée, et le produit ne lit aucun blob Storable.",
+    "statique": "Aucune occurrence de thaw, retrieve, fd_retrieve, dclone, freeze ou store dans le code d'AMC chargé ni dans les scripts exécutés.",
+    "dynamique": "Les neuf entrées de Storable enveloppées pendant une génération avec corpus hostile : zéro appel, témoins actifs."
+  },
+  "CVE-2026-58010": {
+    "composant": "gvs_tuple_is_normal (glib/gvariant-serialiser.c)",
+    "declencheur": "Vérifier la forme normale d'un GVariant sérialisé fabriqué.",
+    "entree_controlee": "Des données GVariant sérialisées.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Aucun GVariant n'est construit ni vérifié pendant une génération.",
+    "statique": "Les seuls appels GLib du code chargé sont Glib::get_home_dir, Glib::filename_display_name et les constantes TRUE/FALSE.",
+    "dynamique": "g_variant_new_from_data, g_variant_is_normal_form et g_variant_get_normal_form interposées : zéro appel, alors que les témoins g_strdup (72 appels) et g_get_home_dir (4) prouvent que l'interposition GLib fonctionne."
+  },
+  "CVE-2026-58011": {
+    "composant": "g_date_time_get_ymd (glib/gdatetime.c)",
+    "declencheur": "Lire la date d'un GDateTime invalide produit par g_date_time_add_full.",
+    "entree_controlee": "Une valeur de date.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Aucune date GLib n'est manipulée pendant une génération.",
+    "statique": "Aucun appel GDateTime dans le code chargé.",
+    "dynamique": "g_date_time_add_full et g_date_time_get_ymd interposées : zéro appel, témoins actifs."
+  },
+  "CVE-2026-58012": {
+    "composant": "g_regex_replace, via string_append (glib/gregex.c)",
+    "declencheur": "Appeler g_regex_replace avec le drapeau G_REGEX_RAW et une échappe de changement de casse, sur une chaîne qui n'est pas de l'UTF-8 valide.",
+    "entree_controlee": "La chaîne sujet et la chaîne de remplacement.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Le moteur d'expressions régulières de GLib n'est pas utilisé : AMC est en Perl et se sert du moteur de Perl.",
+    "statique": "Aucun appel g_regex dans le code chargé.",
+    "dynamique": "g_regex_new et g_regex_replace interposées : zéro appel, témoins actifs."
+  },
+  "CVE-2026-58013": {
+    "composant": "g_io_channel_read_line_backend (glib/giochannel.c)",
+    "declencheur": "Lire une ligne sur un GIOChannel dont le terminateur de ligne fait plus d'un caractère.",
+    "entree_controlee": "Le flux lu et le terminateur configuré.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Aucun GIOChannel n'est ouvert pendant une génération ; les entrées-sorties passent par Perl.",
+    "statique": "Aucun appel GIOChannel dans le code chargé.",
+    "dynamique": "g_io_channel_set_line_term, g_io_channel_read_line et g_io_channel_read_line_string interposées : zéro appel, témoins actifs."
+  },
+  "CVE-2026-58014": {
+    "composant": "g_key_file_get_locale_string_list (glib/gkeyfile.c)",
+    "declencheur": "Charger un fichier de clés contenant une valeur vide, puis lire une liste localisée.",
+    "entree_controlee": "Le contenu du fichier de clés.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Aucun GKeyFile n'est chargé pendant une génération. AMC lit sa configuration en XML par XML::Simple, pas en format clés GLib.",
+    "statique": "Aucun appel GKeyFile dans le code chargé.",
+    "dynamique": "g_key_file_load_from_file, g_key_file_get_locale_string et g_key_file_get_locale_string_list interposées : zéro appel, témoins actifs."
+  },
+  "CVE-2026-58015": {
+    "composant": "keyring_ (gio/gdbusauthmechanismsha1.c)",
+    "declencheur": "Authentification D-Bus SHA-1 par trousseau.",
+    "entree_controlee": "Un pair D-Bus.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Le défaut est dans libgio, qui n'est jamais chargée. Le conteneur n'a ni bus de session ni bus système.",
+    "statique": "Aucun usage de D-Bus dans le code chargé.",
+    "dynamique": "LD_DEBUG=libs sur une génération complète : 32 objets partagés chargés, libgio-2.0.so n'en fait pas partie."
+  },
+  "CVE-2026-58016": {
+    "composant": "g_dbus_node_info_new_for_xml (gio/gdbusintrospection.c)",
+    "declencheur": "Analyser une description d'introspection D-Bus fabriquée.",
+    "entree_controlee": "Du XML d'introspection D-Bus.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Le défaut est dans libgio, qui n'est jamais chargée. Le conteneur n'a aucun bus D-Bus.",
+    "statique": "Aucun usage de D-Bus dans le code chargé.",
+    "dynamique": "LD_DEBUG=libs sur une génération complète : libgio-2.0.so absente des 32 objets chargés."
+  },
+  "CVE-2026-11822": {
+    "composant": "fts5LeafSeek (extension FTS5 de SQLite)",
+    "declencheur": "Exécuter une requête FTS5 MATCH sur une base fabriquée dont les pages FTS5 sont malformées.",
+    "entree_controlee": "Le fichier de base de données.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "FTS5 est bien compilée dans libsqlite3 (ENABLE_FTS5), mais aucune table virtuelle n'est créée et aucune requête MATCH n'est exécutée. Les deux bases du projet sont créées de zéro par AMC dans un dossier de tirage qui lui est propre ; aucun fichier fourni par un enseignant n'est jamais ouvert comme base.",
+    "statique": "Le schéma produit ne comporte que des tables ordinaires : layout_* et report_*.",
+    "dynamique": "Interposition de sqlite3_open, sqlite3_open_v2, sqlite3_exec et sqlite3_prepare_v2/v3 : 126 énoncés capturés, aucun CREATE VIRTUAL TABLE, aucun MATCH. La seule mention FTS est la sonde de capacité de DBD::SQLite, SELECT fts3_tokenizer(?, ?), qui vise FTS3 et passe ses valeurs en paramètres liés."
+  },
+  "CVE-2026-11824": {
+    "composant": "fts5ChunkIterate (extension FTS5 de SQLite)",
+    "declencheur": "Exécuter une requête FTS5 MATCH sur une base dont une page de continuation annonce un szLeaf inférieur à 4.",
+    "entree_controlee": "Le fichier de base de données.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Même chemin que CVE-2026-11822 : aucune table FTS5, aucune requête MATCH, aucune base fournie de l'extérieur.",
+    "statique": "Le schéma produit ne comporte que des tables ordinaires.",
+    "dynamique": "126 énoncés SQL capturés pendant une génération : aucun MATCH, aucune table virtuelle. Le marqueur du corpus hostile n'apparaît dans aucun texte SQL — les données d'enseignant n'y entrent que par paramètres liés."
+  },
+  "CVE-2026-54369": {
+    "composant": "acl_get_file, acl_set_file, acl_extended_file, acl_delete_def_file",
+    "declencheur": "Un appelant privilégié applique une opération ACL à un chemin dont un tiers contrôle une composante, remplacée par un lien symbolique.",
+    "entree_controlee": "Une composante de chemin.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Aucune des quatre fonctions n'est appelée pendant une génération. De surcroît la condition de l'avis — un appelant privilégié — est absente : le conteneur tourne sous evalapp (uid 10001), racine en lecture seule, toutes capacités retirées, no-new-privileges.",
+    "statique": "Aucun appel ACL dans AMC ni dans le code du produit ; libacl n'est tirée que par coreutils.",
+    "dynamique": "Les quatre fonctions interposées : zéro appel sur une génération complète. Le témoin prouve que l'interposition se déclenche : un programme appelant acl_get_file(\"/tmp\") et acl_extended_file(\"/tmp\") sous le même préchargement produit bien les deux lignes de journal."
+  },
+  "CVE-2026-42496": {
+    "composant": "Archive::Tar, traversée de chemin par lien symbolique fabriqué",
+    "declencheur": "Extraire une archive tar fabriquée.",
+    "entree_controlee": "Une archive tar.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Archive::Tar n'est pas chargé, et le produit n'extrait aucune archive.",
+    "statique": "Absent des scripts exécutés et des modules d'AMC.",
+    "dynamique": "Relevé de %INC en fin d'exécution sur une génération avec corpus hostile : 82 modules, aucun Archive::Tar."
+  },
+  "CVE-2026-42497": {
+    "composant": "Archive::Tar, modification de fichier arbitraire",
+    "declencheur": "Extraire une archive tar fabriquée.",
+    "entree_controlee": "Une archive tar.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Archive::Tar n'est pas chargé, et le produit n'extrait aucune archive.",
+    "statique": "Absent des scripts exécutés et des modules d'AMC.",
+    "dynamique": "Relevé de %INC : 82 modules, aucun Archive::Tar."
+  },
+  "CVE-2026-9538": {
+    "composant": "Archive::Tar, déni de service par archive fabriquée",
+    "declencheur": "Extraire une archive tar fabriquée.",
+    "entree_controlee": "Une archive tar.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Archive::Tar n'est pas chargé, et le produit n'extrait aucune archive.",
+    "statique": "Absent des scripts exécutés et des modules d'AMC.",
+    "dynamique": "Relevé de %INC : 82 modules, aucun Archive::Tar."
+  },
+  "CVE-2026-48962": {
+    "composant": "IO::Compress",
+    "declencheur": "Traiter un flux compressé fabriqué.",
+    "entree_controlee": "Un flux compressé.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "IO::Compress n'est pas chargé ; la composition ne décompresse rien.",
+    "statique": "Absent des scripts exécutés et des modules d'AMC.",
+    "dynamique": "Relevé de %INC : 82 modules, aucun IO::Compress ni Compress::*."
+  },
+  "CVE-2026-6653": {
+    "composant": "libxml2, analyse de XML fabriqué",
+    "declencheur": "Analyser un document XML fabriqué.",
+    "entree_controlee": "Un document XML.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "libxml2 n'est jamais chargée. AMC lit sa configuration avec XML::Simple, qui n'utilise pas libxml2 ici.",
+    "statique": "libxml2 n'est tirée que comme dépendance transitive.",
+    "dynamique": "LD_DEBUG=libs sur une génération complète : libxml2.so absente des 32 objets chargés."
+  },
+  "CVE-2026-66046": {
+    "composant": "Expat, déni de service par XML fabriqué",
+    "declencheur": "Analyser un document XML fabriqué.",
+    "entree_controlee": "Un document XML.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "libexpat n'est jamais chargée pendant une génération.",
+    "statique": "Aucun analyseur XML natif dans le chemin de composition.",
+    "dynamique": "LD_DEBUG=libs : libexpat.so absente des 32 objets chargés."
+  },
+  "CVE-2026-11940": {
+    "composant": "CPython, filtre d'extraction de tarfile",
+    "declencheur": "Extraire une archive tar avec le module tarfile de Python.",
+    "entree_controlee": "Une archive tar.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Aucun interpréteur Python n'est exécuté. Python n'est présent que parce que texlive-latex-extra en dépend, lequel apporte csvsimple, dont le gabarit se sert pour associer chaque copie à son élève.",
+    "statique": "Aucun appel à Python dans le produit ni dans AMC.",
+    "dynamique": "Trace execve d'une génération complète : 27 programmes exécutés, aucun Python. LD_DEBUG : libpython3.13.so jamais chargée."
+  },
+  "CVE-2026-15308": {
+    "composant": "CPython, analyseur HTML",
+    "declencheur": "Analyser du HTML fabriqué avec html.parser.",
+    "entree_controlee": "Un document HTML.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Aucun interpréteur Python n'est exécuté.",
+    "statique": "Aucun appel à Python dans le produit ni dans AMC.",
+    "dynamique": "Trace execve : aucun Python parmi les 27 programmes exécutés. LD_DEBUG : libpython3.13.so jamais chargée."
+  },
+  "CVE-2026-7210": {
+    "composant": "CPython lié à Expat, analyse XML",
+    "declencheur": "Analyser un document XML fabriqué depuis Python.",
+    "entree_controlee": "Un document XML.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "Aucun interpréteur Python n'est exécuté.",
+    "statique": "Aucun appel à Python dans le produit ni dans AMC.",
+    "dynamique": "Trace execve : aucun Python. LD_DEBUG : ni libpython3.13.so ni libexpat.so chargées."
+  },
+  "CVE-2025-69720": {
+    "composant": "ncurses, débordement de tampon",
+    "declencheur": "Traiter une description de terminal fabriquée.",
+    "entree_controlee": "TERM et la base terminfo.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "ncurses n'est jamais chargée : la composition n'ouvre aucun terminal.",
+    "statique": "Aucun usage de ncurses dans le produit ni dans AMC.",
+    "dynamique": "LD_DEBUG=libs : ni libncursesw.so ni libtinfo.so parmi les 32 objets chargés."
+  },
+  "CVE-2026-41992": {
+    "composant": "gzip, décodeur LZH",
+    "declencheur": "Décompresser une archive fabriquée au format LZH.",
+    "entree_controlee": "Une archive compressée.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "gzip n'est jamais exécuté, et le produit ne décompresse aucune archive fournie de l'extérieur.",
+    "statique": "Aucun appel à gzip dans le produit ni dans AMC.",
+    "dynamique": "Trace execve d'une génération complète : gzip ne figure pas parmi les 27 programmes exécutés."
+  },
+  "CVE-2022-4055": {
+    "composant": "xdg-email, analyse des URI mailto",
+    "declencheur": "Passer un URI mailto fabriqué à xdg-email.",
+    "entree_controlee": "Un URI mailto.",
+    "justification": "vulnerable_code_not_in_execute_path",
+    "impact": "xdg-email n'est jamais exécuté. xdg-utils n'est présent que comme dépendance de texlive-base.",
+    "statique": "Le produit n'envoie aucun courriel depuis le conteneur et n'appelle aucun outil xdg.",
+    "dynamique": "Trace execve : aucun programme xdg parmi les 27 exécutés."
+  }
+}

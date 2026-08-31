@@ -1,0 +1,770 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/cyranoaladin/eval_maths_term/security/vex/1.0.0-rc2",
+  "author": "Atelier QCM — analyse d'applicabilité du runtime de production",
+  "timestamp": "2026-08-31T00:00:00Z",
+  "version": 1,
+  "tooling": "scripts/vex-generer.mjs",
+  "atelier:empreinte_runtime": "1031c96febbcb182e9c95fda87a16d5f25cda0b2b1b7d6a2c6f9167505cf935b",
+  "atelier:portee": "Cette attestation ne vaut que pour le runtime décrit par l'empreinte ci-dessus — Dockerfile, amc-runner, amc-template, registre d'épinglage — et pour les versions exactes de paquets citées dans chaque sous-composant. Toute modification de l'un ou de l'autre invalide les analyses : scripts/gate-applicabilite.mjs le vérifie et échoue.",
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "CVE-2022-4055"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/xdg-utils@1.2.1-2?arch=all&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "xdg-email n'est jamais exécuté. xdg-utils n'est présent que comme dépendance de texlive-base.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "xdg-email, analyse des URI mailto",
+      "atelier:condition_de_declenchement": "Passer un URI mailto fabriqué à xdg-email.",
+      "atelier:entree_controlee_par_un_tiers": "Un URI mailto.",
+      "atelier:preuve_statique": "Le produit n'envoie aucun courriel depuis le conteneur et n'appelle aucun outil xdg.",
+      "atelier:preuve_dynamique": "Trace execve : aucun programme xdg parmi les 27 exécutés."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2025-69720"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libncursesw6@6.5%2B20250216-2?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/libtinfo6@6.5%2B20250216-2?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/ncurses-base@6.5%2B20250216-2?arch=all&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/ncurses-bin@6.5%2B20250216-2?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "ncurses n'est jamais chargée : la composition n'ouvre aucun terminal.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "ncurses, débordement de tampon",
+      "atelier:condition_de_declenchement": "Traiter une description de terminal fabriquée.",
+      "atelier:entree_controlee_par_un_tiers": "TERM et la base terminfo.",
+      "atelier:preuve_statique": "Aucun usage de ncurses dans le produit ni dans AMC.",
+      "atelier:preuve_dynamique": "LD_DEBUG=libs : ni libncursesw.so ni libtinfo.so parmi les 32 objets chargés."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-11822"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libsqlite3-0@3.46.1-7%2Bdeb13u1?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "FTS5 est bien compilée dans libsqlite3 (ENABLE_FTS5), mais aucune table virtuelle n'est créée et aucune requête MATCH n'est exécutée. Les deux bases du projet sont créées de zéro par AMC dans un dossier de tirage qui lui est propre ; aucun fichier fourni par un enseignant n'est jamais ouvert comme base.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "fts5LeafSeek (extension FTS5 de SQLite)",
+      "atelier:condition_de_declenchement": "Exécuter une requête FTS5 MATCH sur une base fabriquée dont les pages FTS5 sont malformées.",
+      "atelier:entree_controlee_par_un_tiers": "Le fichier de base de données.",
+      "atelier:preuve_statique": "Le schéma produit ne comporte que des tables ordinaires : layout_* et report_*.",
+      "atelier:preuve_dynamique": "Interposition de sqlite3_open, sqlite3_open_v2, sqlite3_exec et sqlite3_prepare_v2/v3 : 126 énoncés capturés, aucun CREATE VIRTUAL TABLE, aucun MATCH. La seule mention FTS est la sonde de capacité de DBD::SQLite, SELECT fts3_tokenizer(?, ?), qui vise FTS3 et passe ses valeurs en paramètres liés."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-11824"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libsqlite3-0@3.46.1-7%2Bdeb13u1?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Même chemin que CVE-2026-11822 : aucune table FTS5, aucune requête MATCH, aucune base fournie de l'extérieur.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "fts5ChunkIterate (extension FTS5 de SQLite)",
+      "atelier:condition_de_declenchement": "Exécuter une requête FTS5 MATCH sur une base dont une page de continuation annonce un szLeaf inférieur à 4.",
+      "atelier:entree_controlee_par_un_tiers": "Le fichier de base de données.",
+      "atelier:preuve_statique": "Le schéma produit ne comporte que des tables ordinaires.",
+      "atelier:preuve_dynamique": "126 énoncés SQL capturés pendant une génération : aucun MATCH, aucune table virtuelle. Le marqueur du corpus hostile n'apparaît dans aucun texte SQL — les données d'enseignant n'y entrent que par paramètres liés."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-11940"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libpython3.13-minimal@3.13.5-2%2Bdeb13u4?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/libpython3.13-stdlib@3.13.5-2%2Bdeb13u4?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/python3.13-minimal@3.13.5-2%2Bdeb13u4?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/python3.13@3.13.5-2%2Bdeb13u4?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Aucun interpréteur Python n'est exécuté. Python n'est présent que parce que texlive-latex-extra en dépend, lequel apporte csvsimple, dont le gabarit se sert pour associer chaque copie à son élève.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "CPython, filtre d'extraction de tarfile",
+      "atelier:condition_de_declenchement": "Extraire une archive tar avec le module tarfile de Python.",
+      "atelier:entree_controlee_par_un_tiers": "Une archive tar.",
+      "atelier:preuve_statique": "Aucun appel à Python dans le produit ni dans AMC.",
+      "atelier:preuve_dynamique": "Trace execve d'une génération complète : 27 programmes exécutés, aucun Python. LD_DEBUG : libpython3.13.so jamais chargée."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-13221"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libperl5.40@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-modules-5.40@5.40.1-6?arch=all&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl@5.40.1-6?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Sur les 81 modules chargés par une génération, deux seulement bâtissent une alternation depuis des données : AMC::Config::csv_build_0 et AMC::Basic::check_fonts. Les deux sont muettes pendant une génération complète. Les bornes de api/paper/amc-template.ts plafonnent par ailleurs chaque champ d'enseignant très au-dessous de 65 535 branches.",
+      "atelier:severite": "CRITICAL",
+      "atelier:composant_vulnerable": "Perl_study_chunk, construction du trie d'alternation",
+      "atelier:condition_de_declenchement": "Compiler un motif dont l'alternation compte plus de 65 535 branches de chaînes fixes.",
+      "atelier:entree_controlee_par_un_tiers": "Un motif d'expression régulière bâti depuis des données.",
+      "atelier:preuve_statique": "Recherche exhaustive de join('|') sur les 81 fichiers de modules chargés : deux occurrences, toutes deux dans AMC. 61 motifs interpolés recensés, aucun ne bâtit d'alternation.",
+      "atelier:preuve_dynamique": "Enveloppement des deux fonctions pendant une génération avec corpus hostile : zéro appel, alors que les témoins AMC::Basic::debug et AMC::Config::get sont appelés 225 fois. Une entrée de 70 000 branches dans un nom d'élève n'atteint aucun motif Perl : la chaîne s'arrête dans pdfTeX."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-15308"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libpython3.13-minimal@3.13.5-2%2Bdeb13u4?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/libpython3.13-stdlib@3.13.5-2%2Bdeb13u4?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/python3.13-minimal@3.13.5-2%2Bdeb13u4?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/python3.13@3.13.5-2%2Bdeb13u4?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Aucun interpréteur Python n'est exécuté.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "CPython, analyseur HTML",
+      "atelier:condition_de_declenchement": "Analyser du HTML fabriqué avec html.parser.",
+      "atelier:entree_controlee_par_un_tiers": "Un document HTML.",
+      "atelier:preuve_statique": "Aucun appel à Python dans le produit ni dans AMC.",
+      "atelier:preuve_dynamique": "Trace execve : aucun Python parmi les 27 programmes exécutés. LD_DEBUG : libpython3.13.so jamais chargée."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-41992"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/gzip@1.13-1?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "gzip n'est jamais exécuté, et le produit ne décompresse aucune archive fournie de l'extérieur.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "gzip, décodeur LZH",
+      "atelier:condition_de_declenchement": "Décompresser une archive fabriquée au format LZH.",
+      "atelier:entree_controlee_par_un_tiers": "Une archive compressée.",
+      "atelier:preuve_statique": "Aucun appel à gzip dans le produit ni dans AMC.",
+      "atelier:preuve_dynamique": "Trace execve d'une génération complète : gzip ne figure pas parmi les 27 programmes exécutés."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-42496"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libperl5.40@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-modules-5.40@5.40.1-6?arch=all&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl@5.40.1-6?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Archive::Tar n'est pas chargé, et le produit n'extrait aucune archive.",
+      "atelier:severite": "CRITICAL",
+      "atelier:composant_vulnerable": "Archive::Tar, traversée de chemin par lien symbolique fabriqué",
+      "atelier:condition_de_declenchement": "Extraire une archive tar fabriquée.",
+      "atelier:entree_controlee_par_un_tiers": "Une archive tar.",
+      "atelier:preuve_statique": "Absent des scripts exécutés et des modules d'AMC.",
+      "atelier:preuve_dynamique": "Relevé de %INC en fin d'exécution sur une génération avec corpus hostile : 82 modules, aucun Archive::Tar."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-42497"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libperl5.40@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-modules-5.40@5.40.1-6?arch=all&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl@5.40.1-6?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Archive::Tar n'est pas chargé, et le produit n'extrait aucune archive.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "Archive::Tar, modification de fichier arbitraire",
+      "atelier:condition_de_declenchement": "Extraire une archive tar fabriquée.",
+      "atelier:entree_controlee_par_un_tiers": "Une archive tar.",
+      "atelier:preuve_statique": "Absent des scripts exécutés et des modules d'AMC.",
+      "atelier:preuve_dynamique": "Relevé de %INC : 82 modules, aucun Archive::Tar."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-48962"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libperl5.40@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-modules-5.40@5.40.1-6?arch=all&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl@5.40.1-6?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "IO::Compress n'est pas chargé ; la composition ne décompresse rien.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "IO::Compress",
+      "atelier:condition_de_declenchement": "Traiter un flux compressé fabriqué.",
+      "atelier:entree_controlee_par_un_tiers": "Un flux compressé.",
+      "atelier:preuve_statique": "Absent des scripts exécutés et des modules d'AMC.",
+      "atelier:preuve_dynamique": "Relevé de %INC : 82 modules, aucun IO::Compress ni Compress::*."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-54369"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libacl1@2.3.2-2%2Bb1?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Aucune des quatre fonctions n'est appelée pendant une génération. De surcroît la condition de l'avis — un appelant privilégié — est absente : le conteneur tourne sous evalapp (uid 10001), racine en lecture seule, toutes capacités retirées, no-new-privileges.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "acl_get_file, acl_set_file, acl_extended_file, acl_delete_def_file",
+      "atelier:condition_de_declenchement": "Un appelant privilégié applique une opération ACL à un chemin dont un tiers contrôle une composante, remplacée par un lien symbolique.",
+      "atelier:entree_controlee_par_un_tiers": "Une composante de chemin.",
+      "atelier:preuve_statique": "Aucun appel ACL dans AMC ni dans le code du produit ; libacl n'est tirée que par coreutils.",
+      "atelier:preuve_dynamique": "Les quatre fonctions interposées : zéro appel sur une génération complète. Le témoin prouve que l'interposition se déclenche : un programme appelant acl_get_file(\"/tmp\") et acl_extended_file(\"/tmp\") sous le même préchargement produit bien les deux lignes de journal."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-57432"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libperl5.40@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-modules-5.40@5.40.1-6?arch=all&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl@5.40.1-6?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Aucun des 81 modules chargés n'appelle pack ou unpack avec un gabarit non littéral. Le seul gabarit interpolé, Storable.pm ligne 200 (a${len}CCC), appartient à read_magic, qui n'est jamais appelée ; $len y vaut au plus 255.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "S_measure_struct, opérations pack et unpack",
+      "atelier:condition_de_declenchement": "Un gabarit pack/unpack dérivé d'une entrée non fiable, portant un compte de répétition assez grand pour faire déborder le total SSize_t.",
+      "atelier:entree_controlee_par_un_tiers": "Le gabarit, et non les données empaquetées.",
+      "atelier:preuve_statique": "Recherche de (pack|unpack) suivi de $ ou @ sur les 81 fichiers : zéro occurrence. Tous les gabarits relevés sont des littéraux constants.",
+      "atelier:preuve_dynamique": "Storable::read_magic enveloppée pendant une génération : zéro appel."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-57433"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libperl5.40@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-modules-5.40@5.40.1-6?arch=all&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl@5.40.1-6?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Storable est chargé parce qu'Encode le charge, pas parce qu'AMC s'en sert. Aucune de ses entrées de désérialisation n'est appelée, et le produit ne lit aucun blob Storable.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "Storable, retrieve_hook_common sur un enregistrement SX_HOOK",
+      "atelier:condition_de_declenchement": "Passer un blob fabriqué à thaw ou retrieve.",
+      "atelier:entree_controlee_par_un_tiers": "Un blob Storable sérialisé.",
+      "atelier:preuve_statique": "Aucune occurrence de thaw, retrieve, fd_retrieve, dclone, freeze ou store dans le code d'AMC chargé ni dans les scripts exécutés.",
+      "atelier:preuve_dynamique": "Les neuf entrées de Storable enveloppées pendant une génération avec corpus hostile : zéro appel, témoins actifs."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-58010"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libglib2.0-0t64@2.84.4-3~deb13u3?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Aucun GVariant n'est construit ni vérifié pendant une génération.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "gvs_tuple_is_normal (glib/gvariant-serialiser.c)",
+      "atelier:condition_de_declenchement": "Vérifier la forme normale d'un GVariant sérialisé fabriqué.",
+      "atelier:entree_controlee_par_un_tiers": "Des données GVariant sérialisées.",
+      "atelier:preuve_statique": "Les seuls appels GLib du code chargé sont Glib::get_home_dir, Glib::filename_display_name et les constantes TRUE/FALSE.",
+      "atelier:preuve_dynamique": "g_variant_new_from_data, g_variant_is_normal_form et g_variant_get_normal_form interposées : zéro appel, alors que les témoins g_strdup (72 appels) et g_get_home_dir (4) prouvent que l'interposition GLib fonctionne."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-58011"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libglib2.0-0t64@2.84.4-3~deb13u3?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Aucune date GLib n'est manipulée pendant une génération.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "g_date_time_get_ymd (glib/gdatetime.c)",
+      "atelier:condition_de_declenchement": "Lire la date d'un GDateTime invalide produit par g_date_time_add_full.",
+      "atelier:entree_controlee_par_un_tiers": "Une valeur de date.",
+      "atelier:preuve_statique": "Aucun appel GDateTime dans le code chargé.",
+      "atelier:preuve_dynamique": "g_date_time_add_full et g_date_time_get_ymd interposées : zéro appel, témoins actifs."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-58012"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libglib2.0-0t64@2.84.4-3~deb13u3?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Le moteur d'expressions régulières de GLib n'est pas utilisé : AMC est en Perl et se sert du moteur de Perl.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "g_regex_replace, via string_append (glib/gregex.c)",
+      "atelier:condition_de_declenchement": "Appeler g_regex_replace avec le drapeau G_REGEX_RAW et une échappe de changement de casse, sur une chaîne qui n'est pas de l'UTF-8 valide.",
+      "atelier:entree_controlee_par_un_tiers": "La chaîne sujet et la chaîne de remplacement.",
+      "atelier:preuve_statique": "Aucun appel g_regex dans le code chargé.",
+      "atelier:preuve_dynamique": "g_regex_new et g_regex_replace interposées : zéro appel, témoins actifs."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-58013"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libglib2.0-0t64@2.84.4-3~deb13u3?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Aucun GIOChannel n'est ouvert pendant une génération ; les entrées-sorties passent par Perl.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "g_io_channel_read_line_backend (glib/giochannel.c)",
+      "atelier:condition_de_declenchement": "Lire une ligne sur un GIOChannel dont le terminateur de ligne fait plus d'un caractère.",
+      "atelier:entree_controlee_par_un_tiers": "Le flux lu et le terminateur configuré.",
+      "atelier:preuve_statique": "Aucun appel GIOChannel dans le code chargé.",
+      "atelier:preuve_dynamique": "g_io_channel_set_line_term, g_io_channel_read_line et g_io_channel_read_line_string interposées : zéro appel, témoins actifs."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-58014"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libglib2.0-0t64@2.84.4-3~deb13u3?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Aucun GKeyFile n'est chargé pendant une génération. AMC lit sa configuration en XML par XML::Simple, pas en format clés GLib.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "g_key_file_get_locale_string_list (glib/gkeyfile.c)",
+      "atelier:condition_de_declenchement": "Charger un fichier de clés contenant une valeur vide, puis lire une liste localisée.",
+      "atelier:entree_controlee_par_un_tiers": "Le contenu du fichier de clés.",
+      "atelier:preuve_statique": "Aucun appel GKeyFile dans le code chargé.",
+      "atelier:preuve_dynamique": "g_key_file_load_from_file, g_key_file_get_locale_string et g_key_file_get_locale_string_list interposées : zéro appel, témoins actifs."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-58015"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libglib2.0-0t64@2.84.4-3~deb13u3?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Le défaut est dans libgio, qui n'est jamais chargée. Le conteneur n'a ni bus de session ni bus système.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "keyring_ (gio/gdbusauthmechanismsha1.c)",
+      "atelier:condition_de_declenchement": "Authentification D-Bus SHA-1 par trousseau.",
+      "atelier:entree_controlee_par_un_tiers": "Un pair D-Bus.",
+      "atelier:preuve_statique": "Aucun usage de D-Bus dans le code chargé.",
+      "atelier:preuve_dynamique": "LD_DEBUG=libs sur une génération complète : 32 objets partagés chargés, libgio-2.0.so n'en fait pas partie."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-58016"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libglib2.0-0t64@2.84.4-3~deb13u3?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Le défaut est dans libgio, qui n'est jamais chargée. Le conteneur n'a aucun bus D-Bus.",
+      "atelier:severite": "CRITICAL",
+      "atelier:composant_vulnerable": "g_dbus_node_info_new_for_xml (gio/gdbusintrospection.c)",
+      "atelier:condition_de_declenchement": "Analyser une description d'introspection D-Bus fabriquée.",
+      "atelier:entree_controlee_par_un_tiers": "Du XML d'introspection D-Bus.",
+      "atelier:preuve_statique": "Aucun usage de D-Bus dans le code chargé.",
+      "atelier:preuve_dynamique": "LD_DEBUG=libs sur une génération complète : libgio-2.0.so absente des 32 objets chargés."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-66046"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libexpat1@2.8.3-1~deb13u1?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libexpat n'est jamais chargée pendant une génération.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "Expat, déni de service par XML fabriqué",
+      "atelier:condition_de_declenchement": "Analyser un document XML fabriqué.",
+      "atelier:entree_controlee_par_un_tiers": "Un document XML.",
+      "atelier:preuve_statique": "Aucun analyseur XML natif dans le chemin de composition.",
+      "atelier:preuve_dynamique": "LD_DEBUG=libs : libexpat.so absente des 32 objets chargés."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-6653"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libxml2 n'est jamais chargée. AMC lit sa configuration avec XML::Simple, qui n'utilise pas libxml2 ici.",
+      "atelier:severite": "CRITICAL",
+      "atelier:composant_vulnerable": "libxml2, analyse de XML fabriqué",
+      "atelier:condition_de_declenchement": "Analyser un document XML fabriqué.",
+      "atelier:entree_controlee_par_un_tiers": "Un document XML.",
+      "atelier:preuve_statique": "libxml2 n'est tirée que comme dépendance transitive.",
+      "atelier:preuve_dynamique": "LD_DEBUG=libs sur une génération complète : libxml2.so absente des 32 objets chargés."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-7210"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libpython3.13-minimal@3.13.5-2%2Bdeb13u4?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/libpython3.13-stdlib@3.13.5-2%2Bdeb13u4?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/python3.13-minimal@3.13.5-2%2Bdeb13u4?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/python3.13@3.13.5-2%2Bdeb13u4?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Aucun interpréteur Python n'est exécuté.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "CPython lié à Expat, analyse XML",
+      "atelier:condition_de_declenchement": "Analyser un document XML fabriqué depuis Python.",
+      "atelier:entree_controlee_par_un_tiers": "Un document XML.",
+      "atelier:preuve_statique": "Aucun appel à Python dans le produit ni dans AMC.",
+      "atelier:preuve_dynamique": "Trace execve : aucun Python. LD_DEBUG : ni libpython3.13.so ni libexpat.so chargées."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-8376"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libperl5.40@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-modules-5.40@5.40.1-6?arch=all&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl@5.40.1-6?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "L'image est amd64 : perl -V donne ptrsize=8, ivsize=8, sizesize=8. Le débordement décrit exige un SSize_t de 32 bits ; sur cette construction, mincount * l ne peut atteindre 2^63. Aucune entrée ne peut porter le calcul jusqu'au débordement.",
+      "atelier:severite": "CRITICAL",
+      "atelier:composant_vulnerable": "Perl_study_chunk (regcomp_study.c), compilation d'expression régulière",
+      "atelier:condition_de_declenchement": "Compiler un motif comportant une chaîne fixe répétée avec un compte minimal élevé, sur une construction 32 bits, de sorte que mincount * l déborde SSize_t.",
+      "atelier:entree_controlee_par_un_tiers": "Un motif d'expression régulière.",
+      "atelier:preuve_statique": "L'avis restreint le défaut aux constructions 32 bits.",
+      "atelier:preuve_dynamique": "perl -V:ptrsize -V:ivsize -V:sizesize -V:archname dans l'image livrée : 8, 8, 8, x86_64-linux-gnu-thread-multi."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-9538"
+      },
+      "timestamp": "2026-08-31T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:oci/atelier-qcm?tag=1.0.0-rc2",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libperl5.40@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl-modules-5.40@5.40.1-6?arch=all&distro=debian-13.6"
+            },
+            {
+              "@id": "pkg:deb/debian/perl@5.40.1-6?arch=amd64&distro=debian-13.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Archive::Tar n'est pas chargé, et le produit n'extrait aucune archive.",
+      "atelier:severite": "HIGH",
+      "atelier:composant_vulnerable": "Archive::Tar, déni de service par archive fabriquée",
+      "atelier:condition_de_declenchement": "Extraire une archive tar fabriquée.",
+      "atelier:entree_controlee_par_un_tiers": "Une archive tar.",
+      "atelier:preuve_statique": "Absent des scripts exécutés et des modules d'AMC.",
+      "atelier:preuve_dynamique": "Relevé de %INC : 82 modules, aucun Archive::Tar."
+    }
+  ]
+}
