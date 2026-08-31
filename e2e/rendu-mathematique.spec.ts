@@ -8,6 +8,51 @@
 import { expect } from "@playwright/test";
 import { collecterErreurs, test, ouvrir } from "./fixtures";
 
+test.describe("ce que l'élève voit", () => {
+  /*
+    L'énoncé d'une copie, rendu — pas sa source.
+
+    Ce cas manquait, et son absence a coûté cher : les écrans de l'enseignant
+    rendaient les formules, ceux de l'élève affichaient la source LaTeX,
+    dollars compris. Un contrôle de mathématiques entier était illisible pour
+    ceux qui le passaient, et aucun test ne regardait cet écran-là.
+  */
+  test("l'énoncé et les propositions sont rendus, pas montrés en source", async ({ page }) => {
+    const erreurs = collecterErreurs(page);
+    // L'évaluation de référence à question unique : un QCM dont l'énoncé et
+    // les quatre propositions portent des formules.
+    await ouvrir(page, "/evaluation?eval=3&name=Rendu%20Eleve");
+    await page.getByRole("button", { name: /Démarrer l'évaluation/ }).click();
+    await expect(page.getByText(/Question 1 \/ 1/)).toBeVisible();
+
+    // Deux formules dans l'énoncé — la fonction et la limite —, une par
+    // proposition.
+    await expect(page.locator(".katex")).toHaveCount(6, { timeout: 10_000 });
+
+    const texte = await page.locator("main, body").first().innerText();
+    expect(texte, "de la source LaTeX est restée à l'écran").not.toMatch(/\$\\?[a-zA-Z]/);
+
+    // La source est conservée dans l'annotation MathML : c'est ce qui prouve
+    // que la formule a été rendue et non recopiée.
+    const sources = await page
+      .locator('.katex annotation[encoding="application/x-tex"]')
+      .allTextContents();
+    expect(sources.join(" ")).toContain("\\dfrac");
+
+    expect(erreurs, erreurs.join(" | ")).toEqual([]);
+  });
+
+  test("une réponse courte rend aussi son énoncé", async ({ page }) => {
+    await ouvrir(page, "/evaluation?eval=4&name=Rendu%20Court");
+    await page.getByRole("button", { name: /Démarrer l'évaluation/ }).click();
+    await expect(page.locator("math-field")).toBeVisible();
+
+    await expect(page.locator(".katex")).toHaveCount(1, { timeout: 10_000 });
+    const texte = await page.locator("main, body").first().innerText();
+    expect(texte).not.toMatch(/\$\\?[a-zA-Z]/);
+  });
+});
+
 test.describe("rendu LaTeX", () => {
   test("l'éditeur affiche toutes les familles de formules sans erreur", async ({ enseignant: page }) => {
     const erreurs = collecterErreurs(page);

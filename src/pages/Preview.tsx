@@ -21,6 +21,7 @@ import {
   EVALUATION_DURATION,
   MAX_SCORE,
 } from "@contracts/evaluation-data";
+import { MathLatex } from "@/components/math/MathLatex";
 
 export default function Preview() {
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -179,7 +180,7 @@ export default function Preview() {
                   </span>
                 </div>
                 <CardTitle className="text-lg mt-3 leading-relaxed">
-                  {currentQ.question}
+                  <MathLatex tex={currentQ.question} auto />
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -200,7 +201,7 @@ export default function Preview() {
                           >
                             <RadioGroupItem value={String(idx)} id={`preview-opt-${idx}`} />
                             <Label htmlFor={`preview-opt-${idx}`} className="flex-1 cursor-pointer">
-                              {option}
+                              <MathLatex tex={option} auto />
                             </Label>
                             {showAnswers && String(idx) === currentQ.correctAnswer && (
                               <CheckCircle className="w-5 h-5 text-green-600" />

@@ -20,6 +20,9 @@ import type { Page } from "@playwright/test";
 import { test, ouvrir } from "./fixtures";
 
 const EVALUATION_ID = 1;
+/** Évaluations d'une seule question, posées par `scripts/fixtures-e2e.ts`. */
+const EVALUATION_QCM = 3;
+const EVALUATION_COURTE = 4;
 
 /**
  * Fige ce qui bouge, pour que seule la mise en page soit comparée.
@@ -53,7 +56,16 @@ async function capturer(page: Page, nom: string, masques: string[] = []) {
     animations: "disabled",
     caret: "hide",
     mask: masques.map((s) => page.locator(s)),
-    maxDiffPixelRatio: 0.01,
+    /*
+      Un pour deux mille pixels, pas un pour cent.
+
+      Le seuil était à 1 % : sur une page de 1280 × 900 majoritairement blanche,
+      cela laisse passer plus de onze mille pixels — assez pour que l'énoncé
+      d'une question change entièrement sans que la comparaison bronche. C'est
+      arrivé : la correction du rendu mathématique côté élève, qui remplace la
+      source LaTeX par la formule, n'a pas fait échouer la comparaison.
+    */
+    maxDiffPixelRatio: 0.0005,
   });
 }
 
@@ -64,22 +76,31 @@ test.describe("écrans de l'élève", () => {
     await capturer(page, "eleve-accueil.png");
   });
 
+  /*
+    Les deux écrans de question s'appuient sur une évaluation qui n'en contient
+    qu'une. Les questions d'une copie sont mélangées à l'ouverture, avec une
+    graine tirée par le serveur : « la première question » n'est pas la même
+    d'une session à l'autre, et deux images de référence comparaient deux écrans
+    différents. Ce que ces images protègent est la mise en page d'un type de
+    question, pas le tirage au sort.
+
+    L'identifiant est vérifié par le titre : si l'ordre des jeux de données
+    changeait, le test échouerait franchement au lieu de photographier un autre
+    écran.
+  */
   test("une question à choix multiples", async ({ page }) => {
-    await ouvrir(page, `/evaluation?eval=${EVALUATION_ID}&name=Visuel%20QCM`);
+    await ouvrir(page, `/evaluation?eval=${EVALUATION_QCM}&name=Visuel%20QCM`);
+    await expect(page.getByText(/Écran de référence — question à choix/)).toBeVisible();
     await page.getByRole("button", { name: /Démarrer l'évaluation/ }).click();
-    await expect(page.getByText(/Question 1 \/ /)).toBeVisible();
+    await expect(page.getByText(/Question 1 \/ 1/)).toBeVisible();
     // Le minuteur descend à chaque seconde : c'est le seul élément masqué.
     await capturer(page, "eleve-question-qcm.png", ["[data-test=minuteur]"]);
   });
 
   test("une question à réponse courte, avec son champ mathématique", async ({ page }) => {
-    await ouvrir(page, `/evaluation?eval=${EVALUATION_ID}&name=Visuel%20Math`);
+    await ouvrir(page, `/evaluation?eval=${EVALUATION_COURTE}&name=Visuel%20Math`);
+    await expect(page.getByText(/Écran de référence — réponse courte/)).toBeVisible();
     await page.getByRole("button", { name: /Démarrer l'évaluation/ }).click();
-    for (let i = 0; i < 25; i += 1) {
-      if (await page.getByText("Votre réponse :").isVisible().catch(() => false)) break;
-      await page.getByRole("button", { name: /Suivant/ }).click();
-      await page.waitForTimeout(120);
-    }
     await expect(page.locator("math-field")).toBeVisible();
     await capturer(page, "eleve-question-math.png", ["[data-test=minuteur]"]);
   });

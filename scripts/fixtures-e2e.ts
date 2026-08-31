@@ -194,7 +194,79 @@ async function main() {
     longue = { id: Number(insere.insertId) };
   }
 
+  /*
+    Deux évaluations d'une seule question, pour la régression visuelle.
+
+    Les questions d'une copie sont mélangées à l'ouverture, avec une graine
+    tirée par le serveur : deux sessions n'affichent pas la même question en
+    premier. Une image de référence prise sur « la première question » comparait
+    donc deux écrans différents. Une évaluation qui n'en contient qu'une lève
+    l'ambiguïté — et c'est bien la mise en page d'un type de question que ces
+    images protègent, pas le tirage au sort.
+  */
+  const uniques: Array<{ titre: string; question: Record<string, unknown> }> = [
+    {
+      titre: "Écran de référence — question à choix",
+      question: {
+        type: "qcm",
+        question: "La limite de $f(x)=\\dfrac{3x^2-2x+1}{x^2+5}$ en $+\\infty$ vaut :",
+        options: JSON.stringify(["$+\\infty$", "$0$", "$3$", "$\\dfrac{1}{5}$"]),
+        correctAnswer: "2",
+        points: 2,
+        order: 1,
+        gradingRubric: { mode: { kind: "qcm", correctIndex: 2 }, llmReviewRequired: false, weight: 2 },
+      },
+    },
+    {
+      titre: "Écran de référence — réponse courte",
+      question: {
+        type: "short_answer",
+        question: "Calculer $\\displaystyle\\int_0^1 x^2\\,\\mathrm{d}x$. Donnez le résultat sous forme de fraction irréductible.",
+        correctAnswer: "1/3",
+        points: 3,
+        order: 1,
+        gradingRubric: {
+          mode: { kind: "fraction", numerator: 1, denominator: 3, reduced: true },
+          llmReviewRequired: false,
+          weight: 3,
+        },
+      },
+    },
+  ];
+
+  const referencesVisuelles: number[] = [];
+  for (const u of uniques) {
+    let [evaluationUnique] = await db
+      .select({ id: evaluations.id })
+      .from(evaluations)
+      .where(eq(evaluations.title, u.titre))
+      .limit(1);
+    if (!evaluationUnique) {
+      const [insere] = await db.insert(evaluations).values({
+        title: u.titre,
+        description: "Une seule question : sert de référence à la comparaison d'images.",
+        duration: 30,
+        isActive: true,
+        ownerId: enseignant.id,
+      });
+      evaluationUnique = { id: Number(insere.insertId) };
+    }
+    const [dejaLa] = await db
+      .select({ id: questions.id })
+      .from(questions)
+      .where(eq(questions.evaluationId, evaluationUnique.id))
+      .limit(1);
+    if (!dejaLa) {
+      await db.insert(questions).values({
+        ...u.question,
+        evaluationId: evaluationUnique.id,
+      } as never);
+    }
+    referencesVisuelles.push(evaluationUnique.id);
+  }
+
   console.log(`Classe « ${NOM_CLASSE} » — ${idsEleves.length} élèves`);
+  console.log(`Écrans de référence : évaluations #${referencesVisuelles.join(", #")}`);
   console.log(`Évaluation au libellé long #${longue.id}`);
   console.log(
     `Tirage #${tirage.id} — ${imprimees.length} questions imprimées, ${copiesCreees} copie(s) créée(s)`,

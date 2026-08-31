@@ -154,11 +154,11 @@ Huit procédures ne sont appelées par aucun écran :
 | P29 | Migration de production : sauvegarde → préflight → migration → postflight | **PASS** | `scripts/migration-production.sh`, jouée d'un schéma rc1 portant des copies : 6 → 10 migrations, incidents JSON recopiés — voir §10 |
 | P30 | Retour arrière éprouvé | **PASS** | `scripts/repli-production.sh` ; répétition avec incident simulé, retour sur l'empreinte précédente — voir §10 |
 | P31 | Performance non régressée (p95 < 500 ms, 0 erreur) | **PASS** | trois campagnes : p95 39,1 / 36,7 / 36,6 ms, 0 erreur, 200 copies — parité avec rc1, voir §12 |
-| P32 | Endurance sans fuite | IN_PROGRESS | — |
+| P32 | Endurance sans fuite | **PASS** | 30 min à 1 session/s : 1 801 copies, 0 erreur, mémoire stabilisée à 205 Mo — voir §14 |
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 31 / 34. IN_PROGRESS : 1. BLOCKED_EXTERNAL : 2.**
+**PASS : 32 / 34. IN_PROGRESS : 0. BLOCKED_EXTERNAL : 2.**
 
 ---
 
@@ -559,3 +559,68 @@ d'abord des polices : la première vraie régression se perdrait dans le bruit.
 n'exécute que le premier. **Aucune image n'est mise à jour automatiquement** :
 une différence doit être regardée, et si le changement est voulu, la nouvelle
 image est régénérée puis relue dans le diff comme n'importe quel fichier.
+
+
+---
+
+## 14. Endurance
+
+`PID_SERVEUR=… DUREE=30m bash scripts/endurance.sh`
+
+Une session par seconde pendant trente minutes, contre la construction de
+production. Ce que ce test cherche n'est pas une latence — l'acceptation s'en
+charge — mais une **pente**.
+
+| | |
+|---|---|
+| Copies remises | 1 801 |
+| Requêtes | 16 209 |
+| Erreurs HTTP | 0 |
+| Échecs métier | 0 |
+| p95 | 34,84 ms |
+| p99 | 48,85 ms |
+
+| Tranche | Mémoire résidente | Connexions à la base |
+|---|---|---|
+| 0–5 min | 201,0 Mo | 50 |
+| 5–15 min | 203,6 Mo | 55 |
+| 15–25 min | 204,6 Mo | 55 |
+| 25–30 min | 204,7 Mo | 55 |
+
+La courbe **plafonne** : +0,41 Mo entre les dix dernières minutes et la tranche
+10–20 min. Ce n'est pas la signature d'une fuite, c'est un pool et un tas qui
+atteignent leur régime. Les connexions se stabilisent à cinquante-cinq, sous la
+limite de soixante, et les descripteurs de fichiers ne bougent plus après la
+montée en charge initiale.
+
+---
+
+## 15. Le défaut le plus grave, trouvé par une image
+
+La régression visuelle a été écrite pour surveiller des mises en page. La
+première image de l'écran de l'élève a montré autre chose :
+
+> La limite de `$f(x)=\dfrac{3x^2-2x+1}{x^2+5}$` en `$+\infty$` vaut :
+
+**L'élève voyait la source LaTeX.** Dollars, contre-obliques, accolades. Pendant
+que l'enseignant, lui, voyait la formule rendue dans son éditeur — parce que
+l'éditeur passait par `MathLatex` et que l'écran de composition affichait le
+texte brut.
+
+Sur une évaluation de mathématiques, cela rend la copie entière illisible. Le
+défaut vivait dans deux fichiers — `src/pages/Evaluation.tsx` pour l'élève,
+`src/pages/Preview.tsx` pour l'aperçu enseignant — et dans quatre endroits :
+l'énoncé et les propositions, deux fois.
+
+Aucun test ne le voyait. Les parcours vérifiaient que l'élève peut répondre,
+enregistrer, revenir, rendre ; le rendu mathématique n'était éprouvé que sur
+les écrans de l'enseignant. Deux cas ont été ajoutés : l'énoncé et les
+propositions d'un QCM sont rendus, aucune source LaTeX ne reste à l'écran, et
+la source est retrouvée dans l'annotation MathML — ce qui prouve un rendu, pas
+une recopie.
+
+Une seconde leçon, sur l'outil lui-même : la comparaison d'images tolérait 1 %
+de pixels différents. Sur une page de 1 280 × 900 majoritairement blanche, cela
+laisse passer onze mille pixels — assez pour qu'un énoncé change entièrement
+sans que rien ne bronche. Le seuil est descendu à un pour deux mille, et c'est
+à ce moment-là que la comparaison a signalé le changement.

@@ -256,7 +256,31 @@ test.describe("parcours élève", () => {
     expect(erreurs, erreurs.join(" | ")).toEqual([]);
   });
 
-  test("coupure réseau de 30 secondes sans perte de copie", async ({ page, context }) => {
+  test("coupure réseau de 30 secondes sans perte de copie", async ({
+    page,
+    context,
+    surveillance,
+  }) => {
+    /*
+      Ce que le navigateur a le droit de dire pendant la coupure.
+
+      Les polices mathématiques sont chargées à la demande, quand une formule
+      a besoin d'un glyphe qu'elles seules portent. Une question atteinte hors
+      ligne en demande une, et le navigateur signale qu'il n'a pas pu la
+      chercher — chaque moteur à sa façon : « ERR_INTERNET_DISCONNECTED » sous
+      Chromium, « WebKit encountered an internal error » sous Safari. La formule
+      s'affiche alors dans une police de repli : c'est une dégradation
+      d'apparence, pas une copie perdue — et c'est précisément ce que ce test
+      vérifie ensuite.
+
+      La tolérance ne vaut que pour ce test-là : ailleurs, un échec de
+      chargement reste une anomalie.
+    */
+    surveillance.tolerer(
+      /Failed to load resource/,
+      "le réseau est coupé volontairement : les polices demandées à cet instant ne peuvent pas arriver",
+    );
+
     await demarrer(page, "E2E Coupure");
     await allerAReponseCourte(page);
     await saisirMath(page, "x^2", /x\^2/);

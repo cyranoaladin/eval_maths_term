@@ -18,6 +18,7 @@ import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useFingerprint } from "@/hooks/useFingerprint";
 import { useTimer } from "@/hooks/useTimer";
+import { MathLatex } from "@/components/math/MathLatex";
 import { FullscreenGuard } from "@/components/anticheat/FullscreenGuard";
 import { HeartbeatStatus } from "@/components/anticheat/HeartbeatStatus";
 import { AutoSaveIndicator } from "@/components/anticheat/AutoSaveIndicator";
@@ -523,7 +524,16 @@ export default function Evaluation() {
                   </div>
                 </div>
                 <CardTitle className="text-lg mt-2 leading-relaxed">
-                  {currentQ.question}
+                  {/*
+                    L'énoncé passe par le rendu mathématique.
+
+                    Il était affiché tel quel : l'élève lisait « Soit $(u_n)$ la
+                    suite définie par $u_0 = 2$ » — la source LaTeX, dollars
+                    compris — pendant que l'enseignant, lui, voyait la formule
+                    rendue dans son éditeur. Sur une épreuve de mathématiques,
+                    c'est la copie entière qui devient illisible.
+                  */}
+                  <MathLatex tex={currentQ.question} auto />
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -542,7 +552,7 @@ export default function Evaluation() {
                         >
                           <RadioGroupItem value={String(idx)} id={`q-${currentQ.id}-opt-${idx}`} />
                           <Label htmlFor={`q-${currentQ.id}-opt-${idx}`} className="cursor-pointer flex-1">
-                            {option}
+                            <MathLatex tex={option} auto />
                           </Label>
                         </div>
                       ))}
