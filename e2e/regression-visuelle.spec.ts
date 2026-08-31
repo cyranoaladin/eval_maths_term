@@ -87,9 +87,23 @@ test.describe("écrans de l'élève", () => {
 
 test.describe("écrans de l'enseignant", () => {
   test("le tableau de bord", async ({ enseignant: page }) => {
-    await ouvrir(page, "/teacher");
+    await ouvrir(page, "/dashboard");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await capturer(page, "enseignant-tableau-de-bord.png", ["[data-test=date]"]);
+  });
+
+  test("la liste des évaluations", async ({ enseignant: page }) => {
+    await ouvrir(page, "/teacher/evaluations");
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await capturer(page, "enseignant-liste-evaluations.png", ["[data-test=date]"]);
+  });
+
+  test("la grille de saisie d'un tirage papier", async ({ enseignant: page }) => {
+    // L'écran où l'enseignant reporte des dizaines de cases : un décalage de
+    // colonne y fausse un paquet de copies entier.
+    await ouvrir(page, "/teacher/saisie/1");
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await capturer(page, "enseignant-saisie-papier.png", ["[data-test=date]"]);
   });
 
   test("l'atelier de rédaction d'une évaluation", async ({ enseignant: page }) => {

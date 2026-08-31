@@ -146,7 +146,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | **PASS** | 899 tests, 63 parcours sur trois moteurs, `retries=0` en CI — §8 pour ce que les instabilités cachaient |
 | P22 | Couverture : 100 % sur les domaines critiques, ≥ 95 % global serveur | **PASS** | 98,4 % / 96,4 % / 97,5 % / 98,6 % ; seuils posés dans `vitest.config.ts` — voir §9 |
 | P23 | Accessibilité — 0 violation critique ou sérieuse | **PASS** | `e2e/accessibilite.spec.ts` : axe sur 10 écrans, 3 moteurs, plus deux parcours au clavier seul — voir §7 |
-| P24 | Régression visuelle sur les écrans critiques | IN_PROGRESS | — |
+| P24 | Régression visuelle sur les écrans critiques | **PASS** | sept écrans, références produites dans l'image Docker de Playwright, comparées par la CI — voir §13 |
 | P25 | Aucune erreur navigateur inattendue tolérée | **PASS** | surveillance installée sur chaque test sans qu'il ait à la demander ; exceptions, pageerror, `console.error` et 5xx ; aucun filtre global |
 | P26 | 0 code mort, 0 dépendance inutilisée, 0 duplication métier | **PASS** | `knip` ne signale plus rien ; `jscpd` 1,34 % — voir §4 |
 | P27 | `main` protégée, tags protégés | **PASS** | protection posée et éprouvée : poussée directe refusée, réécriture de `v1.0.0-rc1` refusée — voir §11 |
@@ -158,7 +158,7 @@ Huit procédures ne sont appelées par aucun écran :
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 30 / 34. IN_PROGRESS : 2. BLOCKED_EXTERNAL : 2.**
+**PASS : 31 / 34. IN_PROGRESS : 1. BLOCKED_EXTERNAL : 2.**
 
 ---
 
@@ -533,3 +533,29 @@ temps que l'erreur.
 C'est le genre de défaut qu'aucune relecture ne trouve et qu'aucun test
 fonctionnel ne reproduit : il faut deux cents élèves qui prennent le temps de
 réfléchir.
+
+
+---
+
+## 13. Régression visuelle
+
+Sept écrans, ceux dont une déformation coûte le plus cher :
+
+| Image | Écran | Ce qu'elle protège |
+|---|---|---|
+| `eleve-accueil.png` | avant de commencer | le bouton de démarrage et les consignes |
+| `eleve-question-qcm.png` | une question à choix | les propositions, le minuteur, la progression |
+| `eleve-question-math.png` | une réponse courte | le champ mathématique et son clavier |
+| `enseignant-tableau-de-bord.png` | tableau de bord | les cartes qui débordaient sur tablette |
+| `enseignant-liste-evaluations.png` | liste des évaluations | les libellés longs et leur troncature |
+| `enseignant-saisie-papier.png` | grille de saisie | l'alignement des colonnes — un décalage y fausse un paquet entier |
+| `enseignant-evaluation.png` | atelier de rédaction | le rendu KaTeX dans l'éditeur |
+
+Les références sont produites **dans l'image Docker de Playwright**, la même
+ici et sur la CI. Comparées depuis un poste de travail, elles compareraient
+d'abord des polices : la première vraie régression se perdrait dans le bruit.
+
+`npm run e2e:visuel` compare ; `npm run e2e:visuel:references` régénère. La CI
+n'exécute que le premier. **Aucune image n'est mise à jour automatiquement** :
+une différence doit être regardée, et si le changement est voulu, la nouvelle
+image est régénérée puis relue dans le diff comme n'importe quel fichier.
