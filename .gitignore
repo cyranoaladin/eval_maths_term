@@ -45,3 +45,4 @@ coverage/
 test-results/
 playwright-report/
 sbom.json
+sbom-image.json

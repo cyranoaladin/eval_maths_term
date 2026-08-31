@@ -996,6 +996,21 @@ problème : l'image *sans aucune impression* — l'application seule — porte d
 de Debian présent dans toute image Debian. Le seuil « zéro HIGH, zéro
 CRITICAL » est donc inatteignable sur une base Debian stable, avec ou sans AMC.
 
+#### La nomenclature, désormais liée à l'image
+
+`npm run sbom` ne décrivait que les dépendances npm : ni Debian, ni TeX Live,
+ni AMC — c'est-à-dire ni rien de ce qui porte les vulnérabilités ci-dessus. Et
+rien n'y rattachait la nomenclature à un artefact.
+
+`scripts/sbom-image.sh` inventorie l'image elle-même — 342 composants sur
+l'image candidate — et inscrit son empreinte dans le document, sous
+`atelier:image:id`. En CI, il tourne sur **la même image que l'analyse**, sans
+reconstruction entre les deux.
+
+```
+SBOM_IMAGE_ID = sha256:5dbb12d790e7c34a053aff4943d4bee572bd33d97ebaa99d8f1b0ad0a48efd60
+```
+
 **Le gate n'a pas été modifié et P13 reste `FAIL`.** Décider d'accepter un
 risque résiduel, de changer de distribution de base, ou d'attendre les
 correctifs amont n'est pas une décision d'ingénierie à prendre seul : les trois

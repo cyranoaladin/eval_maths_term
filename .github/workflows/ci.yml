@@ -349,14 +349,8 @@ jobs:
       - name: Vulnérabilités des dépendances de production
         run: npm run audit:prod
 
-      - name: Nomenclature logicielle
+      - name: Nomenclature des dépendances npm
         run: npm run sbom
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: sbom
-          path: sbom.json
-          retention-days: 90
 
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
       - name: Construire l'image à analyser
@@ -368,9 +362,24 @@ jobs:
           tags: atelier-qcm:securite
           cache-from: type=gha
 
-      # Le seuil est « aucune vulnérabilité élevée ou critique pour laquelle un
-      # correctif existe ». Une faille sans correctif amont ne se répare pas en
-      # la déclarant inacceptable ; elle est listée, et la porte se ferme d'elle
-      # même le jour où un correctif paraît.
+      # Le seuil est **zéro** vulnérabilité élevée ou critique. Sans exception,
+      # et notamment sans celle qui a longtemps figuré ici : « seulement celles
+      # qui ont un correctif ». Une faille sans correctif reste une faille dans
+      # l'image qui sert des copies d'élèves.
       - name: Analyse de l'image
         run: bash scripts/scan-image.sh atelier-qcm:securite
+
+      # La même image, jamais reconstruite entre les deux : la nomenclature
+      # porte l'empreinte de celle qui vient d'être analysée.
+      - name: Nomenclature de l'image
+        if: always()
+        run: bash scripts/sbom-image.sh atelier-qcm:securite sbom-image.json
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: sbom
+          path: |
+            sbom.json
+            sbom-image.json
+          retention-days: 90
