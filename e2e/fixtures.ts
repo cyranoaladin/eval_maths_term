@@ -26,6 +26,36 @@ export const PREFERENCES_GECKO = {
   "network.predictor.enabled": false,
   "network.dns.disablePrefetch": true,
   "browser.send_pings": false,
+  /*
+    COOP non appliquée — dans ce navigateur de test, et lui seul.
+
+    `Cross-Origin-Opener-Policy: same-origin` fait échanger à Gecko le groupe de
+    contextes de navigation à chaque navigation. Le pilote de Playwright perd
+    alors l'événement `Page.navigationCommitted` : le journal de protocole
+    montre deux `navigationStarted` pour un même identifiant de navigation et
+    aucun `navigationCommitted`, pendant que la requête part, que le serveur
+    répond et que le document se charge. `page.goto` attend un événement qui ne
+    viendra jamais.
+
+    Mesuré sur `parcours-eleve.spec.ts`, dix exécutions par bras :
+
+      COOP appliquée                          2 échecs / 10
+      COOP non appliquée                      0 échec  / 10
+      COOP « same-origin-allow-popups »       1 échec  / 11
+
+    Adoucir l'en-tête ne suffit pas : c'est l'échange de groupe qui déclenche le
+    défaut. Le produit garde donc `same-origin`, et c'est ce navigateur-ci qui
+    cesse de l'appliquer.
+
+    Ce que cela coûte, dit franchement : sous Gecko, nos parcours n'éprouvent
+    plus le comportement de l'application pendant un échange de groupe de
+    contextes. Chromium et WebKit, eux, appliquent l'en-tête normalement — la
+    couverture reste donc réelle sur deux moteurs sur trois. Et la présence de
+    l'en-tête lui-même est vérifiée par
+    `api/lib/__tests__/en-tetes-de-securite.spec.ts`, qui exige `same-origin`
+    sur une réponse réelle.
+  */
+  "browser.tabs.remote.useCrossOriginOpenerPolicy": false,
 } as const;
 
 export function cookieEnseignant(): string {

@@ -735,20 +735,85 @@ divise le taux par trois environ, sans l'annuler.
    dont chaque scénario laisse une copie ouverte, avec ses minuteurs, son
    enregistrement temporisé et son battement de présence.
 
-### Ce qui reste ouvert
+### La cause
 
-La cause exacte, du côté de l'outil, n'est pas établie. Ce qui l'est : le taux
-mesuré (une exécution complète sur deux, une exécution par fichier sur six), et
-le fait qu'aucun réglage sous notre contrôle ne l'annule.
+Le journal de protocole de Playwright, capturé au moment d'un blocage, la donne
+sans ambiguïté.
 
-Une capture du protocole Playwright au moment précis du blocage est en cours :
-elle dira si la commande de navigation a été émise vers le navigateur et restée
-sans réponse, ou si elle n'a jamais été émise. C'est la dernière question à
-laquelle nous pouvons répondre sans entrer dans le code de l'outil.
+```
+SEND ► Page.navigate  url=…/evaluation?…  id=6477
+◀ RECV {"id":6477,"result":{"navigationId":"nav-101"}}
+◀ RECV Network.requestWillBeSent   …/evaluation?…
+◀ RECV Page.navigationStarted      nav-101        ← une première fois
+◀ RECV Network.responseReceived    (le serveur répond)
+◀ RECV Runtime.executionContextsCleared
+◀ RECV Runtime.executionContextCreated  ×2
+◀ RECV Runtime.executionContextDestroyed ×2
+◀ RECV Runtime.executionContextCreated  ×2
+◀ RECV Page.navigationStarted      nav-101        ← une seconde fois
+◀ RECV Network.requestFinished     (le document est là)
+```
 
-**Conséquence pour le gate** : à ce taux, trois exécutions CI consécutives sans
-la moindre reprise ne sont pas atteignables de façon fiable. `E2E_STABILITY`
-reste donc en échec, et `NO_GO_RC2` avec lui.
+`Page.navigationCommitted` n'arrive **jamais** pour `nav-101` — alors que la
+navigation précédente, `nav-100`, en a reçu un. `page.goto(waitUntil: "commit")`
+attend donc un événement qui ne viendra pas, pendant que la page, elle, s'est
+chargée normalement.
+
+La séquence entre les deux `navigationStarted` — contextes d'exécution vidés,
+détruits, recréés deux fois — est la signature d'un **échange de groupe de
+contextes de navigation**. Ce qui le déclenche chez nous :
+`Cross-Origin-Opener-Policy: same-origin`.
+
+Mesure, sur le fichier où les blocages se concentrent, dix exécutions par bras :
+
+| Bras | En-tête | Échecs |
+|---|---|---|
+| Contrôle | `same-origin` | **2 / 10** |
+| F | `same-origin`, application désactivée dans Gecko | **0 / 10** |
+| G | `same-origin-allow-popups` | **1 / 11** |
+
+Adoucir l'en-tête ne suffit pas : c'est l'échange de groupe lui-même qui
+déclenche le défaut, et il a lieu dans les deux cas.
+
+### Ce qui a été décidé
+
+Le produit **garde `same-origin`**. C'est une protection réelle, et la retirer
+pour contourner un défaut d'outillage serait le mauvais échange. C'est le
+navigateur de test, et lui seul, qui cesse d'appliquer l'en-tête —
+`browser.tabs.remote.useCrossOriginOpenerPolicy: false` dans les préférences
+Gecko du projet Playwright.
+
+Ce que cela coûte, dit franchement : sous Gecko, nos parcours n'éprouvent plus
+le comportement de l'application pendant un échange de groupe de contextes.
+Chromium et WebKit appliquent l'en-tête normalement — la couverture reste réelle
+sur deux moteurs sur trois — et la présence de l'en-tête est vérifiée sur une
+réponse réelle par `api/lib/__tests__/en-tetes-de-securite.spec.ts`.
+
+Ce n'est pas une reprise : rien n'est rejoué, `retries` reste à zéro, et un
+scénario qui échoue échoue toujours. C'est la suppression d'une cause, à
+l'endroit où elle peut l'être sans affaiblir le produit.
+
+### Après correction
+
+Huit exécutions consécutives des trois moteurs, sur le banc de diagnostic, sans
+reprise et sans reprise de navigation :
+
+| Exécution | Chromium | Firefox | WebKit |
+|---|---|---|---|
+| 1 à 8 | 23 / 23 | 23 / 23 | 23 / 23 |
+
+Vingt-quatre exécutions de projet, cinq cent cinquante-deux scénarios, aucun
+échec. La référence était de trois exécutions complètes en échec sur six.
+
+```
+PLAYWRIGHT_RETRIES = 0
+CUSTOM_NAVIGATION_REPLAY = 0
+E2E_FAIL = 0
+E2E_SKIP = 0
+```
+
+Reste à confirmer sur la CI, où le gate exige trois exécutions vertes
+consécutives sans intervention.
 
 Le seul fait établi est que le serveur ne voit jamais la requête — son journal
 d'accès, au niveau `debug`, le montre. Cela dit où la requête n'est pas ; cela
