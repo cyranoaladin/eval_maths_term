@@ -32,6 +32,19 @@ case "$AMC_SCENARIO" in
   echec-muet)
     exit 4
     ;;
+  latex-formule)
+    echo "ERR>Missing \\$ inserted." >&2
+    echo "ERR>Extra }, or forgotten \\endgroup." >&2
+    exit 1
+    ;;
+  latex-commande)
+    echo "ERR>Undefined control sequence \\dfracc" >&2
+    exit 1
+    ;;
+  latex-ligne)
+    echo "! Unable to read an entire line---bufsize=200000." >&2
+    exit 1
+    ;;
 esac
 echo "amc appelé : $*"
 if [ "$1" = "prepare" ] && [ "$2" = "--mode" ] && [ "$3" = "s" ]; then
@@ -188,6 +201,69 @@ describe("production des documents", () => {
     expect(trouves.filter((f) => String(f).includes("scoring.sqlite"))).toEqual([]);
   });
 
+  describe("ce que l'enseignant lit quand la composition échoue", () => {
+    /*
+      Le message partait avec quatre cents caractères de sortie LaTeX. Ce n'est
+      pas une trace d'exécution, mais ce n'est pas lisible non plus : un
+      enseignant devant « Extra }, or forgotten \\endgroup » ne sait ni ce qui
+      s'est passé, ni quoi corriger. La sortie complète reste dans l'erreur et
+      dans le journal du serveur ; ce qui remonte à l'écran doit désigner la
+      cause en français.
+    */
+    it("désigne une formule mal écrite", async () => {
+      amcDeTheatre("latex-formule");
+      const workdir = await dossierDeTravail();
+
+      await expect(runAmc(entree(workdir))).rejects.toThrow(
+        /formule.*mal écrite|accolade|parenthèse/i,
+      );
+    });
+
+    it("désigne une commande LaTeX inconnue", async () => {
+      amcDeTheatre("latex-commande");
+      const workdir = await dossierDeTravail();
+
+      await expect(runAmc(entree(workdir))).rejects.toThrow(/commande LaTeX/i);
+    });
+
+    it("désigne un énoncé trop long pour le moteur", async () => {
+      amcDeTheatre("latex-ligne");
+      const workdir = await dossierDeTravail();
+
+      await expect(runAmc(entree(workdir))).rejects.toThrow(/trop long/i);
+    });
+
+    it("garde la sortie complète pour le diagnostic", async () => {
+      amcDeTheatre("latex-formule");
+      const workdir = await dossierDeTravail();
+
+      await expect(runAmc(entree(workdir))).rejects.toMatchObject({
+        name: "AmcFailedError",
+        output: expect.stringContaining("forgotten"),
+      });
+    });
+
+    it("le dit aussi quand AMC réussit sans rien produire", async () => {
+      // Vu en vrai : pdfTeX abandonne, AMC rend malgré tout un code nul.
+      amcDeTheatre("sans-sujet");
+      const workdir = await dossierDeTravail();
+
+      await expect(runAmc(entree(workdir))).rejects.toThrow(/aucun document/i);
+    });
+
+    it("n'expose jamais de trace d'exécution", async () => {
+      amcDeTheatre("latex-formule");
+      const workdir = await dossierDeTravail();
+
+      const e: unknown = await runAmc(entree(workdir)).then(
+        () => null,
+        (x: unknown) => x,
+      );
+      expect(e).toBeInstanceOf(Error);
+      expect((e as Error).message).not.toMatch(/\bat \/|node_modules|\.ts:\d+/);
+    });
+  });
+
   it("s'arrête en nommant l'étape et en gardant sa sortie", async () => {
     amcDeTheatre("echec-bavard");
     const workdir = await dossierDeTravail();
@@ -227,7 +303,7 @@ describe("production des documents", () => {
     await expect(runAmc(entree(workdir))).rejects.toMatchObject({
       name: "AmcFailedError",
       step: "prepare --mode s",
-      output: expect.stringContaining("sujet.pdf n'a pas été produit"),
+      output: expect.stringContaining("sans produire aucun document"),
     });
   });
 

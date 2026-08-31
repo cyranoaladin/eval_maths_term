@@ -78,11 +78,60 @@ class AmcUnavailableError extends Error {
   }
 }
 
+/*
+  Ce que l'enseignant lit quand la composition échoue.
+
+  Le message partait avec quatre cents caractères de sortie LaTeX. Ce n'est pas
+  une trace d'exécution, mais ce n'est pas lisible non plus : devant « Extra },
+  or forgotten \endgroup », un enseignant ne sait ni ce qui s'est passé, ni
+  quoi corriger. Les signatures ci-dessous viennent d'échecs observés pour de
+  vrai, en composant des énoncés hostiles.
+
+  La sortie complète n'est pas perdue : elle reste dans `output`, et le journal
+  du serveur la garde. C'est ce qui remonte à l'écran qui change.
+*/
+const EXPLICATIONS: Array<{ signature: RegExp; message: string }> = [
+  {
+    signature: /Missing \$ inserted|Missing \} inserted|Extra \}|forgotten \\endgroup|ended by \\end/,
+    message:
+      "Une formule d'un énoncé est mal écrite : une accolade, une parenthèse ou un « $ » n'est pas refermé. Relisez les énoncés et leurs propositions.",
+  },
+  {
+    signature: /Undefined control sequence/,
+    message:
+      "Un énoncé emploie une commande LaTeX que le moteur ne connaît pas. Vérifiez l'orthographe des commandes mathématiques.",
+  },
+  {
+    signature: /Unable to read an entire line|bufsize/,
+    message:
+      "Un énoncé, une proposition ou un nom d'élève est trop long pour le moteur de composition. Raccourcissez-le.",
+  },
+  {
+    signature: /Unicode character/,
+    message:
+      "Un caractère d'un énoncé ne peut pas être imprimé : la composition se fait en alphabet latin.",
+  },
+  {
+    signature: /File .* not found|not found/,
+    message:
+      "Le moteur de composition n'a pas trouvé un fichier dont il a besoin. C'est une anomalie du serveur, pas de votre sujet : prévenez l'administrateur.",
+  },
+];
+
+function expliquer(sortie: string): string {
+  // Un message déjà rédigé pour l'enseignant se suffit à lui-même.
+  if (sortie.startsWith("La composition s'est terminée sans produire")) return sortie;
+  for (const e of EXPLICATIONS) {
+    if (e.signature.test(sortie)) return e.message;
+  }
+  return "La composition du sujet a échoué. Le détail est dans le journal du serveur ; prévenez l'administrateur si le problème persiste.";
+}
+
 class AmcFailedError extends Error {
   readonly step: string;
   readonly output: string;
   constructor(step: string, output: string) {
-    super(`Étape AMC « ${step} » en échec : ${output.slice(-400)}`);
+    super(expliquer(output));
     this.name = "AmcFailedError";
     this.step = step;
     this.output = output;
@@ -165,7 +214,16 @@ export async function runAmc(input: RunAmcInput): Promise<AmcResult> {
   }
 
   if (!artifacts.some((a) => a.file === "sujet.pdf")) {
-    throw new AmcFailedError("prepare --mode s", "sujet.pdf n'a pas été produit");
+    /*
+      Vu en vrai : pdfTeX abandonne, et AMC rend malgré tout un code de sortie
+      nul. Sans ce contrôle, le tirage serait enregistré comme réussi et
+      l'enseignant découvrirait l'absence de sujet au moment de l'imprimer.
+    */
+    throw new AmcFailedError(
+      "prepare --mode s",
+      "La composition s'est terminée sans produire aucun document. " +
+        "Vérifiez les énoncés : une formule mal écrite suffit à interrompre le moteur.",
+    );
   }
 
   logger.info("[amc] Documents produits", {
