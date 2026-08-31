@@ -203,10 +203,13 @@ describe("production des documents", () => {
     process.env.PATH = `${cheminCasse}:${PATH_INITIAL ?? ""}`;
     const workdir = await dossierDeTravail();
 
+    // Le système dit l'échec à sa façon — « Command failed » ici, « spawn …
+    // ENOENT » ailleurs. Ce qui doit tenir partout, c'est l'étape nommée et une
+    // sortie non vide à montrer à l'enseignant.
     await expect(runAmc(entree(workdir))).rejects.toMatchObject({
       name: "AmcFailedError",
       step: "prepare --mode s",
-      output: expect.stringContaining("Command failed"),
+      output: expect.stringMatching(/\S/),
     });
   });
 
