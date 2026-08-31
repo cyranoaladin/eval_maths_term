@@ -227,7 +227,7 @@ La génération **retourne des propositions**. L'enregistrement repasse par
 | Mathématiques | KaTeX (rendu), MathLive (saisie), mathjs (comparaison symbolique) |
 | Authentification | OAuth Kimi, session JWT (`jose`) |
 | Modèle de langage | API compatible OpenAI — OpenRouter par défaut |
-| Impression | `auto-multiple-choice` 1.6.0 piloté en ligne de commande |
+| Impression | `auto-multiple-choice` 1.7.0-3, épinglé et vérifié par empreinte, piloté en ligne de commande. Le runtime de production ne contient que ce que la composition utilise réellement — voir [`docs/AMC-RUNTIME.md`](docs/AMC-RUNTIME.md) |
 | Tests | Vitest (899 tests, dont un socle d'intégration sur base réelle), Playwright (39 scénarios, trois moteurs), neuf recettes de bout en bout, k6 |
 
 ### 5.2 Arborescence
@@ -1019,8 +1019,12 @@ exécutée.
 - MySQL de développement : conteneur `eval-maths-mysql-dev`, `127.0.0.1:3307`,
   base `eval_maths`, identifiants tirés au hasard dans `.env` par
   `scripts/bootstrap-dev.sh`
-- `auto-multiple-choice` 1.6.0, `pdflatex`, `latexmk`, `automultiplechoice.sty`
-  installés au niveau système
+- `auto-multiple-choice` **1.6.0-3build4**, `pdflatex`, `latexmk`,
+  `automultiplechoice.sty` installés au niveau système. Attention : ce n'est pas
+  la version qui sert en production. L'image livrée épingle **1.7.0-3**, vérifiée
+  par empreinte (voir [`docs/AMC-RUNTIME.md`](docs/AMC-RUNTIME.md)). Un tirage
+  lancé depuis le poste et un tirage lancé dans l'image ne passent donc pas par
+  le même AMC : la preuve qui fait foi est celle qui tourne dans l'image.
 - Une clé OpenRouter est configurée dans `.env` (non versionné), modèle
   `anthropic/claude-sonnet-5`
 - L'extension Chrome de pilotage n'est pas connectée ; les captures d'écran ont

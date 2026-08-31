@@ -8,7 +8,7 @@
  * pas l'idée qu'on s'en fait.
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, readFile, rm, chmod } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runAmc, isAmcAvailable } from "../amc-runner";
@@ -161,24 +161,31 @@ describe("production des documents", () => {
   it("ne prépare rien pour une correction optique", async () => {
     /*
       Le périmètre de la version : produire des sujets, pas lire des copies
-      scannées. Les dossiers `data/` et `cr/` n'existaient que pour `meptex` et
-      `prepare --mode b`, et les deux bases qu'ils produisent — positions des
-      cases, barème optique — ne sont ouvertes nulle part dans ce dépôt.
+      scannées.
 
-      Ce test échoue si l'un ou l'autre revient sans décision explicite.
+      Ce que `prepare --mode s` fabrique de son côté dans `sujet-data/` — une
+      base de projet dont les tables de géométrie restent vides — ne nous
+      regarde pas : c'est AMC chez lui. Ce que ce test surveille, c'est ce que
+      *nous* lui demandons. `meptex` remplissait les positions des cases et
+      `prepare --mode b` produisait le barème optique ; ni l'une ni l'autre de
+      ces deux bases n'est ouverte nulle part dans ce dépôt.
+
+      Ce test échoue si l'une ou l'autre étape revient sans décision explicite.
     */
     amcDeTheatre();
     const workdir = await dossierDeTravail();
 
     const resultat = await runAmc(entree(workdir));
 
-    for (const artefact of ["data/layout.sqlite", "data/scoring.sqlite"]) {
-      await expect(
-        readFile(join(workdir, artefact)),
-        `${artefact} ne doit pas être produit`,
-      ).rejects.toThrow();
-    }
-    expect(resultat.log.match(/\$ auto-multiple-choice/g) ?? []).toHaveLength(1);
+    const appels = resultat.log.match(/\$ auto-multiple-choice[^\n]*/g) ?? [];
+    expect(appels).toHaveLength(1);
+    expect(appels[0]).toContain("prepare --mode s");
+    expect(resultat.log).not.toMatch(/meptex|--mode\s+b/);
+
+    // `scoring.sqlite` est la signature du barème optique : il ne doit
+    // apparaître nulle part dans le dossier de tirage.
+    const trouves = await readdir(workdir, { recursive: true });
+    expect(trouves.filter((f) => String(f).includes("scoring.sqlite"))).toEqual([]);
   });
 
   it("s'arrête en nommant l'étape et en gardant sa sortie", async () => {

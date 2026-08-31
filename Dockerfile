@@ -105,22 +105,90 @@ CMD ["node", "dist/boot.js"]
 # gigaoctets de plus. C'est le prix de l'impression des sujets, et c'est
 # l'artefact que la recette éprouve, que le compose démarre et que la CI
 # construit — le même, du contrôle au déploiement.
+# ── Récupération des paquets AMC ─────────────────────────────────────────────
+#
+# Isolée pour que `curl` et les certificats ne mettent jamais un pied dans
+# l'image livrée : rien à purger ensuite. Les deux archives sont figées par
+# version et vérifiées par empreinte — une modification amont fait échouer la
+# construction plutôt que de passer inaperçue.
+FROM ${NODE_IMAGE} AS paquets-amc
+ARG AMC_VERSION=1.7.0-3
+ARG AMC_COMMON_SHA256=845c7e3e67251f1891aa2bddce5a215d38ed4a5338631e736e198f7c39a5d5d8
+ARG AMC_MAIN_SHA256=04330c73434cae767c7ed27ad1e04f8d3560403f03763834899c0af810eb6c33
+ARG AMC_MIROIR=http://deb.debian.org/debian/pool/main/a/auto-multiple-choice
+WORKDIR /paquets
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+ && curl -fsSLO "${AMC_MIROIR}/auto-multiple-choice-common_${AMC_VERSION}_all.deb" \
+ && curl -fsSLO "${AMC_MIROIR}/auto-multiple-choice_${AMC_VERSION}_amd64.deb" \
+ && echo "${AMC_COMMON_SHA256}  auto-multiple-choice-common_${AMC_VERSION}_all.deb" | sha256sum -c - \
+ && echo "${AMC_MAIN_SHA256}  auto-multiple-choice_${AMC_VERSION}_amd64.deb" | sha256sum -c -
+
 FROM sans-impression AS production
 
 USER root
+
+# ── Ce que la composition demande vraiment ───────────────────────────────────
+#
+# `apt-get install auto-multiple-choice` installe la chaîne AMC **entière** :
+# lecture optique (OpenCV), traitement d'images (GraphicsMagick, et derrière
+# lui ImageMagick, OpenEXR, libraw, GDCM) et interface graphique (GTK 3). Cent
+# soixante et onze vulnérabilités élevées ou critiques, sans correctif amont,
+# entraient par là — pour un chemin que ce produit n'emprunte pas.
+#
+# Une génération réelle a été tracée : `prepare --mode s` n'exécute que `perl`,
+# `pdflatex`, les outils `kpse*`, la génération de polices et quelques
+# commandes de base. Elle charge une trentaine de modules Perl — DBI,
+# DBD::SQLite, XML::Simple, XML::Writer, Locale::gettext, Glib — et **aucun**
+# module GTK, GraphicsMagick ou OpenCV. Les seuls binaires compilés d'AMC,
+# `AMC-detect` et `AMC-buildpdf`, appartiennent à l'analyse des scans et à
+# l'annotation des copies : ils ne sont jamais lancés.
+#
+# On installe donc les dépendances réelles, et on pose les fichiers d'AMC
+# depuis ses paquets officiels, épinglés par version et vérifiés par empreinte.
+# Voir docs/ADR-OPTICAL-CORRECTION-BOUNDARY.md et docs/AMC-RUNTIME.md.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      auto-multiple-choice \
+      perl \
+      libdbi-perl \
+      libdbd-sqlite3-perl \
+      libxml-simple-perl \
+      libxml-writer-perl \
+      liblocale-gettext-perl \
+      libglib-perl \
+      libtext-csv-perl \
+      libhash-merge-perl \
+      texlive-latex-base \
+      texlive-latex-recommended \
       texlive-latex-extra \
+      texlive-fonts-recommended \
       texlive-lang-french \
  && rm -rf /var/lib/apt/lists/*
 
-# Vérification à la construction : sans ces trois éléments, l'image est inutile
-# et il vaut mieux le savoir maintenant. `auto-multiple-choice version` ouvre
+# Les fichiers d'AMC arrivent de l'étape de récupération, déjà vérifiés.
+COPY --from=paquets-amc /paquets/*.deb /tmp/paquets/
+RUN dpkg-deb -x /tmp/paquets/auto-multiple-choice-common_*.deb / \
+ && dpkg-deb -x /tmp/paquets/auto-multiple-choice_*.deb / \
+ && rm -rf /tmp/paquets \
+ # Les binaires compilés n'appartiennent qu'à la lecture optique et à
+ # l'annotation des copies : sans eux, rien ne peut réclamer OpenCV.
+ && rm -rf /usr/libexec/AMC/exec \
+ # La classe LaTeX arrive hors de l'arbre TeX Live : il faut le lui dire.
+ && mktexlsr
+
+# Vérification à la construction : sans ces éléments, l'image est inutile et il
+# vaut mieux le savoir maintenant. `auto-multiple-choice version` ouvre
 # l'interface graphique et échoue sans écran : on vérifie ce que l'application
-# vérifie — l'exécutable est dans le PATH — et ce dont la préparation a besoin,
+# vérifie — l'exécutable est dans le PATH — et ce dont la composition a besoin,
 # le répartiteur Perl et la classe LaTeX.
 RUN which auto-multiple-choice \
  && test -f /usr/libexec/AMC/perl/AMC-prepare.pl \
- && kpsewhich automultiplechoice.sty
+ && kpsewhich automultiplechoice.sty \
+ # Et l'inverse : rien de la chaîne optique ne doit être revenu. On interroge
+ # l'état d'installation, pas la simple présence au catalogue : dpkg garde une
+ # ligne « not-installed » pour des paquets jamais posés.
+ && ! test -e /usr/libexec/AMC/exec \
+ && test -z "$(dpkg-query -W -f='${binary:Package} ${db:Status-Status}\n' \
+      | awk '$2 == "installed" { print $1 }' \
+      | grep -Ei 'opencv|graphicsmagick|graphics-magick|imagemagick|gtk3-perl|openexr|libraw|gdcm')" \
+ && test -z "$(find / -xdev \( -name 'libopencv*' -o -name 'libGraphicsMagick*' \) -print -quit)"
 
 USER evalapp

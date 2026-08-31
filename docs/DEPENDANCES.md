@@ -20,6 +20,28 @@ commentaire, parce qu'une empreinte seule ne se relit pas.
 | `ghcr.io/gitleaks/gitleaks` | `sha256:71d3ee5990f2176f763b438298453fc37e87b119122045e176ca9d44ff00b08b` | v8.29.0 | `.github/workflows/ci.yml` |
 | `aquasec/trivy` | `sha256:1c78ed1ef824ab8bb05b04359d186e4c1229d0b3e67005faacb54a7d71974f73` | 0.69.1 | `scripts/scan-image.sh` |
 | `grafana/k6` | `sha256:5221b620a4f874faff6e32ba597aa667c058391fe4898b1c6f6377f062c6cdec` | latest au 31/08/2026 | scripts de charge |
+| `auto-multiple-choice-common_1.7.0-3_all.deb` | `845c7e3e67251f1891aa2bddce5a215d38ed4a5338631e736e198f7c39a5d5d8` | 1.7.0-3 | `Dockerfile`, étape `paquets-amc` |
+| `auto-multiple-choice_1.7.0-3_amd64.deb` | `04330c73434cae767c7ed27ad1e04f8d3560403f03763834899c0af810eb6c33` | 1.7.0-3 | idem |
+
+Les deux dernières lignes ne sont pas des images mais des archives Debian,
+posées par `dpkg-deb -x` dans un runtime réduit à ce que la composition utilise
+réellement. Leur empreinte est vérifiée à la construction : une modification
+amont fait échouer le build au lieu de passer inaperçue. Le raisonnement est
+dans [AMC-RUNTIME](AMC-RUNTIME.md).
+
+Pour relever l'empreinte d'une nouvelle version d'AMC :
+
+```bash
+version=1.7.0-3
+base=http://deb.debian.org/debian/pool/main/a/auto-multiple-choice
+for f in auto-multiple-choice-common_${version}_all auto-multiple-choice_${version}_amd64; do
+  curl -fsSL "$base/$f.deb" | sha256sum | sed "s#-#$f.deb#"
+done
+```
+
+Toute montée de version d'AMC exige de rejouer la matrice de preuve papier
+(`scripts/matrice-preuve-papier.ts` puis `scripts/verifier-matrice-papier.sh`)
+et la recette Docker complète.
 
 ## Faire monter une version
 
