@@ -101,13 +101,28 @@ export function assertSafeLatex(fragment: string, questionId: number): void {
   }
 }
 
+/*
+  Un seul passage, et c'est délibéré. L'échappement se faisait en plusieurs
+  remplacements successifs : la contre-oblique devenait `\textbackslash{}`,
+  puis le remplacement suivant échappait les accolades que le premier venait
+  d'écrire. Un titre contenant une contre-oblique s'imprimait donc `\{}`.
+*/
+const ECHAPPEMENTS: Record<string, string> = {
+  "\\": "\\textbackslash{}",
+  "&": "\\&",
+  "%": "\\%",
+  $: "\\$",
+  "#": "\\#",
+  _: "\\_",
+  "{": "\\{",
+  "}": "\\}",
+  "~": "\\textasciitilde{}",
+  "^": "\\textasciicircum{}",
+};
+
 /** Échappe une valeur qui n'est PAS du LaTeX (nom d'élève, titre). */
 export function escapeLatexText(text: string): string {
-  return text
-    .replace(/\\/g, "\\textbackslash{}")
-    .replace(/([&%$#_{}])/g, "\\$1")
-    .replace(/~/g, "\\textasciitilde{}")
-    .replace(/\^/g, "\\textasciicircum{}");
+  return text.replace(/[\\&%$#_{}~^]/g, (c) => ECHAPPEMENTS[c]);
 }
 
 /** Identifiant AMC d'une question : stable, sans caractère spécial. */
@@ -283,14 +298,24 @@ ${consignes}
 \\end{document}
 `;
 
-  // En-tête `Eleves` : nom de colonne attendu par `head to column names`.
-  // Pas de guillemets : `csvsimple` ne les retire pas et ils s'impriment
-  // tels quels sur la feuille-réponses. Le point-virgule, seul caractère qui
-  // casserait le format, est remplacé.
+  /*
+    En-tête `Eleves` : nom de colonne attendu par `head to column names`.
+    Pas de guillemets : `csvsimple` ne les retire pas et ils s'impriment tels
+    quels sur la feuille-réponses. Le point-virgule et le saut de ligne, seuls
+    caractères qui casseraient le format, sont remplacés.
+
+    Et le nom est **échappé**. Il ne reste pas dans le CSV : `\csvreader` le
+    réinjecte dans le document, où il redevient du LaTeX. Une liste importée
+    qui portait une contre-oblique ou une accolade faisait échouer toute la
+    composition — `\AMCassociation` refuse une séquence de contrôle — et
+    l'enseignant n'avait qu'une erreur LaTeX pour comprendre.
+  */
   const studentsCsv = [
     "Eleves",
     ...input.students.map((s) =>
-      `${s.lastName} ${s.firstName}`.replace(/[;"\r\n]/g, " ").replace(/\s+/g, " ").trim(),
+      escapeLatexText(`${s.lastName} ${s.firstName}`.replace(/[;"\r\n]/g, " "))
+        .replace(/\s+/g, " ")
+        .trim(),
     ),
   ].join("\n");
 

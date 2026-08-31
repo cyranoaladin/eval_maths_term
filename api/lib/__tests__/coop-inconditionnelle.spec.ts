@@ -43,8 +43,14 @@ async function coopPour(isProduction: boolean, baseUrl: string) {
   return r.headers.get("Cross-Origin-Opener-Policy");
 }
 
-/** La préférence Gecko qui désactive l'application de COOP. */
-const PREFERENCE = "browser.tabs.remote.useCrossOriginOpenerPolicy";
+/*
+  La préférence Gecko qui désactive l'application de COOP — assemblée à
+  l'exécution, et non écrite en toutes lettres. Sans cela ce fichier serait
+  lui-même trouvé par la recherche ci-dessous, et il faudrait le mettre sur une
+  liste d'exceptions : une garde qui s'exempte elle-même finit par exempter
+  autre chose.
+*/
+const PREFERENCE = ["browser", "tabs", "remote", "useCrossOrigin" + "OpenerPolicy"].join(".");
 
 describe("COOP ne se désactive pas", () => {
   it("est posé quelle que soit la configuration", async () => {

@@ -88,6 +88,36 @@ describe("structure du document", () => {
     ]);
   });
 
+  it("échappe le nom de l'élève avant de l'écrire dans le CSV", () => {
+    /*
+      Le nom part dans `eleves.csv`, que `\csvreader` réinjecte dans le
+      document : il redevient du LaTeX. Non échappé, un nom qui porte une
+      contre-oblique ou une accolade fait échouer toute la composition — et
+      `\AMCassociation` refuse d'ailleurs une séquence de contrôle, ce qui
+      transforme un caractère inattendu dans une liste importée en tirage
+      perdu, avec une erreur LaTeX pour seul message.
+
+      Éprouvé sur AMC 1.7.0 : chacune de ces formes échappées s'imprime bien
+      comme le caractère d'origine.
+    */
+    const { studentsCsv } = buildAmcDocument(
+      input({
+        students: [
+          { lastName: "Dupont & Fils", firstName: "Amina" },
+          { lastName: "O'Neill \\textbf{gras}", firstName: "Bilel" },
+          { lastName: "Coût 100%", firstName: "Chloé_M" },
+        ],
+      }),
+    );
+
+    expect(studentsCsv.split("\n")).toEqual([
+      "Eleves",
+      "Dupont \\& Fils Amina",
+      "O'Neill \\textbackslash{}textbf\\{gras\\} Bilel",
+      "Coût 100\\% Chloé\\_M",
+    ]);
+  });
+
   it("conserve la feuille-réponses séparée", () => {
     const { tex } = buildAmcDocument(input());
     expect(tex).toContain("separateanswersheet");
@@ -190,6 +220,21 @@ describe("sûreté du LaTeX", () => {
     expect(escapeLatexText("Maths & Physique 100% #1")).toBe(
       "Maths \\& Physique 100\\% \\#1",
     );
+  });
+
+  it("n'échappe pas ce qu'il vient lui-même d'écrire", () => {
+    /*
+      L'échappement se faisait en plusieurs passes : la contre-oblique devenait
+      `\textbackslash{}`, puis la passe suivante échappait les accolades de ce
+      remplacement. Un titre contenant une contre-oblique s'imprimait donc
+      `\{}` au lieu de `\`. Une seule passe, et le problème disparaît.
+    */
+    expect(escapeLatexText("C:\\dossier")).toBe("C:\\textbackslash{}dossier");
+    expect(escapeLatexText("a~b")).toBe("a\\textasciitilde{}b");
+    expect(escapeLatexText("2^3")).toBe("2\\textasciicircum{}3");
+    // Et les accolades que l'utilisateur a vraiment écrites, elles, sont bien
+    // échappées.
+    expect(escapeLatexText("{x}")).toBe("\\{x\\}");
   });
 
   it("neutralise les caractères qui casseraient le CSV", () => {
