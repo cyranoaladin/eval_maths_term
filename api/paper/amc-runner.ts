@@ -4,13 +4,27 @@
  * Pilotage d'`auto-multiple-choice` en ligne de commande.
  *
  * On ne réimplémente pas AMC : il fait déjà la mise en page LaTeX des
- * mathématiques, les cases de calage et la numérotation des copies. La
- * séquence reproduit celle de `QCM_EDS_MATHS_TERM/prepare_korrigo.sh`, seule
- * chaîne éprouvée sur cette machine :
+ * mathématiques, les cases de calage et la numérotation des copies.
  *
- *   prepare --mode s   → sujet.pdf, corrige.pdf, catalog.pdf, calage.xy
- *   meptex             → data/layout.sqlite (positions des cases)
- *   prepare --mode b   → data/scoring.sqlite (barème)
+ *   prepare --mode s   → sujet.pdf, corrige.pdf, catalog.pdf
+ *
+ * **Une seule étape, et c'est délibéré.**
+ *
+ * La chaîne d'origine en comptait trois : `meptex` produisait
+ * `data/layout.sqlite` — les positions des cases sur la feuille — et
+ * `prepare --mode b` produisait `data/scoring.sqlite` — le barème sous la forme
+ * qu'attend la correction optique. Ces deux fichiers ne servent qu'à *lire des
+ * copies scannées*, et cette application ne lit pas de copies scannées : la
+ * saisie se fait à la main dans la grille, et la note est calculée par le
+ * moteur de correction à partir de la base.
+ *
+ * Aucun code de ce dépôt n'ouvre `layout.sqlite` ni `scoring.sqlite` ; seuls
+ * les trois PDF sont téléchargés, et `printedQuestionIds` fige la composition.
+ * Les deux étapes retirées coûtaient du temps à chaque tirage et faisaient
+ * entrer dans l'image de production toute la pile d'analyse d'images.
+ *
+ * Voir `docs/ADR-OPTICAL-CORRECTION-BOUNDARY.md`. Une correction optique
+ * future les rétablira — dans son propre service, avec sa propre image.
  *
  * Chaque tirage a son propre dossier : deux impressions simultanées ne peuvent
  * pas se marcher dessus.
@@ -99,18 +113,14 @@ export async function runAmc(input: RunAmcInput): Promise<AmcResult> {
 
   // AMC dérive son dossier de projet du nom du fichier source (`sujet.tex` →
   // `sujet-data/`) et n'essaie pas de le créer : sans lui, `prepare` échoue sur
-  // « unable to open database ». `prepare_korrigo.sh` le crée pour la même raison.
+  // « unable to open database ».
   const projectData = TEX_NAME.replace(/\.tex$/, "-data");
   await mkdir(join(workdir, projectData), { recursive: true });
-  await mkdir(join(workdir, "data"), { recursive: true });
-  await mkdir(join(workdir, "cr"), { recursive: true });
   await writeFile(join(workdir, TEX_NAME), input.tex, "utf8");
   await writeFile(join(workdir, CSV_NAME), input.studentsCsv, "utf8");
 
   const etapes: Array<{ nom: string; args: string[] }> = [
     { nom: "prepare --mode s", args: ["prepare", "--mode", "s", "--prefix", "./", TEX_NAME] },
-    { nom: "meptex", args: ["meptex", "--src", "./calage.xy", "--data", "./data"] },
-    { nom: "prepare --mode b", args: ["prepare", "--mode", "b", "--data", "./data", TEX_NAME] },
   ];
 
   for (const etape of etapes) {

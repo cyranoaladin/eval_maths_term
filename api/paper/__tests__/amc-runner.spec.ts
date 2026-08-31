@@ -25,11 +25,9 @@ const PATH_INITIAL = process.env.PATH;
 const SCRIPT = `#!/bin/bash
 etape="$1 $2 $3"
 case "$AMC_SCENARIO" in
-  echec-meptex)
-    if [ "$1" = "meptex" ]; then
-      echo "erreur de calage" >&2
-      exit 3
-    fi
+  echec-bavard)
+    echo "erreur de composition LaTeX" >&2
+    exit 3
     ;;
   echec-muet)
     exit 4
@@ -128,11 +126,18 @@ describe("production des documents", () => {
     // L'accent survit à l'écriture : AMC lit le CSV en UTF-8.
     expect(await readFile(join(workdir, "eleves.csv"), "utf8")).toContain("Aïcha");
 
-    // La séquence est celle de la chaîne éprouvée, dans cet ordre.
+    // Une seule étape : la production des documents.
     expect(resultat.log).toContain("prepare --mode s --prefix ./ sujet.tex");
-    expect(resultat.log).toContain("meptex --src ./calage.xy --data ./data");
-    expect(resultat.log).toContain("prepare --mode b --data ./data sujet.tex");
-    expect(resultat.log.indexOf("meptex")).toBeLessThan(resultat.log.lastIndexOf("--mode b"));
+
+    /*
+      Et rien d'autre. `meptex` et `prepare --mode b` ne servent qu'à lire des
+      copies scannées ; ils faisaient entrer toute la pile d'analyse d'images
+      dans l'image de production, pour deux fichiers que ce dépôt n'ouvre nulle
+      part. Si quelqu'un les réintroduit, ce test le dit.
+    */
+    expect(resultat.log, "une étape de préparation optique est revenue").not.toMatch(
+      /meptex|--mode\s+b/,
+    );
 
     expect(resultat.workdir).toBe(workdir);
     expect(resultat.artifacts.map((a) => a.file)).toEqual([
@@ -153,14 +158,37 @@ describe("production des documents", () => {
     await expect(readFile(join(workdir, "sujet-data"), "utf8")).rejects.toThrow(/EISDIR/);
   });
 
-  it("s'arrête à l'étape fautive en nommant l'étape et en gardant sa sortie", async () => {
-    amcDeTheatre("echec-meptex");
+  it("ne prépare rien pour une correction optique", async () => {
+    /*
+      Le périmètre de la version : produire des sujets, pas lire des copies
+      scannées. Les dossiers `data/` et `cr/` n'existaient que pour `meptex` et
+      `prepare --mode b`, et les deux bases qu'ils produisent — positions des
+      cases, barème optique — ne sont ouvertes nulle part dans ce dépôt.
+
+      Ce test échoue si l'un ou l'autre revient sans décision explicite.
+    */
+    amcDeTheatre();
+    const workdir = await dossierDeTravail();
+
+    const resultat = await runAmc(entree(workdir));
+
+    for (const artefact of ["data/layout.sqlite", "data/scoring.sqlite"]) {
+      await expect(
+        readFile(join(workdir, artefact)),
+        `${artefact} ne doit pas être produit`,
+      ).rejects.toThrow();
+    }
+    expect(resultat.log.match(/\$ auto-multiple-choice/g) ?? []).toHaveLength(1);
+  });
+
+  it("s'arrête en nommant l'étape et en gardant sa sortie", async () => {
+    amcDeTheatre("echec-bavard");
     const workdir = await dossierDeTravail();
 
     await expect(runAmc(entree(workdir))).rejects.toMatchObject({
       name: "AmcFailedError",
-      step: "meptex",
-      output: expect.stringContaining("erreur de calage"),
+      step: "prepare --mode s",
+      output: expect.stringContaining("erreur de composition LaTeX"),
     });
   });
 

@@ -24,6 +24,22 @@ sur le chemin fonctionnel.
 
 ---
 
+## 1 bis. Périmètre de la version candidate
+
+```
+RC2_PAPER_WORKFLOW               generate → print → manual entry → grading
+OPTICAL_CAPTURE                  NOT IMPLEMENTED IN RC2 WEB APP
+INTEGRATED_OPTICAL_SCAN_RC2      OUT_OF_SCOPE
+OPTICAL_SCAN_FUTURE_CAPABILITY   PRESERVED
+```
+
+`v1.0.0-rc2` décrit le produit réellement implémenté. La lecture optique des
+copies reste une capacité d'`auto-multiple-choice` et une évolution possible,
+dans un service séparé ; elle n'est pas intégrée, et le runtime ne porte pas ce
+qu'il faudrait pour elle. Voir `docs/ADR-OPTICAL-CORRECTION-BOUNDARY.md`.
+
+---
+
 ## 2. Audit initial — l'état réel avant toute modification
 
 Mesuré, pas estimé. C'est la ligne de départ.

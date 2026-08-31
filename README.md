@@ -69,9 +69,27 @@ ligne** avec anti-triche, développée sur trois phases. Le travail récent l'a
 réorienté vers l'atelier décrit ci-dessus, **sans supprimer** le parcours en
 ligne.
 
-**Ce qu'on ne réécrit pas.** `auto-multiple-choice` (installé, version 1.6.0)
-fait déjà la mise en page LaTeX des mathématiques, les cases de calage, la
-numérotation des copies et la lecture optique. L'application le **pilote**.
+**Ce qu'on ne réécrit pas.** `auto-multiple-choice` fait déjà la mise en page
+LaTeX des mathématiques, les cases de calage et la numérotation des copies.
+L'application le **pilote** — pour produire les documents, et pour cela
+seulement.
+
+### Ce que fait cette version, et ce qu'elle ne fait pas
+
+```
+ONLINE_CAPABILITY               OUI  passage en ligne, anti-triche, correction
+PAPER_GENERATION_CAPABILITY     OUI  sujet, corrigé, catalogue, une copie par élève
+MANUAL_PAPER_ENTRY_CAPABILITY   OUI  saisie au clavier, notation immédiate
+OPTICAL_SCAN_INTEGRATED         NON  l'application ne lit pas de copies scannées
+OPTICAL_SCAN_EXTERNAL/HISTORIQUE OUI AMC sait le faire, hors de cette application
+OPTICAL_SCAN_FUTURE             POSSIBLE  dans un service séparé, pas ici
+```
+
+Le chemin papier de cette version est donc : **générer → imprimer → saisir à la
+main → noter**. La lecture optique reste une capacité d'AMC, et une possibilité
+d'évolution ; elle n'est pas intégrée, et le runtime ne porte pas ce qu'il
+faudrait pour elle. Le raisonnement complet est dans
+[`docs/ADR-OPTICAL-CORRECTION-BOUNDARY.md`](docs/ADR-OPTICAL-CORRECTION-BOUNDARY.md).
 
 ---
 
@@ -101,7 +119,9 @@ numérotation des copies et la lecture optique. L'application le **pilote**.
    thème ; l'enseignant les accepte, retouche ou écarte une par une.
 4. **Imprimer** — choisir une classe, importer sa liste, générer. AMC produit
    `sujet.pdf`, `corrige.pdf` et `catalog.pdf`, avec une copie nominative par
-   élève et sa feuille-réponses détachable.
+   élève et sa feuille-réponses détachable. Une seule commande AMC est appelée,
+   celle qui compose les documents : la préparation destinée à la lecture
+   optique ne l'est pas.
 5. **Saisir** — `/teacher/saisie/:examId`. Un élève à la fois, tout au clavier :
    on tape la lettre, la réponse se pose, la ligne suivante s'active. Les
    questions rédigées se notent à la main dans un second bloc.
@@ -246,7 +266,7 @@ api/
 
   paper/
     amc-template.ts         évaluation → LaTeX AMC, sans mélange
-    amc-runner.ts           exécution des 3 commandes AMC
+    amc-runner.ts           exécution de la commande AMC de composition
     paper-service.ts        production d'un tirage, création des copies
     parse-roster.ts         lecture des listes d'élèves (format vie scolaire)
     manual-entry.ts         saisie d'une copie → session → note
