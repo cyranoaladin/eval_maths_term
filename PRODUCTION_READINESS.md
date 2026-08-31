@@ -18,8 +18,9 @@ sur le chemin fonctionnel.
 |---|---|
 | Branche | `release/production-hardening` |
 | Base | `90fb380` (`main`, tag `v1.0.0-rc1`) |
-| Dernière mise à jour | 2026-08-31 — gate franchi, `v1.0.0-rc2` posé |
-| Artefact candidat | `atelier-qcm:1.0.0-rc2`, recette 28/28 |
+| Dernière mise à jour | 2026-08-31 — matrice corrigée après revue indépendante |
+| `v1.0.0-rc2` | **n'existe pas**, et ne doit pas être posé |
+| Verdict | `NO_GO_RC2` |
 
 ---
 
@@ -135,16 +136,16 @@ Huit procédures ne sont appelées par aucun écran :
 | P9 | Provisionnement enseignant explicite, aucun accès automatique | **PASS** | migration 0006 + `acces-comptes.integration.spec.ts` (11 cas sur la vraie base) |
 | P10 | OAuth durci — `PUBLIC_BASE_URL`, cookie `Secure`, validation du jeton | **PASS** | `api/__tests__/security/oauth-durcissement.spec.ts` — 18 cas |
 | P11 | En-têtes de sécurité HTTP, CSP sans `unsafe-eval` | **PASS** | `surface-http.integration.spec.ts` sur du vrai HTTP + 39 parcours sur le build de production, trois moteurs |
-| P12 | Analyse de secrets dans notre CI | **PASS** | job `Sécurité` : gitleaks sur tout l'historique, `--exit-code 1` ; 5 signalements instruits nominativement dans `.gitleaksignore` |
-| P13 | Chaîne d'approvisionnement — 0 vulnérabilité HIGH/CRITICAL, SBOM | **PASS** | `npm audit` : 0 ; SBOM CycloneDX 1.6, 127 composants, publié en artefact ; image : 0 vulnérabilité corrigeable |
-| P14 | Build reproductible, images épinglées par empreinte | **PASS** | base épinglée par empreinte ; `scripts/relever-empreintes-images.sh` ; actions GitHub épinglées par version majeure |
-| P15 | Une seule image canonique de production, avec impression | **PASS** | un seul `Dockerfile`, étage `production` avec AMC ; compose, recette et CI construisent le même artefact ; recette 27/27 |
+| P12 | Analyse de secrets dans notre CI | **PASS** | job `Sécurité` : gitleaks sur tout l'historique, `--exit-code 1` ; 6 empreintes historiques exactes dans `.gitleaksignore`, aucune règle désactivée, aucun chemin exclu, aucune wildcard |
+| P13 | Chaîne d'approvisionnement — 0 vulnérabilité HIGH/CRITICAL, SBOM | **FAIL** | le gate d'image n'exige que 0 vulnérabilité **corrigeable** : `scripts/scan-image.sh` écarte celles sans correctif amont. Le contrat exige 0 HIGH et 0 CRITICAL, sans exception — voir §17 |
+| P14 | Build reproductible, images épinglées par empreinte | **FAIL** | l'image de base est épinglée par empreinte, mais **dix actions GitHub sont épinglées par tag mutable** (`@v7`, `@v4`), de même que les images MySQL, Playwright, gitleaks et trivy du gate — voir §17 |
+| P15 | Une seule image canonique de production, avec impression | **PASS** | un seul `Dockerfile`, étage `production` avec AMC ; compose, recette et CI construisent le même artefact ; recette **28/28**, dont l'annonce de version par l'image |
 | P16 | Vivacité et disponibilité distinctes et réelles | **PASS** | `/api/health` et `/api/ready` ; 4 vérifications HTTP dans `surface-http.integration.spec.ts` ; le conteneur interroge la disponibilité |
 | P17 | Arrêt gracieux | **PASS** | `scripts/smoke-arret-gracieux.ts` : SIGTERM pendant une remise en vol, copie entière, sortie 0 ; 4 tests unitaires sur l'ordre |
 | P18 | Contre-pression, remise idempotente | **PASS** | `remise-concurrente.integration.spec.ts` : une remise rejouée rend mot pour mot la même réponse ; audit des files en §5 |
 | P19 | Observabilité — 0 `console.*`, supervision d'erreurs | **PASS** | `journalisation.spec.ts` : 0 appel direct ; supervision branchée sur `logger.error`, 9 tests de nettoyage, `scripts/verifier-supervision.ts` |
-| P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | **PASS** | exécution 33336108963 : les cinq jobs verts, aucun `continue-on-error` |
-| P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | **PASS** | 899 tests, 63 parcours sur trois moteurs, `retries=0` en CI — §8 pour ce que les instabilités cachaient |
+| P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | IN_PROGRESS | aucun `continue-on-error`, cinq travaux requis ; mais le gate demande **trois exécutions vertes consécutives** sur le HEAD candidat, et une seule est acquise |
+| P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | **FAIL** | `retries = 0`, mais la dernière exécution CI a imprimé **une reprise de navigation** : `E2E_FLAKY_RETRY_REQUIRED` n'est pas satisfait. La reprise a été retirée du code ; la cause reste à trouver — voir §16 |
 | P22 | Couverture : 100 % sur les domaines critiques, ≥ 95 % global serveur | **PASS** | 98,4 % / 96,4 % / 97,5 % / 98,6 % ; seuils posés dans `vitest.config.ts` — voir §9 |
 | P23 | Accessibilité — 0 violation critique ou sérieuse | **PASS** | `e2e/accessibilite.spec.ts` : axe sur 10 écrans, 3 moteurs, plus deux parcours au clavier seul — voir §7 |
 | P24 | Régression visuelle sur les écrans critiques | **PASS** | sept écrans, références produites dans l'image Docker de Playwright, comparées par la CI — voir §13 |
@@ -154,17 +155,19 @@ Huit procédures ne sont appelées par aucun écran :
 | P28 | Sauvegarde et restauration éprouvées | **PASS** | `scripts/sauvegarde.sh` et `scripts/restauration.sh` ; répétition réelle — base détruite puis restaurée, application redémarrée dessus — voir §10 |
 | P29 | Migration de production : sauvegarde → préflight → migration → postflight | **PASS** | `scripts/migration-production.sh`, jouée d'un schéma rc1 portant des copies : 6 → 10 migrations, incidents JSON recopiés — voir §10 |
 | P30 | Retour arrière éprouvé | **PASS** | `scripts/repli-production.sh` ; répétition avec incident simulé, retour sur l'empreinte précédente — voir §10 |
-| P31 | Performance non régressée (p95 < 500 ms, 0 erreur) | **PASS** | trois campagnes : p95 39,1 / 36,7 / 36,6 ms, 0 erreur, 200 copies — parité avec rc1, voir §12 |
-| P32 | Endurance sans fuite | **PASS** | 30 min à 1 session/s : 1 801 copies, 0 erreur, mémoire stabilisée à 205 Mo — voir §14 |
+| P31 | Performance non régressée (p95 < 500 ms, 0 erreur) | IN_PROGRESS | trois campagnes conformes (39,1 / 36,7 / 36,6 ms, 0 erreur) **mais sur un banc invalide** : disque à 100 %. À rejouer sur environnement propre contre le HEAD final — voir §18 |
+| P32 | Endurance sans fuite | IN_PROGRESS | 30 min, 1 801 copies, 0 erreur, mémoire plafonnée — **même banc invalide**, à rejouer sur environnement propre contre le HEAD final — voir §18 |
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 32 / 34. IN_PROGRESS : 0. BLOCKED_EXTERNAL : 2.**
+**PASS : 27 / 34. FAIL : 3. IN_PROGRESS : 4. BLOCKED_EXTERNAL : 2.**
 
-Les deux exigences restantes — P33 déploiement de recette, P34 déploiement de
-production — ne dépendent plus du produit. Aucune infrastructure de recette
-n'est désignée à ce jour ; c'est la seule raison pour laquelle elles ne sont pas
-franchies, et c'est la raison pour laquelle **`v1.0.0` reste interdit**.
+Le décompte précédent — « 32 / 34 » — était faux. Il est corrigé ci-dessus, et
+ce qui l'a rendu faux est écrit en §16 et §17 plutôt que résumé.
+
+P33 et P34 restent `BLOCKED_EXTERNAL` faute de cible désignée. Mais ce ne sont
+plus les seules exigences ouvertes : trois gates sont en échec et quatre sont en
+cours. **`v1.0.0-rc2` est interdit, et `v1.0.0` a fortiori.**
 
 ---
 
@@ -497,6 +500,12 @@ maintenant, comme elle le doit.
 
 ## 12. Charge : la mesure rejouée, et ce qu'elle a trouvé
 
+> **Ces chiffres ne valent pas comme preuve finale.** Ils ont été relevés sur un
+> poste dont le disque était plein (voir §17, `FINAL_RELEASE_ENVIRONMENT`). Ils
+> sont conservés parce qu'ils ont fait apparaître un défaut réel — le délai de
+> garde des connexions — et parce qu'ils donnent un ordre de grandeur. La mesure
+> qui comptera sera rejouée sur environnement propre, contre le HEAD final.
+
 Le schéma a changé — quatre migrations, trois contraintes d'unicité — et le
 chemin de remise aussi : prise atomique de la copie, score de suspicion,
 jeton de résultats. La mesure d'acceptation a donc été rejouée en entier.
@@ -571,6 +580,9 @@ image est régénérée puis relue dans le diff comme n'importe quel fichier.
 
 ## 14. Endurance
 
+> **Même réserve qu'en §12** : relevé sur un poste à disque plein, donc
+> indicatif et non probant. À rejouer sur environnement propre.
+
 `PID_SERVEUR=… DUREE=30m bash scripts/endurance.sh`
 
 Une session par seconde pendant trente minutes, contre la construction de
@@ -634,51 +646,140 @@ sans que rien ne bronche. Le seuil est descendu à un pour deux mille, et c'est
 
 ---
 
-## 16. Deux défauts trouvés en poursuivant une instabilité
+## 16. E2E_STABILITY — rouvert
 
-Les parcours navigateur échouaient une exécution sur trois, toujours sous Gecko,
-toujours sur une navigation. La règle est de ne pas masquer une instabilité par
-une reprise : elle a donc été instruite. Elle cachait deux choses distinctes.
+### Ce qui a été présenté comme acquis, et ne l'était pas
 
-### Un enregistrement de brouillon qui pouvait rendre 500
+La ligne P21 disait « 0 instable (0 reprise) » alors que le code des parcours
+contenait une reprise de navigation, et que la dernière exécution CI en avait
+imprimé une. Deux notions étaient confondues sous le mot « reprise » :
 
-`answer.saveDraft` lisait avant d'écrire : « existe-t-il déjà un brouillon pour
-cette question ? », puis un INSERT ou un UPDATE selon la réponse. Deux
-enregistrements simultanés pour la même question lisaient tous deux « non »,
-inséraient tous deux, et le second butait sur la clé primaire. **L'élève
-recevait une erreur 500.**
+| Grandeur | Valeur mesurée | Exigence |
+|---|---|---|
+| `TEST_RETRY` (reprise de scénario par Playwright) | 0 | 0 |
+| `NAVIGATION_REPLAY` (seconde `page.goto` maison) | **1** sur la CI 33363175722 | 0 |
+| `E2E_FLAKY_RETRY_REQUIRED` | **NON SATISFAIT** | SATISFAIT |
 
-Le cas n'a rien d'exotique : le client enregistre à la frappe, avec une
-temporisation, et vide sa file d'attente au retour du réseau. Plusieurs
-enregistrements de la même question partent alors ensemble — c'est exactement ce
-que fait le test de coupure réseau, et c'est là qu'il est apparu.
+Un scénario qui aboutit parce qu'une navigation a été rejouée n'est pas un
+scénario vert. La distinction entre « reprise de test » et « reprise de
+navigation » est une distinction de vocabulaire, pas de nature.
 
-Un seul ordre désormais, `INSERT … ON DUPLICATE KEY UPDATE` : c'est la base qui
-tranche. Un test d'intégration envoie six enregistrements simultanés de la même
-question et vérifie qu'aucun n'échoue et qu'un seul brouillon subsiste ; il
-échoue sans le correctif.
+### Ce qui a été retiré
 
-### Une navigation que le navigateur n'émettait pas
+`e2e/fixtures.ts` ne contient plus ni `navigationsRejouees`, ni
+`compteurDeNavigationsRejouees`, ni seconde `page.goto`, ni délai de navigation
+particulier. Une navigation qui ne part pas fait échouer le scénario et produit
+ses diagnostics.
 
-Le reste est un défaut de l'outil, et la preuve est au journal d'accès du
-serveur — ajouté pour cela, au niveau `debug` : lors d'un blocage, **la dernière
-requête reçue précède l'échec de plus d'une minute**. Le navigateur n'envoyait
-rien.
+```
+CUSTOM_NAVIGATION_RETRY = 0
+PLAYWRIGHT_RETRIES = 0
+```
 
-Ce qui a été écarté, mesure à l'appui :
+### Ce qui reste à faire
 
-| Hypothèse | Vérification | Verdict |
+Trouver la cause reproductible du blocage sous Gecko. Ce qui est écarté à ce
+jour, mesure à l'appui, est consigné plus bas ; ce n'est pas une conclusion,
+c'est un point de départ.
+
+| Hypothèse | Vérification | État |
 |---|---|---|
 | Mémoire du poste | 14 Go libres au moment du blocage | écartée |
-| Réutilisation des connexions | le défaut persiste avec `network.http.keep-alive` à faux | écartée |
-| Délai de garde du serveur trop court | porté de 5 s à 125 s, au-delà des 115 s de Gecko | corrigé, mais sans effet ici |
-| Navigateur usé par les tests précédents | un navigateur relancé pour chaque test le fait aussi | écartée |
-| Lenteur | cinq minutes d'attente ne débloquent rien | écartée : c'est un blocage définitif |
-| Résolution de proxy et anticipation de connexion | désactivées | fréquence réduite, pas supprimée |
-| Le produit | le serveur ne voit jamais la requête | hors de cause |
+| Réutilisation des connexions | persiste avec `network.http.keep-alive` à faux | écartée |
+| Délai de garde du serveur | porté de 5 s à 125 s | corrigé, sans effet sur ce blocage |
+| Navigateur usé | un navigateur relancé par test le fait aussi | écartée |
+| Lenteur | cinq minutes n'aboutissent pas | écartée : blocage définitif |
+| Proxy et anticipation de connexion | désactivés | fréquence réduite, pas supprimée |
+| État hors ligne résiduel | à instruire | **ouvert** |
+| Cycle de vie contexte/navigateur | à instruire | **ouvert** |
+| DNS | à instruire | **ouvert** |
+| Sockets, fermeture de pages | à instruire | **ouvert** |
+| Service workers | à instruire | **ouvert** |
+| État partagé entre fichiers de spécification | à instruire | **ouvert** |
+| Pression mémoire du runner | à instruire | **ouvert** |
 
-La navigation est donc rejouée **une fois**, et chaque reprise est comptée et
-imprimée : `[navigation rejouée n] chemin`. Ce n'est pas une reprise de test —
-une assertion qui échoue échoue toujours, `retries` reste à zéro — et le chiffre
-ne se cache pas. Sur les trois dernières campagnes locales : 1, 0 et 0 reprises
-pour 23 parcours ; zéro sous Chromium et WebKit.
+Le seul fait établi est que le serveur ne voit jamais la requête — son journal
+d'accès, au niveau `debug`, le montre. Cela dit où la requête n'est pas ; cela
+ne dit pas pourquoi.
+
+---
+
+## 17. Les autres gates rouverts
+
+### REPRODUCIBLE_BUILD — rouvert
+
+`P14` était marqué `PASS` sur la foi de l'image de base épinglée par empreinte.
+Le reste ne l'est pas :
+
+| Entrée | Épinglage actuel | Exigé |
+|---|---|---|
+| `actions/checkout` | `@v7` | SHA complet |
+| `actions/setup-node` | `@v7` | SHA complet |
+| `actions/upload-artifact` | `@v7` | SHA complet |
+| `docker/setup-buildx-action` | `@v4` | SHA complet |
+| `docker/build-push-action` | `@v7` | SHA complet |
+| image Node de base | empreinte | conforme |
+| image MySQL des tests et recettes | tag | empreinte |
+| image Playwright | tag | empreinte |
+| gitleaks, trivy | tag | empreinte |
+
+```
+MUTABLE_CRITICAL_ACTIONS = 10
+MUTABLE_RELEASE_IMAGES = 4
+```
+
+Un tag de version majeure se déplace : ce n'est pas un build reproductible.
+
+### CONTAINER_VULNERABILITY_GATE — rouvert
+
+`scripts/scan-image.sh` sépare les vulnérabilités HIGH/CRITICAL en deux :
+celles qui portent une `FixedVersion` et les autres. Seules les premières font
+échouer le gate. Le contrat n'admet pas cette distinction : une CVE sans
+correctif amont reste une CVE dans l'image qui sert des copies d'élèves.
+
+```
+IMAGE_HIGH_ALLOWED_WITHOUT_FIX = OUI   ← à supprimer
+```
+
+### PROCESS_HYGIENE — rouvert
+
+La campagne a laissé derrière elle, sans que rien ne le signale :
+
+- deux sondes `node -e` à 90 % de processeur pendant 5 h 40 ;
+- un serveur de production périmé occupant le port 3200 depuis 4 h 30, contre
+  lequel une campagne de mesure a tourné sans que personne s'en aperçoive ;
+- deux grappes `tsx` figées depuis 17 h ;
+- deux bases jetables et une image de 3,3 Go.
+
+Aucune recette ne vérifiait cela. C'est désormais une exigence :
+
+```
+PROJECT_BACKGROUND_SHELLS = 0
+PROJECT_ORPHANS = 0
+PROJECT_ZOMBIES = 0
+STALE_TEST_SERVERS = 0
+```
+
+### FINAL_RELEASE_ENVIRONMENT — rouvert
+
+Le poste de mesure est à **100 % de disque** (8,1 Go libres sur 913). Ce n'est
+pas un environnement acceptable pour une preuve finale : risque `ENOSPC`,
+comportement d'entrées-sorties non représentatif, Docker et MySQL affectés.
+
+```
+DISK_FREE_GIB = 8.1        exigé ≥ 20
+DISK_FREE_PERCENT = 0.9    exigé ≥ 15, préféré ≥ 20
+FINAL_LOCAL_BENCHMARK_ENV = INVALID
+```
+
+Les campagnes suivantes sont **définitivement invalides** et ne seront jamais
+agrégées à un résultat valide :
+
+| Campagne | Pollution |
+|---|---|
+| 1ʳᵉ (p95 538 ms) | construction d'image concurrente |
+| 2ᵉ (298 / 36,7 / 273 ms) | deux sondes à 90 % de processeur |
+| 3ᵉ (code 99) | serveur périmé sur le port 3200 |
+
+La quatrième (39,1 / 36,7 / 36,6 ms) est cohérente, mais elle a été prise sur un
+disque plein : elle vaut comme indication, pas comme preuve.
