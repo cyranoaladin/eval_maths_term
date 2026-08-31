@@ -113,6 +113,28 @@ export const test = base.extend<{ enseignant: Page; surveillance: Surveillance }
         },
       });
 
+      /*
+        Le test se termine, mais le navigateur, lui, n'a pas fini.
+
+        Une copie en cours laisse derrière elle des requêtes en vol :
+        l'enregistrement temporisé de deux secondes, le battement de présence,
+        la file de reprise. Playwright ferme le contexte sans les attendre, et
+        Gecko se retrouve à démonter des canaux réseau en cours d'usage. Une
+        navigation sur trente n'était alors jamais émise — le journal d'accès du
+        serveur le montre : il ne voyait rien arriver.
+
+        On laisse donc le réseau se taire avant de rendre la main. Ce n'est pas
+        une reprise : rien n'est rejoué, et un test qui échoue échoue toujours.
+        C'est une fermeture propre, et elle vaut aussi pour l'application —
+        fermer un onglet ne doit pas laisser une écriture à moitié partie.
+
+        Le délai est court et l'échec est ignoré : si le réseau ne se tait pas,
+        c'est au test de le dire, pas à la fixture.
+      */
+      await page
+        .waitForLoadState("networkidle", { timeout: 5_000 })
+        .catch(() => undefined);
+
       const restantes = anomalies.filter(
         (a) => !tolerances.some((t) => t.motif.test(a)),
       );

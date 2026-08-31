@@ -682,21 +682,73 @@ Trouver la cause reproductible du blocage sous Gecko. Ce qui est écarté à ce
 jour, mesure à l'appui, est consigné plus bas ; ce n'est pas une conclusion,
 c'est un point de départ.
 
+**Taux de référence mesuré** — six exécutions complètes du projet Firefox sur un
+banc dédié, sans reprise : **trois exécutions en échec sur six**, quatre
+scénarios sur 138, soit environ 3 % des navigations.
+
 | Hypothèse | Vérification | État |
 |---|---|---|
 | Mémoire du poste | 14 Go libres au moment du blocage | écartée |
 | Réutilisation des connexions | persiste avec `network.http.keep-alive` à faux | écartée |
-| Délai de garde du serveur | porté de 5 s à 125 s | corrigé, sans effet sur ce blocage |
-| Navigateur usé | un navigateur relancé par test le fait aussi | écartée |
-| Lenteur | cinq minutes n'aboutissent pas | écartée : blocage définitif |
-| Proxy et anticipation de connexion | désactivés | fréquence réduite, pas supprimée |
-| État hors ligne résiduel | à instruire | **ouvert** |
-| Cycle de vie contexte/navigateur | à instruire | **ouvert** |
-| DNS | à instruire | **ouvert** |
-| Sockets, fermeture de pages | à instruire | **ouvert** |
-| Service workers | à instruire | **ouvert** |
+| Délai de garde du serveur | porté de 5 s à 125 s, au-delà des 115 s de Gecko | corrigé ; sans effet sur ce blocage |
+| Navigateur usé par les tests précédents | un navigateur relancé pour chaque test le fait aussi | écartée |
+| Lenteur | cinq minutes d'attente n'aboutissent pas | écartée : blocage définitif |
+| Résolution de proxy, anticipation de connexion | désactivées par préférence Gecko | fréquence réduite, pas supprimée |
+| Service worker | l'application n'en enregistre aucun | écartée |
+| État hors ligne résiduel | 60 navigations avec `setOffline(false)` sur contexte neuf | non reproduit |
+| Fermeture de contexte avec requêtes en vol | 30 itérations avec session réelle puis fermeture | non reproduit |
+| Un seul fichier répété | 12 exécutions de `accessibilite.spec.ts` | non reproduit |
+| Traçage Playwright actif sur chaque test | mesure en cours | **en cours d'instruction** |
 | État partagé entre fichiers de spécification | à instruire | **ouvert** |
 | Pression mémoire du runner | à instruire | **ouvert** |
+
+### Le protocole de mesure
+
+Chaque hypothèse est éprouvée de la même façon : six exécutions complètes du
+projet Firefox, sans reprise, sur un banc dédié, en ne changeant qu'une chose.
+
+| Bras | Ce qui change | Exécutions en échec |
+|---|---|---|
+| A — référence | rien | **3 / 6** |
+| B | traçage Playwright désactivé | 1 / 6 |
+| C | polices téléchargeables coupées dans Gecko | 3 / 6 |
+| D | attente de silence réseau avant fermeture du contexte | 1 / 2 (interrompu) |
+| E | un fichier par lancement, comme la CI | **1 / 6** |
+| — | un navigateur neuf pour chaque test | 1 / 5 |
+
+Aucun bras ne supprime le défaut. Le découpage par fichier — celui de la CI —
+divise le taux par trois environ, sans l'annuler.
+
+### Ce que la mesure a établi
+
+1. **La requête ne part pas.** Le journal d'accès du serveur, ajouté au niveau
+   `debug` pour cela, ne montre rien à l'heure du blocage : la dernière requête
+   reçue précède l'échec d'une minute et demie.
+2. **Ce n'est pas une lenteur.** Avec un délai de cinq minutes, la navigation
+   n'aboutit pas davantage.
+3. **Ce n'est pas de l'usure.** Un navigateur lancé pour ce seul test bloque
+   aussi.
+4. **Ce n'est pas le produit.** Les trois moteurs exécutent les mêmes scénarios
+   contre le même serveur ; Chromium et WebKit ne bloquent jamais, sur aucune
+   des trente-cinq exécutions mesurées.
+5. **Les blocages se concentrent** sur `parcours-eleve.spec.ts` — le fichier
+   dont chaque scénario laisse une copie ouverte, avec ses minuteurs, son
+   enregistrement temporisé et son battement de présence.
+
+### Ce qui reste ouvert
+
+La cause exacte, du côté de l'outil, n'est pas établie. Ce qui l'est : le taux
+mesuré (une exécution complète sur deux, une exécution par fichier sur six), et
+le fait qu'aucun réglage sous notre contrôle ne l'annule.
+
+Une capture du protocole Playwright au moment précis du blocage est en cours :
+elle dira si la commande de navigation a été émise vers le navigateur et restée
+sans réponse, ou si elle n'a jamais été émise. C'est la dernière question à
+laquelle nous pouvons répondre sans entrer dans le code de l'outil.
+
+**Conséquence pour le gate** : à ce taux, trois exécutions CI consécutives sans
+la moindre reprise ne sont pas atteignables de façon fiable. `E2E_STABILITY`
+reste donc en échec, et `NO_GO_RC2` avec lui.
 
 Le seul fait établi est que le serveur ne voit jamais la requête — son journal
 d'accès, au niveau `debug`, le montre. Cela dit où la requête n'est pas ; cela
