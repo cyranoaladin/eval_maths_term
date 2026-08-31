@@ -847,16 +847,46 @@ MUTABLE_RELEASE_IMAGES = 4
 
 Un tag de version majeure se déplace : ce n'est pas un build reproductible.
 
-### CONTAINER_VULNERABILITY_GATE — rouvert
+### CONTAINER_VULNERABILITY_GATE — rouvert, et ce qu'il a révélé
 
-`scripts/scan-image.sh` sépare les vulnérabilités HIGH/CRITICAL en deux :
-celles qui portent une `FixedVersion` et les autres. Seules les premières font
-échouer le gate. Le contrat n'admet pas cette distinction : une CVE sans
-correctif amont reste une CVE dans l'image qui sert des copies d'élèves.
+`scripts/scan-image.sh` séparait les vulnérabilités HIGH/CRITICAL en deux :
+celles qui portent une `FixedVersion` et les autres. Seules les premières
+faisaient échouer le gate. Le contrat n'admet pas cette distinction : une CVE
+sans correctif amont reste une CVE dans l'image qui sert des copies d'élèves.
+
+L'exception est retirée. Le gate exige désormais zéro, et il échoue :
 
 ```
-IMAGE_HIGH_ALLOWED_WITHOUT_FIX = OUI   ← à supprimer
+IMAGE_CRITICAL = 32
+IMAGE_HIGH     = 139
 ```
+
+Cent soixante-et-onze, **toutes sans correctif amont**, et presque toutes
+apportées par la chaîne de dépendances d'`auto-multiple-choice` :
+
+| Composant | CVE portées | Ce qu'il fait chez nous |
+|---|---|---|
+| ImageMagick et ses bibliothèques | 35 | traitement d'images de copies scannées |
+| OpenEXR | 15 | format d'image HDR, tiré par ImageMagick |
+| Perl et ses modules | 32 | AMC est écrit en Perl |
+| libcurl | 8 | tiré par la chaîne AMC |
+| glib, gir | 14 | tiré par la chaîne AMC |
+| GDCM, libraw, autres | reste | formats d'image exotiques (DICOM, RAW) |
+
+**C'est un blocage réel, pas une formalité.** Les issues, dans l'ordre où elles
+doivent être examinées :
+
+1. **Retirer ce qui n'est pas nécessaire.** L'image de production ne fait que
+   *produire* des sujets — `prepare`, `meptex` — et jamais *analyser* des copies
+   scannées : la saisie se fait à la main dans l'interface. ImageMagick,
+   OpenEXR, GDCM et libraw servent à l'analyse. S'ils peuvent être écartés
+   — installation sans recommandations, ou retrait après installation — la
+   majorité des 171 disparaît avec eux. À valider par la recette : les vingt-huit
+   vérifications doivent continuer de passer, génération AMC réelle comprise.
+2. **Changer de base** si la distribution de base porte encore des CVE
+   critiques après ce retrait.
+3. **Rester bloqué** si aucune de ces voies n'aboutit. Une CVE connue ne devient
+   pas un `PASS` documentaire.
 
 ### PROCESS_HYGIENE — rouvert
 
