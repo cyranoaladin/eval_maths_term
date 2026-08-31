@@ -271,6 +271,15 @@ export const answerDrafts = mysqlTable("answer_drafts", {
   questionId: bigint("questionId", { mode: "number", unsigned: true }).notNull(),
   answer: text("answer"),
   justification: text("justification"),
+  /**
+   * Version monotone produite par le client, par question.
+   *
+   * L'ordre d'arrivée ne dit rien de l'ordre de frappe : au retour du réseau,
+   * la file hors ligne se vide pendant que l'élève écrit encore. Sans cette
+   * version, un brouillon composé avant la coupure pouvait arriver après une
+   * saisie plus récente et l'effacer.
+   */
+  clientVersion: bigint("clientVersion", { mode: "number", unsigned: true }).default(0).notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull().$onUpdate(() => new Date()),
   committedAt: timestamp("committedAt"),
 }, (t) => [

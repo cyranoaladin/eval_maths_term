@@ -19,7 +19,7 @@ import { TRPCError } from "@trpc/server";
 import { createRouter, studentQuery } from "../middleware";
 import { getDb } from "../queries/connection";
 import { answerDrafts } from "@db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { checkRateLimit, RateLimits } from "../lib/rate-limit";
 import {
@@ -45,6 +45,14 @@ export const answerRouter = createRouter({
         questionId: z.number().int().positive(),
         answer: z.string().max(MAX_ANSWER_LEN),
         justification: z.string().max(MAX_JUSTIFICATION_LEN).optional(),
+        /**
+         * Version monotone du brouillon, produite par le client, par question.
+         *
+         * Elle n'ordonne que les écritures d'un même élève sur son propre
+         * brouillon. Absente, elle vaut zéro : une écriture sans version reste
+         * acceptée, comme avant.
+         */
+        clientVersion: z.number().int().nonnegative().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -84,6 +92,21 @@ export const answerRouter = createRouter({
         enregistrements de la même question partent alors ensemble. Une mesure
         de charge sous coupure réseau l'a reproduit.
       */
+      /*
+        Et la version décide qui gagne.
+
+        L'ordre d'arrivée ne dit rien de l'ordre de frappe. Au retour du réseau,
+        la file hors ligne se vide pendant que l'élève écrit encore : un
+        brouillon composé avant la coupure peut arriver après une saisie plus
+        récente. Sans arbitre, il l'écrasait.
+
+        La comparaison se fait dans l'ordre SQL, en une seule instruction :
+        `VALUES(clientVersion)` est celle qui arrive, `clientVersion` celle qui
+        est en place. Une version plus ancienne laisse la ligne intacte ; une
+        version égale écrit, parce que deux frappes indiscernables le sont
+        vraiment.
+      */
+      const version = input.clientVersion ?? 0;
       await db
         .insert(answerDrafts)
         .values({
@@ -91,11 +114,13 @@ export const answerRouter = createRouter({
           questionId: input.questionId,
           answer: input.answer,
           justification: input.justification ?? null,
+          clientVersion: version,
         })
         .onDuplicateKeyUpdate({
           set: {
-            answer: input.answer,
-            justification: input.justification ?? null,
+            answer: sql`if(values(\`clientVersion\`) >= \`clientVersion\`, values(\`answer\`), \`answer\`)`,
+            justification: sql`if(values(\`clientVersion\`) >= \`clientVersion\`, values(\`justification\`), \`justification\`)`,
+            clientVersion: sql`greatest(\`clientVersion\`, values(\`clientVersion\`))`,
           },
         });
 

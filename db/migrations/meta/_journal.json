@@ -71,6 +71,13 @@
       "when": 1788114788422,
       "tag": "0009_invariants_integrite",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1788114788423,
+      "tag": "0010_version_brouillon",
+      "breakpoints": true
     }
   ]
 }

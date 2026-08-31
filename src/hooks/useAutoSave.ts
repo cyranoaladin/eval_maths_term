@@ -53,6 +53,15 @@ interface DraftPayload {
   questionId: number;
   answer: string;
   justification?: string;
+  /**
+   * Version monotone de ce brouillon, par question.
+   *
+   * L'ordre d'arrivée au serveur ne dit rien de l'ordre de frappe : au retour
+   * du réseau, la file hors ligne se vide pendant que l'élève écrit encore.
+   * Sans ce numéro, un brouillon composé avant la coupure pouvait arriver après
+   * une saisie plus récente et l'effacer. Le serveur garde la plus haute.
+   */
+  clientVersion?: number;
 }
 
 export interface UseAutoSaveOptions {
@@ -101,7 +110,15 @@ export function useAutoSave({ enabled }: UseAutoSaveOptions): UseAutoSaveResult 
   /** Ce que chaque temporisation en attente enverra. */
   const enAttenteParQuestion = useRef(new Map<number, DraftPayload>());
   const retryRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Compteur de version, par question. */
+  const versions = useRef(new Map<number, number>());
   const cancelRef = useRef(false);
+
+  const versionSuivante = useCallback((questionId: number) => {
+    const suivante = (versions.current.get(questionId) ?? 0) + 1;
+    versions.current.set(questionId, suivante);
+    return suivante;
+  }, []);
 
   const saveDraftMutation = studentTrpc.answer.saveDraft.useMutation();
 
@@ -130,8 +147,16 @@ export function useAutoSave({ enabled }: UseAutoSaveOptions): UseAutoSaveResult 
   );
 
   const saveDraft = useCallback(
-    (payload: DraftPayload) => {
+    (brut: DraftPayload) => {
       if (!enabled) return;
+      /*
+        Un compteur par question, jamais réinitialisé pendant la session.
+
+        Une horloge conviendrait presque, mais elle peut reculer ; un compteur
+        ne le peut pas. Il n'ordonne que les écritures de cet élève sur son
+        propre brouillon : il ne lui donne autorité sur rien d'autre.
+      */
+      const payload: DraftPayload = { ...brut, clientVersion: versionSuivante(brut.questionId) };
       const enCours = temporisations.current.get(payload.questionId);
       if (enCours) clearTimeout(enCours);
       enAttenteParQuestion.current.set(payload.questionId, payload);
@@ -144,7 +169,7 @@ export function useAutoSave({ enabled }: UseAutoSaveOptions): UseAutoSaveResult 
         }, DEBOUNCE_MS),
       );
     },
-    [enabled, doSave],
+    [enabled, doSave, versionSuivante],
   );
 
   /**

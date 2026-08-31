@@ -1,0 +1,16 @@
+-- Un brouillon plus ancien ne doit pas écraser une frappe plus récente.
+--
+-- `answer_drafts` était écrit en « dernier arrivé, dernier gardé ». L'ordre
+-- d'arrivée ne dit rien de l'ordre de frappe : au retour du réseau, la file
+-- hors ligne se vide pendant que l'élève continue d'écrire, et un brouillon
+-- composé avant la coupure pouvait arriver après une saisie plus récente et
+-- l'effacer.
+--
+-- La colonne porte une version monotone produite par le client, par question.
+-- Elle n'ordonne que les écritures d'un même élève sur son propre brouillon :
+-- elle ne donne aucune autorité au client sur autre chose que ce qu'il possède
+-- déjà.
+--
+-- `0` est la valeur des lignes existantes et celle d'un client qui n'envoie
+-- rien : une écriture sans version reste acceptée, comme avant.
+ALTER TABLE `answer_drafts` ADD `clientVersion` bigint unsigned DEFAULT 0 NOT NULL;

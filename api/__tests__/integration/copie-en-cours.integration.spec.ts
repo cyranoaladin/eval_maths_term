@@ -320,6 +320,101 @@ describe("bornes de l'écriture", () => {
 });
 
 describe("enregistrements simultanés du même brouillon", () => {
+  it("refuse qu'un brouillon plus ancien écrase une frappe plus récente", async () => {
+    /*
+      Le cas du retour de réseau.
+
+      L'élève écrit hors ligne, sa saisie part en file. La connexion revient :
+      la file se vide pendant qu'il continue d'écrire. Le brouillon composé
+      avant la coupure peut donc arriver **après** une saisie plus récente.
+      L'ordre d'arrivée ne dit rien de l'ordre de frappe ; c'est la version qui
+      tranche.
+    */
+    const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève reconnecté"));
+    const api = appelEleve(jeton);
+
+    // Ce que l'élève vient de taper, en ligne.
+    await api.answer.saveDraft({ questionId: questionIds[0], answer: "3x+1", clientVersion: 7 });
+    // Ce qui traînait dans la file, composé avant la coupure.
+    await api.answer.saveDraft({ questionId: questionIds[0], answer: "x^2", clientVersion: 3 });
+
+    const [brouillon] = await db
+      .select()
+      .from(answerDrafts)
+      .where(eq(answerDrafts.sessionId, sessionId));
+    expect(brouillon.answer, "un brouillon périmé a écrasé la frappe récente").toBe("3x+1");
+    expect(brouillon.clientVersion).toBe(7);
+
+    // Et une frappe postérieure passe toujours.
+    await api.answer.saveDraft({ questionId: questionIds[0], answer: "3x+2", clientVersion: 8 });
+    const [apres] = await db
+      .select()
+      .from(answerDrafts)
+      .where(eq(answerDrafts.sessionId, sessionId));
+    expect(apres.answer).toBe("3x+2");
+
+    await effacer(sessionId);
+  });
+
+  it("accepte une écriture sans version, comme avant", async () => {
+    // Un client qui n'envoie pas de version n'est pas refusé : la colonne vaut
+    // zéro, et deux écritures sans version se comportent comme avant.
+    const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève sans version"));
+    const api = appelEleve(jeton);
+
+    await api.answer.saveDraft({ questionId: questionIds[0], answer: "premier" });
+    await api.answer.saveDraft({ questionId: questionIds[0], answer: "second" });
+
+    const [brouillon] = await db
+      .select()
+      .from(answerDrafts)
+      .where(eq(answerDrafts.sessionId, sessionId));
+    expect(brouillon.answer).toBe("second");
+    await effacer(sessionId);
+  });
+
+  it("tient cinquante enregistrements simultanés de la même question", async () => {
+    /*
+      Cinquante, pas six.
+
+      Six suffisaient à faire tomber la lecture-puis-écriture ; ils ne disent
+      rien de ce qui se passe quand la base doit arbitrer sérieusement. Une
+      salle qui retrouve le réseau après une coupure vide toutes ses files en
+      même temps, et le pilote MySQL ouvre autant de connexions que le pool le
+      permet.
+
+      Ce qu'on exige : aucune erreur, une seule ligne en base, la clé primaire
+      intacte, et aucun interblocage laissé sans réponse.
+    */
+    const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève au retour du réseau"));
+    const api = appelEleve(jeton);
+    const valeurs = Array.from({ length: 50 }, (_, i) => String(i));
+
+    const simultanes = await Promise.allSettled(
+      valeurs.map((valeur) =>
+        api.answer.saveDraft({ questionId: questionIds[0], answer: valeur }),
+      ),
+    );
+
+    const refuses = simultanes.filter((r) => r.status === "rejected");
+    expect(
+      refuses.map((r) => (r as PromiseRejectedResult).reason?.message ?? "?"),
+      "aucun enregistrement ne doit être refusé",
+    ).toEqual([]);
+
+    const brouillons = await db
+      .select()
+      .from(answerDrafts)
+      .where(eq(answerDrafts.sessionId, sessionId));
+    expect(brouillons).toHaveLength(1);
+    // La valeur retenue est l'une de celles envoyées : l'ordre d'arrivée de
+    // cinquante appels concurrents n'est pas déterministe, et prétendre que
+    // « la dernière gagne » supposerait un ordre que rien n'établit.
+    expect(valeurs).toContain(brouillons[0].answer);
+
+    await effacer(sessionId);
+  }, 30_000);
+
   it("n'échoue pas quand plusieurs enregistrements de la même question partent ensemble", async () => {
     const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève au retour du réseau"));
     const api = appelEleve(jeton);

@@ -71,7 +71,8 @@ for controle in \
   scripts/preflight-unicite-reponses.ts \
   scripts/preflight-acces-enseignant.ts \
   scripts/preflight-incidents-json.ts \
-  scripts/preflight-invariants.ts
+  scripts/preflight-invariants.ts \
+  scripts/preflight-version-brouillon.ts
 do
   echo "  · $(basename "$controle")"
   if ! DATABASE_URL="$URL" npx tsx "$controle"; then
