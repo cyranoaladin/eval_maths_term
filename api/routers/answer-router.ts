@@ -19,7 +19,7 @@ import { TRPCError } from "@trpc/server";
 import { createRouter, studentQuery } from "../middleware";
 import { getDb } from "../queries/connection";
 import { answerDrafts } from "@db/schema";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { checkRateLimit, RateLimits } from "../lib/rate-limit";
 import {
@@ -69,30 +69,35 @@ export const answerRouter = createRouter({
       await assertQuestionDeLEvaluation(input.questionId, evaluationId);
 
       const db = getDb();
-      const cible = and(
-        eq(answerDrafts.sessionId, sessionId),
-        eq(answerDrafts.questionId, input.questionId),
-      );
 
-      const existant = await db
-        .select({ sessionId: answerDrafts.sessionId })
-        .from(answerDrafts)
-        .where(cible)
-        .limit(1);
+      /*
+        Un seul ordre, et c'est la base qui tranche.
 
-      if (existant.length > 0) {
-        await db
-          .update(answerDrafts)
-          .set({ answer: input.answer, justification: input.justification ?? null })
-          .where(cible);
-      } else {
-        await db.insert(answerDrafts).values({
+        L'écriture était précédée d'une lecture : « existe-t-il déjà un
+        brouillon pour cette question ? », puis un INSERT ou un UPDATE selon la
+        réponse. Deux enregistrements simultanés pour la même question lisaient
+        tous deux « non », inséraient tous deux, et le second butait sur la clé
+        primaire — l'élève recevait une erreur 500.
+
+        Le cas n'a rien d'exotique : le client enregistre à la frappe, avec une
+        temporisation, et vide sa file d'attente au retour du réseau. Plusieurs
+        enregistrements de la même question partent alors ensemble. Une mesure
+        de charge sous coupure réseau l'a reproduit.
+      */
+      await db
+        .insert(answerDrafts)
+        .values({
           sessionId,
           questionId: input.questionId,
           answer: input.answer,
           justification: input.justification ?? null,
+        })
+        .onDuplicateKeyUpdate({
+          set: {
+            answer: input.answer,
+            justification: input.justification ?? null,
+          },
         });
-      }
 
       logger.debug("Brouillon enregistré", { sessionId, questionId: input.questionId });
       return { saved: true };

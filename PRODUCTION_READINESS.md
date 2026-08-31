@@ -630,3 +630,55 @@ de pixels différents. Sur une page de 1 280 × 900 majoritairement blanche, cel
 laisse passer onze mille pixels — assez pour qu'un énoncé change entièrement
 sans que rien ne bronche. Le seuil est descendu à un pour deux mille, et c'est
 à ce moment-là que la comparaison a signalé le changement.
+
+
+---
+
+## 16. Deux défauts trouvés en poursuivant une instabilité
+
+Les parcours navigateur échouaient une exécution sur trois, toujours sous Gecko,
+toujours sur une navigation. La règle est de ne pas masquer une instabilité par
+une reprise : elle a donc été instruite. Elle cachait deux choses distinctes.
+
+### Un enregistrement de brouillon qui pouvait rendre 500
+
+`answer.saveDraft` lisait avant d'écrire : « existe-t-il déjà un brouillon pour
+cette question ? », puis un INSERT ou un UPDATE selon la réponse. Deux
+enregistrements simultanés pour la même question lisaient tous deux « non »,
+inséraient tous deux, et le second butait sur la clé primaire. **L'élève
+recevait une erreur 500.**
+
+Le cas n'a rien d'exotique : le client enregistre à la frappe, avec une
+temporisation, et vide sa file d'attente au retour du réseau. Plusieurs
+enregistrements de la même question partent alors ensemble — c'est exactement ce
+que fait le test de coupure réseau, et c'est là qu'il est apparu.
+
+Un seul ordre désormais, `INSERT … ON DUPLICATE KEY UPDATE` : c'est la base qui
+tranche. Un test d'intégration envoie six enregistrements simultanés de la même
+question et vérifie qu'aucun n'échoue et qu'un seul brouillon subsiste ; il
+échoue sans le correctif.
+
+### Une navigation que le navigateur n'émettait pas
+
+Le reste est un défaut de l'outil, et la preuve est au journal d'accès du
+serveur — ajouté pour cela, au niveau `debug` : lors d'un blocage, **la dernière
+requête reçue précède l'échec de plus d'une minute**. Le navigateur n'envoyait
+rien.
+
+Ce qui a été écarté, mesure à l'appui :
+
+| Hypothèse | Vérification | Verdict |
+|---|---|---|
+| Mémoire du poste | 14 Go libres au moment du blocage | écartée |
+| Réutilisation des connexions | le défaut persiste avec `network.http.keep-alive` à faux | écartée |
+| Délai de garde du serveur trop court | porté de 5 s à 125 s, au-delà des 115 s de Gecko | corrigé, mais sans effet ici |
+| Navigateur usé par les tests précédents | un navigateur relancé pour chaque test le fait aussi | écartée |
+| Lenteur | cinq minutes d'attente ne débloquent rien | écartée : c'est un blocage définitif |
+| Résolution de proxy et anticipation de connexion | désactivées | fréquence réduite, pas supprimée |
+| Le produit | le serveur ne voit jamais la requête | hors de cause |
+
+La navigation est donc rejouée **une fois**, et chaque reprise est comptée et
+imprimée : `[navigation rejouée n] chemin`. Ce n'est pas une reprise de test —
+une assertion qui échoue échoue toujours, `retries` reste à zéro — et le chiffre
+ne se cache pas. Sur les trois dernières campagnes locales : 1, 0 et 0 reprises
+pour 23 parcours ; zéro sous Chromium et WebKit.

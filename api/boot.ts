@@ -29,6 +29,25 @@ app.use("*", async (c, next) => {
   await withRequestId(requestId, () => next());
 });
 
+/**
+ * Journal d'accès, au niveau « debug ».
+ *
+ * Muet en exploitation ordinaire — le niveau par défaut est « info » —, il
+ * répond à la seule question qu'on se pose devant une requête qui n'aboutit
+ * pas : est-elle seulement arrivée ? Sans lui, une navigation qui reste en
+ * attente ne se distingue pas d'une navigation jamais émise.
+ */
+app.use("*", async (c, next) => {
+  const debut = Date.now();
+  await next();
+  logger.debug("requête", {
+    methode: c.req.method,
+    chemin: new URL(c.req.url).pathname,
+    statut: c.res.status,
+    dureeMs: Date.now() - debut,
+  });
+});
+
 // En-têtes de sécurité — sur toute réponse, y compris les 404 et les erreurs.
 app.use("*", enTetesDeSecurite());
 
@@ -227,6 +246,8 @@ if (env.isProduction) {
       port,
       version: VERSION_APPLICATION,
       gitSha: EMPREINTE_GIT,
+      // Le réglage effectivement appliqué, pas celui qu'on croit avoir posé.
+      keepAliveMs: (serveur as { keepAliveTimeout?: number }).keepAliveTimeout,
     });
   });
 
@@ -241,15 +262,22 @@ if (env.isProduction) {
     serveur — il n'a rien vu passer. Une mesure de charge l'a montré : une
     remise sur deux cents, refusée en une milliseconde, sans erreur applicative.
 
-    Soixante-cinq secondes dépassent le délai d'inactivité des clients usuels et
-    celui d'un répartiteur placé devant. Le délai d'en-têtes doit rester
-    au-dessus, sans quoi c'est lui qui coupe.
+    Le serveur doit tenir **plus longtemps que le plus patient de ses clients**,
+    et c'est ce qui fixe la valeur. Gecko garde une connexion inactive cent
+    quinze secondes ; Chromium et WebKit, une soixantaine. Un premier réglage à
+    soixante-cinq secondes a supprimé les erreurs de transport sous Chromium
+    mais laissait Gecko dans la même situation, en pire : il réutilise une
+    connexion que le serveur vient de clore et attend, sans rien dire, qu'un
+    délai bien plus long l'en avertisse — une navigation entière peut y passer.
+    Cent vingt-cinq secondes passent après tout le monde.
+
+    Le délai d'en-têtes reste au-dessus, sans quoi c'est lui qui coupe.
   */
   // `serve` peut rendre un serveur HTTP/2, qui n'expose pas ces réglages ; on
   // ne les pose que là où ils ont un sens.
   const reglages = serveur as { keepAliveTimeout?: number; headersTimeout?: number };
-  if ("keepAliveTimeout" in serveur) reglages.keepAliveTimeout = 65_000;
-  if ("headersTimeout" in serveur) reglages.headersTimeout = 66_000;
+  if ("keepAliveTimeout" in serveur) reglages.keepAliveTimeout = 125_000;
+  if ("headersTimeout" in serveur) reglages.headersTimeout = 126_000;
 
   // Un redéploiement ou un arrêt de machine ne doit pas couper une remise de
   // copie en deux.

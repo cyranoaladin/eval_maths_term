@@ -318,3 +318,35 @@ describe("bornes de l'écriture", () => {
     await effacer(sessionId);
   }, 60_000);
 });
+
+describe("enregistrements simultanés du même brouillon", () => {
+  it("n'échoue pas quand plusieurs enregistrements de la même question partent ensemble", async () => {
+    const { jeton, sessionId } = await ouvrirSession(evaluationId, unique("Élève au retour du réseau"));
+    const api = appelEleve(jeton);
+
+    /*
+      Le client enregistre à la frappe, avec une temporisation, et vide sa file
+      d'attente au retour du réseau : plusieurs enregistrements de la même
+      question partent alors ensemble. L'écriture était précédée d'une lecture,
+      et deux appels simultanés lisaient tous deux « ce brouillon n'existe
+      pas » avant d'insérer — le second recevait une erreur 500.
+    */
+    const simultanes = await Promise.allSettled(
+      ["1", "2", "3", "4", "5", "6"].map((valeur) =>
+        api.answer.saveDraft({ questionId: questionIds[0], answer: valeur }),
+      ),
+    );
+
+    expect(simultanes.filter((r) => r.status === "rejected")).toEqual([]);
+
+    // Un seul brouillon subsiste, et il porte l'une des valeurs envoyées.
+    const brouillons = await db
+      .select()
+      .from(answerDrafts)
+      .where(eq(answerDrafts.sessionId, sessionId));
+    expect(brouillons).toHaveLength(1);
+    expect(["1", "2", "3", "4", "5", "6"]).toContain(brouillons[0].answer);
+
+    await effacer(sessionId);
+  });
+});

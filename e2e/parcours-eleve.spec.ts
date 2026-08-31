@@ -17,6 +17,7 @@ import {
   focaliserMath,
   formulesAffichees,
   test,
+  nomEleve,
   ouvrir,
 } from "./fixtures";
 
@@ -76,7 +77,7 @@ test.describe("parcours élève", () => {
     page,
   }) => {
     const erreurs = collecterErreurs(page);
-    await demarrer(page, "E2E Reprise");
+    await demarrer(page, nomEleve("E2E Reprise"));
 
     // Une question à choix multiple : la réponse la plus courante.
     const premiereOption = page.locator('[id^="q-"][id*="-opt-0"]').first();
@@ -129,7 +130,7 @@ test.describe("parcours élève", () => {
       et compare caractère par caractère.
     */
     const erreurs = collecterErreurs(page);
-    await demarrer(page, "E2E Frappe rapide");
+    await demarrer(page, nomEleve("E2E Frappe rapide"));
     await allerAReponseCourte(page);
 
     const champ = page.locator("math-field");
@@ -165,7 +166,7 @@ test.describe("parcours élève", () => {
       page : ce qui revient est ce que le serveur détient réellement.
     */
     const erreurs = collecterErreurs(page);
-    await demarrer(page, "E2E Enchainement");
+    await demarrer(page, nomEleve("E2E Enchainement"));
 
     await allerAReponseCourte(page);
     await saisirMath(page, "x^2", /x\^2/);
@@ -214,7 +215,7 @@ test.describe("parcours élève", () => {
       puisque tout se remet en ordre dès que la durée arrive.
     */
     const erreurs = collecterErreurs(page);
-    await demarrer(page, "E2E Réseau lent");
+    await demarrer(page, nomEleve("E2E Réseau lent"));
 
     await page.route(/question\.getPublicInfo/, async (route) => {
       await new Promise((suite) => setTimeout(suite, 4_000));
@@ -282,7 +283,7 @@ test.describe("parcours élève", () => {
       "le réseau est coupé volontairement : les polices demandées à cet instant ne peuvent pas arriver",
     );
 
-    await demarrer(page, "E2E Coupure");
+    await demarrer(page, nomEleve("E2E Coupure"));
     await allerAReponseCourte(page);
     await saisirMath(page, "x^2", /x\^2/);
     await expect(page.getByText("Sauvegardé", { exact: true })).toBeVisible({ timeout: 20_000 });
@@ -363,7 +364,7 @@ test.describe("parcours élève", () => {
 
   test("navigation avant et arrière sans perte de saisie", async ({ page }) => {
     const erreurs = collecterErreurs(page);
-    await demarrer(page, "E2E Navigation");
+    await demarrer(page, nomEleve("E2E Navigation"));
     await allerAReponseCourte(page);
 
     const titreQuestion = await page.getByText(/Question \d+ \/ /).innerText();

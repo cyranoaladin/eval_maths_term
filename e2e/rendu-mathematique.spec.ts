@@ -6,7 +6,7 @@
  * trois moteurs.
  */
 import { expect } from "@playwright/test";
-import { collecterErreurs, test, ouvrir } from "./fixtures";
+import { collecterErreurs, nomEleve, test, ouvrir } from "./fixtures";
 
 test.describe("ce que l'élève voit", () => {
   /*
@@ -21,7 +21,7 @@ test.describe("ce que l'élève voit", () => {
     const erreurs = collecterErreurs(page);
     // L'évaluation de référence à question unique : un QCM dont l'énoncé et
     // les quatre propositions portent des formules.
-    await ouvrir(page, "/evaluation?eval=3&name=Rendu%20Eleve");
+    await ouvrir(page, `/evaluation?eval=3&name=${encodeURIComponent(nomEleve("Rendu QCM"))}`);
     await page.getByRole("button", { name: /Démarrer l'évaluation/ }).click();
     await expect(page.getByText(/Question 1 \/ 1/)).toBeVisible();
 
@@ -43,7 +43,7 @@ test.describe("ce que l'élève voit", () => {
   });
 
   test("une réponse courte rend aussi son énoncé", async ({ page }) => {
-    await ouvrir(page, "/evaluation?eval=4&name=Rendu%20Court");
+    await ouvrir(page, `/evaluation?eval=4&name=${encodeURIComponent(nomEleve("Rendu court"))}`);
     await page.getByRole("button", { name: /Démarrer l'évaluation/ }).click();
     await expect(page.locator("math-field")).toBeVisible();
 

@@ -12,6 +12,22 @@ import { execFileSync } from "node:child_process";
 
 let cookieCache: string | null = null;
 
+/**
+ * Les réglages de Gecko, partagés entre la configuration du projet et le
+ * navigateur relancé pour chaque test : les deux doivent décrire le même
+ * navigateur, sinon un test s'exécute ailleurs que là où il croit.
+ */
+export const PREFERENCES_GECKO = {
+  "dom.ipc.processCount": 2,
+  "browser.tabs.remote.autostart": true,
+  "toolkit.telemetry.enabled": false,
+  "app.update.enabled": false,
+  "network.proxy.type": 0,
+  "network.predictor.enabled": false,
+  "network.dns.disablePrefetch": true,
+  "browser.send_pings": false,
+} as const;
+
 export function cookieEnseignant(): string {
   if (cookieCache) return cookieCache;
 
@@ -127,6 +143,25 @@ export const test = base.extend<{ enseignant: Page; surveillance: Surveillance }
 export { expect } from "@playwright/test";
 
 /**
+ * Un nom d'élève qui n'a jamais servi.
+ *
+ * L'ouverture d'une session est plafonnée à cinq tentatives par minute pour un
+ * même nom sur une même évaluation depuis une même adresse — la limite qui
+ * borne une personne qui s'acharne. Les parcours employaient des noms fixes :
+ * relancés plusieurs fois de suite, ils finissaient par mesurer ce plafond au
+ * lieu du produit, et échouaient sur un écran qui ne s'affichait pas.
+ *
+ * Le suffixe est tiré au démarrage du processus de test : deux exécutions
+ * successives ne se marchent plus dessus, et une exécution reste lisible.
+ */
+const SUFFIXE = `${process.pid}-${Math.random().toString(36).slice(2, 7)}`;
+let compteur = 0;
+export function nomEleve(prefixe: string): string {
+  compteur += 1;
+  return `${prefixe} ${SUFFIXE}-${compteur}`;
+}
+
+/**
  * Donne le focus au champ mathématique et attend qu'il le détienne réellement.
  *
  * MathLive ne prend pas le focus au moment du clic : il le déplace ensuite vers
@@ -221,6 +256,10 @@ export async function formulesAffichees(page: Page): Promise<string[]> {
   return trouvees;
 }
 
+/** Au-delà, la navigation ne partira plus : on la rejoue plutôt que d'attendre. */
+const DELAI_NAVIGATION_MS = 25_000;
+let navigationsRejouees = 0;
+
 /**
  * Ouvre une page de l'application.
  *
@@ -238,5 +277,35 @@ export async function formulesAffichees(page: Page): Promise<string[]> {
  * chaque test l'affirme juste après, et c'est bien ce qu'il attend vraiment.
  */
 export async function ouvrir(page: Page, chemin: string): Promise<void> {
-  await page.goto(chemin, { waitUntil: "commit" });
+  try {
+    await page.goto(chemin, { waitUntil: "commit", timeout: DELAI_NAVIGATION_MS });
+    return;
+  } catch (e) {
+    if (!(e instanceof Error) || !/Timeout/i.test(e.message)) throw e;
+  }
+
+  /*
+    La requête n'a jamais été émise. Une seule fois, et à voix haute.
+
+    Sous Gecko, une navigation sur cent environ reste en attente sans que la
+    requête parte : le journal d'accès du serveur le prouve — il ne voit rien
+    arriver, et cinq minutes d'attente n'y changent rien. Ce n'est ni la
+    mémoire, ni la réutilisation des connexions, ni un navigateur usé : un
+    navigateur fraîchement lancé le fait aussi. Le produit n'est pas en cause ;
+    l'outil, si.
+
+    On rejoue donc la navigation, une fois, et **on le dit** : chaque reprise
+    est comptée et imprimée. Ce n'est pas une reprise de test — une assertion
+    qui échoue échoue toujours — et le chiffre ne se cache pas.
+  */
+  navigationsRejouees += 1;
+  process.stdout.write(
+    `[navigation rejouée ${navigationsRejouees}] ${chemin} — la requête n'était pas partie\n`,
+  );
+  await page.goto(chemin, { waitUntil: "commit", timeout: DELAI_NAVIGATION_MS });
+}
+
+/** Nombre de navigations qu'il a fallu rejouer, pour cette exécution. */
+export function compteurDeNavigationsRejouees(): number {
+  return navigationsRejouees;
 }

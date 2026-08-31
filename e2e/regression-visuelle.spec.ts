@@ -17,7 +17,7 @@
  */
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { test, ouvrir } from "./fixtures";
+import { nomEleve, test, ouvrir } from "./fixtures";
 
 const EVALUATION_ID = 1;
 /** Évaluations d'une seule question, posées par `scripts/fixtures-e2e.ts`. */
@@ -71,7 +71,7 @@ async function capturer(page: Page, nom: string, masques: string[] = []) {
 
 test.describe("écrans de l'élève", () => {
   test("l'accueil d'une évaluation", async ({ page }) => {
-    await ouvrir(page, `/evaluation?eval=${EVALUATION_ID}&name=Visuel%20Accueil`);
+    await ouvrir(page, `/evaluation?eval=${EVALUATION_ID}&name=${encodeURIComponent(nomEleve("Visuel accueil"))}`);
     await expect(page.getByRole("button", { name: /Démarrer l'évaluation/ })).toBeVisible();
     await capturer(page, "eleve-accueil.png");
   });
@@ -89,7 +89,7 @@ test.describe("écrans de l'élève", () => {
     écran.
   */
   test("une question à choix multiples", async ({ page }) => {
-    await ouvrir(page, `/evaluation?eval=${EVALUATION_QCM}&name=Visuel%20QCM`);
+    await ouvrir(page, `/evaluation?eval=${EVALUATION_QCM}&name=${encodeURIComponent(nomEleve("Visuel QCM"))}`);
     await expect(page.getByText(/Écran de référence — question à choix/)).toBeVisible();
     await page.getByRole("button", { name: /Démarrer l'évaluation/ }).click();
     await expect(page.getByText(/Question 1 \/ 1/)).toBeVisible();
@@ -98,7 +98,7 @@ test.describe("écrans de l'élève", () => {
   });
 
   test("une question à réponse courte, avec son champ mathématique", async ({ page }) => {
-    await ouvrir(page, `/evaluation?eval=${EVALUATION_COURTE}&name=Visuel%20Math`);
+    await ouvrir(page, `/evaluation?eval=${EVALUATION_COURTE}&name=${encodeURIComponent(nomEleve("Visuel math"))}`);
     await expect(page.getByText(/Écran de référence — réponse courte/)).toBeVisible();
     await page.getByRole("button", { name: /Démarrer l'évaluation/ }).click();
     await expect(page.locator("math-field")).toBeVisible();

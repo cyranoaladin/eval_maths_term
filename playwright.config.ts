@@ -10,6 +10,7 @@
  * une instance déjà en place, avec sa base et son jeu de données.
  */
 import { defineConfig, devices } from "@playwright/test";
+import { PREFERENCES_GECKO } from "./e2e/fixtures";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -29,25 +30,14 @@ export default defineConfig({
     {
       name: "firefox",
       testIgnore: /regression-visuelle\.spec\.ts/,
+      /*
+        Les réglages de Gecko sont écrits une fois, dans `e2e/fixtures.ts`, et
+        partagés : le navigateur du projet et celui que la fixture relance pour
+        chaque test doivent être le même navigateur.
+      */
       use: {
         ...devices["Desktop Firefox"],
-        /*
-          Un seul processus de contenu.
-          
-          Gecko se fermait au milieu d'une page sur les machines de la CI —
-          « Target page, context or browser has been closed » —, et les tests
-          suivants échouaient sur un navigateur mort. Les pages de cette
-          application chargent KaTeX et MathLive ; multipliées par les processus
-          que Firefox ouvre par défaut, elles dépassent ce dont dispose un
-          runner. Ce n'est pas une instabilité du produit, et la masquer par une
-          reprise l'aurait fait passer pour telle.
-        */
-        launchOptions: {
-          firefoxUserPrefs: {
-            "dom.ipc.processCount": 1,
-            "browser.tabs.remote.autostart": false,
-          },
-        },
+        launchOptions: { firefoxUserPrefs: PREFERENCES_GECKO },
       },
     },
     { name: "webkit", use: { ...devices["Desktop Safari"] }, testIgnore: /regression-visuelle\.spec\.ts/ },
