@@ -5,7 +5,7 @@
   "timestamp": "2026-08-31T00:00:00Z",
   "version": 1,
   "tooling": "scripts/vex-generer.mjs",
-  "atelier:empreinte_runtime": "1031c96febbcb182e9c95fda87a16d5f25cda0b2b1b7d6a2c6f9167505cf935b",
+  "atelier:empreinte_runtime": "f7cc5187bb726a67a8d62afb9423361765a0aec9fae1d4ebdb47d4eba1c5b133",
   "atelier:portee": "Cette attestation ne vaut que pour le runtime décrit par l'empreinte ci-dessus — Dockerfile, amc-runner, amc-template, registre d'épinglage — et pour les versions exactes de paquets citées dans chaque sous-composant. Toute modification de l'un ou de l'autre invalide les analyses : scripts/gate-applicabilite.mjs le vérifie et échoue.",
   "statements": [
     {

@@ -154,29 +154,36 @@ Huit procédures ne sont appelées par aucun écran :
 | P11 | En-têtes de sécurité HTTP, CSP sans `unsafe-eval` | **PASS** | `surface-http.integration.spec.ts` sur du vrai HTTP + 39 parcours sur le build de production, trois moteurs |
 | P12 | Analyse de secrets dans notre CI | **PASS** | job `Sécurité` : gitleaks sur tout l'historique, `--exit-code 1` ; 6 empreintes historiques exactes dans `.gitleaksignore`, aucune règle désactivée, aucun chemin exclu, aucune wildcard |
 | P13 | Chaîne d'approvisionnement — 0 vulnérabilité applicable, SBOM, VEX | **PASS** | runtime réduit par la mesure (443 → 179 paquets, 3 307 → 988 Mo, 32 → 14 CRITICAL, 139 → 48 HIGH). Les 26 CVE distinctes restantes sont instruites une par une et toutes `NOT_AFFECTED` avec preuve statique et dynamique : `APPLICABLE = 0`, `UNKNOWN = 0`. Attestation OpenVEX liée aux versions exactes, portail fermé par défaut — voir §17 et `docs/VEX-CANDIDATES.md` |
-| P14 | Build reproductible, images épinglées par empreinte | **FAIL** | l'image de base est épinglée par empreinte, mais **dix actions GitHub sont épinglées par tag mutable** (`@v7`, `@v4`), de même que les images MySQL, Playwright, gitleaks et trivy du gate — voir §17 |
-| P15 | Une seule image canonique de production, avec impression | **PASS** | un seul `Dockerfile`, étage `production` avec AMC ; compose, recette et CI construisent le même artefact ; recette **28/28**, dont l'annonce de version par l'image |
+| P14 | Build reproductible, images épinglées par empreinte | **PASS** | `scripts/verifier-epinglage.sh`, premier pas du travail Sécurité : `MUTABLE_CRITICAL_ACTIONS = 0`, `MUTABLE_RELEASE_IMAGES = 0`. Les deux archives d'AMC sont épinglées par version **et** vérifiées par SHA-256 à la construction |
+| P15 | Une seule image canonique de production, avec impression | **PASS** | un seul `Dockerfile` ; recette **28/28** sur l'artefact final `sha256:e885b75b…`, conteneur en lecture seule, toutes capacités retirées. Matrice papier six cas et corpus des entrées limites : PASS |
 | P16 | Vivacité et disponibilité distinctes et réelles | **PASS** | `/api/health` et `/api/ready` ; 4 vérifications HTTP dans `surface-http.integration.spec.ts` ; le conteneur interroge la disponibilité |
-| P17 | Arrêt gracieux | **PASS** | `scripts/smoke-arret-gracieux.ts` : SIGTERM pendant une remise en vol, copie entière, sortie 0 ; 4 tests unitaires sur l'ordre |
+| P17 | Arrêt gracieux | **PASS** | régression trouvée et corrigée : le délai de garde à 125 s faisait retenir l'arrêt par une connexion inactive. `closeIdleConnections()` relâche celles-là seulement, et il faut y repasser — au moment du signal la connexion qui porte la remise n'est pas inactive. Trois passages consécutifs du smoke, 0 échec |
 | P18 | Contre-pression, remise idempotente | **PASS** | `remise-concurrente.integration.spec.ts` : une remise rejouée rend mot pour mot la même réponse ; audit des files en §5 |
 | P19 | Observabilité — 0 `console.*`, supervision d'erreurs | **PASS** | `journalisation.spec.ts` : 0 appel direct ; supervision branchée sur `logger.error`, 9 tests de nettoyage, `scripts/verifier-supervision.ts` |
-| P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | IN_PROGRESS | aucun `continue-on-error`, cinq travaux requis ; mais le gate demande **trois exécutions vertes consécutives** sur le HEAD candidat, et une seule est acquise |
-| P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | **FAIL** | la reprise de navigation est retirée du code (`CUSTOM_NAVIGATION_RETRY = 0`, `PLAYWRIGHT_RETRIES = 0`) et la cause est trouvée : un défaut du pilote Firefox de Playwright face à l'échange de groupe de contextes que provoque COOP. Preuve indépendante faite — Firefox de série piloté par Marionette, 400 navigations, 0 blocage. Reste le seul élément manquant : **trois exécutions CI vertes consécutives**, sans code entre elles et sans relance manuelle — voir §16 |
+| P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | IN_PROGRESS | aucun `continue-on-error` ; portails ajoutés : Firefox de série sous COOP, applicabilité VEX, avertissements, budget du premier chargement, matrice papier, corpus des limites. Reste les **trois exécutions vertes consécutives** sur le HEAD candidat |
+| P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | IN_PROGRESS | 1 174 tests unitaires et d'intégration verts ; les trois moteurs verts fichier par fichier sur le build de production ; portail Firefox de série sous COOP, 400 navigations, 0 blocage. `PLAYWRIGHT_RETRIES = 0`, `CUSTOM_NAVIGATION_RETRY = 0`. Reste les **trois exécutions CI vertes consécutives**, sans code entre elles ni relance manuelle |
 | P22 | Couverture : 100 % sur les domaines critiques, ≥ 95 % global serveur | **PASS** | 98,4 % / 96,4 % / 97,5 % / 98,6 % ; seuils posés dans `vitest.config.ts` — voir §9 |
 | P23 | Accessibilité — 0 violation critique ou sérieuse | **PASS** | `e2e/accessibilite.spec.ts` : axe sur 10 écrans, 3 moteurs, plus deux parcours au clavier seul — voir §7 |
-| P24 | Régression visuelle sur les écrans critiques | **PASS** | sept écrans, références produites dans l'image Docker de Playwright, comparées par la CI — voir §13 |
+| P24 | Régression visuelle sur les écrans critiques | **PASS** | sept écrans, 7/7 dans l'image officielle de Playwright sur une base fraîchement peuplée, après le redécoupage des paquets. Aucune référence mise à jour |
 | P25 | Aucune erreur navigateur inattendue tolérée | **PASS** | surveillance installée sur chaque test sans qu'il ait à la demander ; exceptions, pageerror, `console.error` et 5xx ; aucun filtre global |
 | P26 | 0 code mort, 0 dépendance inutilisée, 0 duplication métier | **PASS** | `knip` ne signale plus rien ; `jscpd` 1,34 % — voir §4 |
 | P27 | `main` protégée, tags protégés | **PASS** | protection posée et éprouvée : poussée directe refusée, réécriture de `v1.0.0-rc1` refusée — voir §11 |
-| P28 | Sauvegarde et restauration éprouvées | **PASS** | `scripts/sauvegarde.sh` et `scripts/restauration.sh` ; répétition réelle — base détruite puis restaurée, application redémarrée dessus — voir §10 |
+| P28 | Sauvegarde et restauration éprouvées | **PASS** | répétition rejouée : sauvegarde, restauration, « Restauration vérifiée », 11 migrations et décomptes cohérents. La remise des droits du dossier de tirages à l'utilisateur applicatif exige `root` ; le script la tente et, à défaut, imprime la commande exacte |
 | P29 | Migration de production : sauvegarde → préflight → migration → postflight | **PASS** | `scripts/migration-production.sh`, jouée d'un schéma rc1 portant des copies : 6 → 10 migrations, incidents JSON recopiés — voir §10 |
-| P30 | Retour arrière éprouvé | **PASS** | `scripts/repli-production.sh` ; répétition avec incident simulé, retour sur l'empreinte précédente — voir §10 |
-| P31 | Performance non régressée (p95 < 500 ms, 0 erreur) | IN_PROGRESS | trois campagnes conformes (39,1 / 36,7 / 36,6 ms, 0 erreur) **mais sur un banc invalide** : disque à 100 %. À rejouer sur environnement propre contre le HEAD final — voir §18 |
-| P32 | Endurance sans fuite | IN_PROGRESS | 30 min, 1 801 copies, 0 erreur, mémoire plafonnée — **même banc invalide**, à rejouer sur environnement propre contre le HEAD final — voir §18 |
+| P30 | Retour arrière éprouvé | IN_PROGRESS | `scripts/repli-production.sh` démarre désormais le conteneur avec les mêmes restrictions que le compose. La répétition n'a pas pu aller à son terme sur ce poste : la restauration ne peut pas rendre le dossier de tirages à l'uid 10001 sans `root`, et `/api/ready` répond alors « tirages : EACCES ». Le script le détecte et l'écrit. À rejouer là où le restaurateur peut le faire |
+| P31 | Performance non régressée (p95 < 500 ms, 0 erreur) | IN_PROGRESS | trois campagnes conformes (39,1 / 36,7 / 36,6 ms, 0 erreur) **mais sur un banc invalide** : `FINAL_LOCAL_BENCHMARK_ENV = INVALID`, disque à 95 %. À rejouer sur runner dédié ou staging — voir §18 |
+| P32 | Endurance sans fuite | IN_PROGRESS | 30 min, 1 801 copies, 0 erreur, mémoire plafonnée — **même banc invalide**, à rejouer sur environnement propre — voir §18 |
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 27 / 34. FAIL : 3. IN_PROGRESS : 4. BLOCKED_EXTERNAL : 2.**
+**PASS : 27 / 34. FAIL : 0. IN_PROGRESS : 5. BLOCKED_EXTERNAL : 2.**
+
+Matrice recalculée le 31 août 2026 depuis l'artefact final
+`sha256:e885b75b90436767da3bf8a8931e30f1ebfdd879cdd0ad88d88165a6fed3d121`
+(HEAD `85ef835`), et non reconduite depuis l'état précédent : la réduction du
+runtime, le durcissement du conteneur et le redécoupage des paquets touchaient
+assez de lignes pour qu'aucun `PASS` ne soit repris sans preuve. Trois lignes
+ont changé d'état à l'examen — P14 et P17 vers `PASS`, P30 vers `IN_PROGRESS`.
 
 Le décompte précédent — « 32 / 34 » — était faux. Il est corrigé ci-dessus, et
 ce qui l'a rendu faux est écrit en §16 et §17 plutôt que résumé.

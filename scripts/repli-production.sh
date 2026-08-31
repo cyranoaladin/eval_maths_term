@@ -57,7 +57,14 @@ DATABASE_URL="$URL" PAPER_OUTPUT_DIR="$TIRAGES" bash scripts/restauration.sh "$S
 
 # ── 3. Redémarrer la version précédente ──────────────────────────────────────
 etape "3/4 · démarrage de la version précédente"
+# Les mêmes restrictions que `docker-compose.yml`. Un conteneur de repli moins
+# tenu que celui qu'il remplace serait une régression de sécurité au pire
+# moment : celui où l'on revient en arrière parce que quelque chose ne va pas.
 docker run -d --name "$CONTENEUR" --network host \
+  --read-only --tmpfs /tmp:rw,size=512m,mode=1777 \
+  --tmpfs /home/evalapp:rw,size=64m,mode=0700,uid=10001,gid=999 \
+  --cap-drop ALL --security-opt no-new-privileges \
+  --pids-limit 512 --memory 2g --cpus 2 \
   -e NODE_ENV=production \
   -e PORT="$PORT_APPLICATION" \
   -e DATABASE_URL="$URL" \

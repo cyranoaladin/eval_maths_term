@@ -53,6 +53,15 @@ const LONGUE = "Lo" + "n".repeat(400) + "g";
 const hostileTexte = (etiquette: string) =>
   `${MARQUEUR}-${etiquette} ${METACARACTERES} ${ACCENTS} & % $ # _ { } ~ ^ \\`;
 
+/*
+  Les noms d'élèves ont leur propre borne — 120 caractères, parce qu'au-delà le
+  tampon de pdfTeX finit par céder. Le corpus doit passer cette borne : son
+  travail est de tracer le parcours d'une donnée jusqu'au fond de la chaîne, pas
+  d'éprouver le refus, qui a son corpus à lui.
+*/
+const hostileNom = (etiquette: string) =>
+  `${MARQUEUR}-${etiquette} ${METACARACTERES} ${ACCENTS}`;
+
 /** Ce qui est inséré tel quel : énoncés et propositions, qui sont du LaTeX. */
 const hostileLatex = (etiquette: string) =>
   `${MARQUEUR}-${etiquette} ${ACCENTS} — ` +
@@ -103,9 +112,9 @@ const questions: TemplateQuestion[] = [
   saisie, et celui qui traverse le lecteur CSV d'AMC.
 */
 const eleves = [
-  { lastName: hostileTexte("nom1"), firstName: hostileTexte("prenom1") },
-  { lastName: `${MARQUEUR}-nom2 ${LONGUE}`, firstName: `${MARQUEUR}-prenom2` },
-  { lastName: `${MARQUEUR}-nom3 ${ACCENTS}`, firstName: `${MARQUEUR}-prenom3 ${METACARACTERES}` },
+  { lastName: hostileNom("nom1"), firstName: hostileNom("prenom1") },
+  { lastName: `${MARQUEUR}-nom2`, firstName: `${MARQUEUR}-prenom2` },
+  { lastName: `${MARQUEUR}-nom3 ${ACCENTS}`, firstName: `${MARQUEUR}-prenom3` },
 ];
 
 const doc = buildAmcDocument({
