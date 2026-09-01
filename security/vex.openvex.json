@@ -65,7 +65,7 @@
       "atelier:condition_de_declenchement": "Traiter une description de terminal fabriquée.",
       "atelier:entree_controlee_par_un_tiers": "TERM et la base terminfo.",
       "atelier:preuve_statique": "Aucun usage de ncurses dans le produit ni dans AMC.",
-      "atelier:preuve_dynamique": "LD_DEBUG=libs : ni libncursesw.so ni libtinfo.so parmi les 32 objets chargés."
+      "atelier:preuve_dynamique": "LD_DEBUG=libs, rejoué sur la chaîne XeLaTeX : ni libncursesw.so ni libtinfo.so parmi la quarantaine d'objets chargés."
     },
     {
       "vulnerability": {
@@ -242,7 +242,7 @@
       "atelier:condition_de_declenchement": "Décompresser une archive fabriquée au format LZH.",
       "atelier:entree_controlee_par_un_tiers": "Une archive compressée.",
       "atelier:preuve_statique": "Aucun appel à gzip dans le produit ni dans AMC.",
-      "atelier:preuve_dynamique": "Trace execve d'une génération complète : gzip ne figure pas parmi les 27 programmes exécutés."
+      "atelier:preuve_dynamique": "Trace execve rejouée sur la chaîne XeLaTeX : gzip ne figure pas parmi les cinq programmes exécutés."
     },
     {
       "vulnerability": {
@@ -587,7 +587,7 @@
       "atelier:condition_de_declenchement": "Authentification D-Bus SHA-1 par trousseau.",
       "atelier:entree_controlee_par_un_tiers": "Un pair D-Bus.",
       "atelier:preuve_statique": "Aucun usage de D-Bus dans le code chargé.",
-      "atelier:preuve_dynamique": "LD_DEBUG=libs sur une génération complète : 32 objets partagés chargés, libgio-2.0.so n'en fait pas partie."
+      "atelier:preuve_dynamique": "LD_DEBUG=libs, rejoué sur la chaîne XeLaTeX : une quarantaine d'objets chargés, libgio-2.0.so n'en fait pas partie."
     },
     {
       "vulnerability": {
@@ -612,7 +612,7 @@
       "atelier:condition_de_declenchement": "Analyser une description d'introspection D-Bus fabriquée.",
       "atelier:entree_controlee_par_un_tiers": "Du XML d'introspection D-Bus.",
       "atelier:preuve_statique": "Aucun usage de D-Bus dans le code chargé.",
-      "atelier:preuve_dynamique": "LD_DEBUG=libs sur une génération complète : libgio-2.0.so absente des 32 objets chargés."
+      "atelier:preuve_dynamique": "LD_DEBUG=libs, rejoué sur la chaîne XeLaTeX : libgio-2.0.so absente de la quarantaine d'objets chargés."
     },
     {
       "vulnerability": {
@@ -662,7 +662,7 @@
       "atelier:condition_de_declenchement": "Analyser un document XML fabriqué.",
       "atelier:entree_controlee_par_un_tiers": "Un document XML.",
       "atelier:preuve_statique": "libxml2 n'est tirée que comme dépendance transitive.",
-      "atelier:preuve_dynamique": "LD_DEBUG=libs sur une génération complète : libxml2.so absente des 32 objets chargés."
+      "atelier:preuve_dynamique": "LD_DEBUG=libs, rejoué sur la chaîne XeLaTeX : libxml2.so absente de la quarantaine d'objets chargés."
     },
     {
       "vulnerability": {

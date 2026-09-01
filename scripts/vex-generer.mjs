@@ -196,8 +196,8 @@ vaut rien si l'instrument ne se déclenche jamais :
 
 | Instrument | Ce qu'il montre | Témoin |
 |---|---|---|
-| \`strace -f -e trace=execve\` | les 27 programmes exécutés | \`perl\`, \`pdflatex\`, \`kpsewhich\` apparaissent |
-| \`LD_DEBUG=libs\` | les 32 objets partagés chargés | \`libglib\`, \`libsqlite3\`, \`libacl\` apparaissent |
+| \`strace -f -e trace=execve\` | les programmes exécutés — cinq sur la chaîne XeLaTeX : \`sh\`, \`auto-multiple-choice\`, \`perl\`, \`xelatex\`, \`xdvipdfmx\` | \`perl\` et le moteur TeX apparaissent |
+| \`LD_DEBUG=libs\` | les objets partagés chargés — une quarantaine sur la chaîne XeLaTeX, composition OpenType comprise | \`libglib\`, \`libsqlite3\`, \`libharfbuzz\` apparaissent |
 | \`%INC\` en fin d'exécution | les 82 modules Perl chargés | les modules \`AMC::*\` apparaissent |
 | interposition \`LD_PRELOAD\` | les points d'entrée incriminés | \`g_strdup\` 72 fois, \`g_get_home_dir\` 4 fois ; un programme appelant \`acl_get_file\` déclenche bien l'enveloppe |
 | enveloppement Perl | les fonctions d'AMC surveillées | \`AMC::Basic::debug\` et \`AMC::Config::get\`, 225 appels |

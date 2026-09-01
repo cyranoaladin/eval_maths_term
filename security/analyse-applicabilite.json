@@ -87,7 +87,7 @@
     "justification": "vulnerable_code_not_in_execute_path",
     "impact": "Le défaut est dans libgio, qui n'est jamais chargée. Le conteneur n'a ni bus de session ni bus système.",
     "statique": "Aucun usage de D-Bus dans le code chargé.",
-    "dynamique": "LD_DEBUG=libs sur une génération complète : 32 objets partagés chargés, libgio-2.0.so n'en fait pas partie."
+    "dynamique": "LD_DEBUG=libs, rejoué sur la chaîne XeLaTeX : une quarantaine d'objets chargés, libgio-2.0.so n'en fait pas partie."
   },
   "CVE-2026-58016": {
     "composant": "g_dbus_node_info_new_for_xml (gio/gdbusintrospection.c)",
@@ -96,7 +96,7 @@
     "justification": "vulnerable_code_not_in_execute_path",
     "impact": "Le défaut est dans libgio, qui n'est jamais chargée. Le conteneur n'a aucun bus D-Bus.",
     "statique": "Aucun usage de D-Bus dans le code chargé.",
-    "dynamique": "LD_DEBUG=libs sur une génération complète : libgio-2.0.so absente des 32 objets chargés."
+    "dynamique": "LD_DEBUG=libs, rejoué sur la chaîne XeLaTeX : libgio-2.0.so absente de la quarantaine d'objets chargés."
   },
   "CVE-2026-11822": {
     "composant": "fts5LeafSeek (extension FTS5 de SQLite)",
@@ -168,7 +168,7 @@
     "justification": "vulnerable_code_not_in_execute_path",
     "impact": "libxml2 n'est jamais chargée. AMC lit sa configuration avec XML::Simple, qui n'utilise pas libxml2 ici.",
     "statique": "libxml2 n'est tirée que comme dépendance transitive.",
-    "dynamique": "LD_DEBUG=libs sur une génération complète : libxml2.so absente des 32 objets chargés."
+    "dynamique": "LD_DEBUG=libs, rejoué sur la chaîne XeLaTeX : libxml2.so absente de la quarantaine d'objets chargés."
   },
   "CVE-2026-66046": {
     "composant": "Expat, déni de service par XML fabriqué",
@@ -213,7 +213,7 @@
     "justification": "vulnerable_code_not_in_execute_path",
     "impact": "ncurses n'est jamais chargée : la composition n'ouvre aucun terminal.",
     "statique": "Aucun usage de ncurses dans le produit ni dans AMC.",
-    "dynamique": "LD_DEBUG=libs : ni libncursesw.so ni libtinfo.so parmi les 32 objets chargés."
+    "dynamique": "LD_DEBUG=libs, rejoué sur la chaîne XeLaTeX : ni libncursesw.so ni libtinfo.so parmi la quarantaine d'objets chargés."
   },
   "CVE-2026-41992": {
     "composant": "gzip, décodeur LZH",
@@ -222,7 +222,7 @@
     "justification": "vulnerable_code_not_in_execute_path",
     "impact": "gzip n'est jamais exécuté, et le produit ne décompresse aucune archive fournie de l'extérieur.",
     "statique": "Aucun appel à gzip dans le produit ni dans AMC.",
-    "dynamique": "Trace execve d'une génération complète : gzip ne figure pas parmi les 27 programmes exécutés."
+    "dynamique": "Trace execve rejouée sur la chaîne XeLaTeX : gzip ne figure pas parmi les cinq programmes exécutés."
   },
   "CVE-2022-4055": {
     "composant": "xdg-email, analyse des URI mailto",

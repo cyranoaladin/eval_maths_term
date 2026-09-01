@@ -50,8 +50,8 @@ vaut rien si l'instrument ne se déclenche jamais :
 
 | Instrument | Ce qu'il montre | Témoin |
 |---|---|---|
-| `strace -f -e trace=execve` | les 27 programmes exécutés | `perl`, `pdflatex`, `kpsewhich` apparaissent |
-| `LD_DEBUG=libs` | les 32 objets partagés chargés | `libglib`, `libsqlite3`, `libacl` apparaissent |
+| `strace -f -e trace=execve` | les programmes exécutés — cinq sur la chaîne XeLaTeX : `sh`, `auto-multiple-choice`, `perl`, `xelatex`, `xdvipdfmx` | `perl` et le moteur TeX apparaissent |
+| `LD_DEBUG=libs` | les objets partagés chargés — une quarantaine sur la chaîne XeLaTeX, composition OpenType comprise | `libglib`, `libsqlite3`, `libharfbuzz` apparaissent |
 | `%INC` en fin d'exécution | les 82 modules Perl chargés | les modules `AMC::*` apparaissent |
 | interposition `LD_PRELOAD` | les points d'entrée incriminés | `g_strdup` 72 fois, `g_get_home_dir` 4 fois ; un programme appelant `acl_get_file` déclenche bien l'enveloppe |
 | enveloppement Perl | les fonctions d'AMC surveillées | `AMC::Basic::debug` et `AMC::Config::get`, 225 appels |
@@ -116,7 +116,7 @@ silencieusement une montée de version.
 | **Condition de déclenchement** | Analyser une description d'introspection D-Bus fabriquée. |
 | **Entrée contrôlée par un tiers** | Du XML d'introspection D-Bus. |
 | **Atteignabilité statique** | Aucun usage de D-Bus dans le code chargé. |
-| **Atteignabilité dynamique** | LD_DEBUG=libs sur une génération complète : libgio-2.0.so absente des 32 objets chargés. |
+| **Atteignabilité dynamique** | LD_DEBUG=libs, rejoué sur la chaîne XeLaTeX : libgio-2.0.so absente de la quarantaine d'objets chargés. |
 | **Justification VEX** | `vulnerable_code_not_in_execute_path` |
 | **Portée de l'impact** | Le défaut est dans libgio, qui n'est jamais chargée. Le conteneur n'a aucun bus D-Bus. |
 | **Statut** | `NOT_AFFECTED` |
@@ -132,7 +132,7 @@ silencieusement une montée de version.
 | **Condition de déclenchement** | Analyser un document XML fabriqué. |
 | **Entrée contrôlée par un tiers** | Un document XML. |
 | **Atteignabilité statique** | libxml2 n'est tirée que comme dépendance transitive. |
-| **Atteignabilité dynamique** | LD_DEBUG=libs sur une génération complète : libxml2.so absente des 32 objets chargés. |
+| **Atteignabilité dynamique** | LD_DEBUG=libs, rejoué sur la chaîne XeLaTeX : libxml2.so absente de la quarantaine d'objets chargés. |
 | **Justification VEX** | `vulnerable_code_not_in_execute_path` |
 | **Portée de l'impact** | libxml2 n'est jamais chargée. AMC lit sa configuration avec XML::Simple, qui n'utilise pas libxml2 ici. |
 | **Statut** | `NOT_AFFECTED` |
@@ -180,7 +180,7 @@ silencieusement une montée de version.
 | **Condition de déclenchement** | Traiter une description de terminal fabriquée. |
 | **Entrée contrôlée par un tiers** | TERM et la base terminfo. |
 | **Atteignabilité statique** | Aucun usage de ncurses dans le produit ni dans AMC. |
-| **Atteignabilité dynamique** | LD_DEBUG=libs : ni libncursesw.so ni libtinfo.so parmi les 32 objets chargés. |
+| **Atteignabilité dynamique** | LD_DEBUG=libs, rejoué sur la chaîne XeLaTeX : ni libncursesw.so ni libtinfo.so parmi la quarantaine d'objets chargés. |
 | **Justification VEX** | `vulnerable_code_not_in_execute_path` |
 | **Portée de l'impact** | ncurses n'est jamais chargée : la composition n'ouvre aucun terminal. |
 | **Statut** | `NOT_AFFECTED` |
@@ -260,7 +260,7 @@ silencieusement une montée de version.
 | **Condition de déclenchement** | Décompresser une archive fabriquée au format LZH. |
 | **Entrée contrôlée par un tiers** | Une archive compressée. |
 | **Atteignabilité statique** | Aucun appel à gzip dans le produit ni dans AMC. |
-| **Atteignabilité dynamique** | Trace execve d'une génération complète : gzip ne figure pas parmi les 27 programmes exécutés. |
+| **Atteignabilité dynamique** | Trace execve rejouée sur la chaîne XeLaTeX : gzip ne figure pas parmi les cinq programmes exécutés. |
 | **Justification VEX** | `vulnerable_code_not_in_execute_path` |
 | **Portée de l'impact** | gzip n'est jamais exécuté, et le produit ne décompresse aucune archive fournie de l'extérieur. |
 | **Statut** | `NOT_AFFECTED` |
@@ -436,7 +436,7 @@ silencieusement une montée de version.
 | **Condition de déclenchement** | Authentification D-Bus SHA-1 par trousseau. |
 | **Entrée contrôlée par un tiers** | Un pair D-Bus. |
 | **Atteignabilité statique** | Aucun usage de D-Bus dans le code chargé. |
-| **Atteignabilité dynamique** | LD_DEBUG=libs sur une génération complète : 32 objets partagés chargés, libgio-2.0.so n'en fait pas partie. |
+| **Atteignabilité dynamique** | LD_DEBUG=libs, rejoué sur la chaîne XeLaTeX : une quarantaine d'objets chargés, libgio-2.0.so n'en fait pas partie. |
 | **Justification VEX** | `vulnerable_code_not_in_execute_path` |
 | **Portée de l'impact** | Le défaut est dans libgio, qui n'est jamais chargée. Le conteneur n'a ni bus de session ni bus système. |
 | **Statut** | `NOT_AFFECTED` |
