@@ -29,6 +29,13 @@ réellement. Leur empreinte est vérifiée à la construction : une modification
 amont fait échouer le build au lieu de passer inaperçue. Le raisonnement est
 dans [AMC-RUNTIME](AMC-RUNTIME.md).
 
+La chaîne de composition est XeLaTeX : `texlive-xetex`, `texlive-lang-arabic`
+(`bidi`) et la police `fonts-hosny-amiri` (Amiri, licence OFL, version
+`1.001-1` en trixie) viennent de l'archive Debian de l'image de base épinglée
+par empreinte — aucune police n'est téléchargée d'une URL non versionnée. La
+fiche complète (paquet, version, licence, source) est dans
+[AMC-RUNTIME](AMC-RUNTIME.md).
+
 Pour relever l'empreinte d'une nouvelle version d'AMC :
 
 ```bash

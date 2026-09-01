@@ -8,36 +8,62 @@ celui-là — non pas par retrait de ce qui gênait, mais par mesure de ce qui s
 Le périmètre est fixé par [ADR-OPTICAL-CORRECTION-BOUNDARY](ADR-OPTICAL-CORRECTION-BOUNDARY.md) :
 la lecture optique est hors périmètre pour la 1.0, et reste une capacité future.
 
+## Le moteur : XeLaTeX
+
+Le moteur de composition est **XeLaTeX**, demandé explicitement à AMC par
+`prepare --mode s --with xelatex`. La raison est produit, pas technique : le
+lycée servi est à Tunis, et « محمد بن علي » est un nom d'élève légitime que
+pdfTeX ne sait pas composer. XeLaTeX lit l'UTF-8 nativement ; `fontspec`
+fournit les polices, `polyglossia` la typographie française et la direction
+droite-à-gauche des seuls fragments arabes. L'interdiction d'exécution de
+commandes est inchangée : AMC passe `--no-shell-escape` au moteur, et le
+moteur est lancé par AMC — jamais par un shell ; notre code n'appelle AMC que
+par `execFile`.
+
+**La police de l'écriture arabe** :
+
+| | |
+|---|---|
+| FONT_PACKAGE | `fonts-hosny-amiri` (paquet Debian officiel, archive trixie) |
+| FONT_VERSION | `1.001-1` |
+| FAMILLE | Amiri (`\newfontfamily\arabicfont[Script=Arabic]{Amiri}`) |
+| LICENSE | SIL Open Font License (OFL) |
+| SOURCE | archive Debian de l'image de base épinglée par empreinte — aucun fichier téléchargé d'une URL non versionnée |
+
 ## Ce que la mesure a montré
 
-Trois relevés, sur une composition réelle (10 questions, 4 élèves, formules,
-accents, énoncé long) et non sur une lecture de la documentation.
+Trois relevés, sur une composition réelle (le cas `09-corpus-unicode` de la
+matrice : accents, apostrophes, noms arabes et mixtes, dix élèves) et non sur
+une lecture de la documentation. Rejoués après le passage à XeLaTeX.
 
 **Les programmes exécutés.** Une trace des appels `execve` d'un
-`prepare --mode s` complet ne fait apparaître que :
+`prepare --mode s --with xelatex` complet ne fait apparaître que :
 
 | Programme | Rôle |
 |---|---|
 | `auto-multiple-choice` | le répartiteur, un script Perl |
 | `perl` | les étapes d'AMC elles-mêmes |
-| `pdflatex` | la composition |
-| `kpsewhich`, `kpseaccess`, `kpsestat` | résolution des fichiers TeX |
-| `mktexpk`, `mf-nowin`, `gftopk`, `mktexdir`, `mktexnam`, `mktexupd` | génération de polices |
-| `awk`, `basename`, `cat`, `chmod`, `mkdir`, `mv`, `rm`, `sed`, `uname` | plomberie |
+| `xelatex` | la composition |
+| `xdvipdfmx` | la production du PDF, appelée par XeTeX |
+| `sh` | plomberie |
 
-Ni ImageMagick, ni GraphicsMagick, ni OpenCV, ni le moindre binaire d'interface.
+La chaîne est plus courte qu'avec pdfTeX : les polices OpenType n'exigent
+plus la génération de polices bitmap (`mktexpk`, `mf-nowin`, `gftopk` ont
+disparu de la trace). Ni ImageMagick, ni GraphicsMagick, ni OpenCV, ni le
+moindre binaire d'interface.
 
-**Les modules Perl chargés.** 82 modules, relevés par `%INC` en fin
-d'exécution. Hors modules du cœur de Perl : `AMC::*`, `DBI`, `DBD::SQLite`,
-`XML::Simple`, `XML::Writer`, `Locale::gettext`, `Glib`, `Module::Load`,
-`Params::Check`, `IPC::Open3`, `Storable`. **Aucun** `Gtk3`,
-**aucun** `Graphics::Magick`, **aucune** liaison OpenCV.
+**Les modules Perl chargés.** Inchangés : `AMC::*`, `DBI`, `DBD::SQLite`,
+`XML::Simple`, `XML::Writer`, `Locale::gettext`, `Glib`, `Storable` — le
+répartiteur est le même. **Aucun** `Gtk3`, **aucun** `Graphics::Magick`,
+**aucune** liaison OpenCV.
 
 **Les bibliothèques natives chargées.** Relevées par `LD_DEBUG=libs` sur la
-même composition : 32 objets partagés, dont `libglib-2.0`, `libgobject-2.0`,
-`libsqlite3`, `libkpathsea`, `libpng16`, `libpcre2`, `libacl`, et les greffons
-Perl `DBI.so`, `SQLite.so`, `Glib.so`, `Storable.so`. **Ne sont jamais
-chargées** : `libgio-2.0`, `libxml2`, `libexpat`, `libncurses`, `libtinfo`,
+même composition : une quarantaine d'objets partagés. Aux bibliothèques du
+chemin pdfTeX (`libglib-2.0`, `libgobject-2.0`, `libsqlite3`, `libkpathsea`,
+`libpng16`, `libpcre2`, greffons Perl) s'ajoutent celles de la composition
+OpenType : `libfontconfig`, `libfreetype`, `libharfbuzz`, `libgraphite2`,
+`libicuuc`/`libicudata`, `libTECkit`, `libexpat` (la configuration XML de
+fontconfig), `libbrotlidec`. Toujours **aucune** `libgio-2.0`, `libncurses`,
 `libpython3.13`.
 
 ## Classement des dépendances d'AMC
@@ -52,8 +78,11 @@ complète. Voici ce que chaque morceau sert réellement.
 | `liblocale-gettext-perl` | `REQUIRED_FOR_PREPARE_S` | messages traduits |
 | `libglib-perl` | `REQUIRED_FOR_PREPARE_S` | `Glib.so` chargé |
 | `libtext-csv-perl`, `libhash-merge-perl` | `REQUIRED_FOR_PREPARE_S` | listes d'élèves, fusion des options |
-| `texlive-latex-base`, `-recommended`, `-extra` | `REQUIRED_FOR_PREPARE_S` | `automultiplechoice.sty`, `csvsimple`, `geometry` |
+| `texlive-latex-base`, `-recommended`, `-extra` | `REQUIRED_FOR_PREPARE_S` | `automultiplechoice.sty` fait `\RequirePackage` de `csvsimple`, `bophook`, `environ`, `storebox` — tous dans `-extra`. Notre gabarit n'utilise plus `csvsimple` (les copies nominatives sont générées directement, sans CSV), mais le sty l'exige inconditionnellement : le paquet reste |
 | `texlive-fonts-recommended`, `texlive-lang-french` | `REQUIRED_FOR_PREPARE_S` | polices, césure française |
+| `texlive-xetex` | `REQUIRED_FOR_PREPARE_S` | le moteur XeLaTeX et `xdvipdfmx` |
+| `texlive-lang-arabic` | `REQUIRED_FOR_PREPARE_S` | `bidi`, la direction droite-à-gauche de polyglossia |
+| `fonts-hosny-amiri` | `REQUIRED_FOR_PREPARE_S` | la police Amiri de l'écriture arabe |
 | `libopencv-core410`, `-imgcodecs410`, `-imgproc410` | `REQUIRED_FOR_MEP_OR_SCAN` | liées à `AMC-detect` seul |
 | `libgraphics-magick-perl` | `REQUIRED_FOR_MEP_OR_SCAN` | conversion des scans |
 | `libcairo2`, `libpango*`, `libpoppler-glib8t64` | `REQUIRED_FOR_MEP_OR_SCAN` | annotation des copies par `AMC-buildpdf` |
@@ -96,12 +125,22 @@ le disque.
 
 ## Ce que cela change
 
-| | Image complète | Image réduite |
-|---|---|---|
-| Paquets installés | 443 | 179 |
-| Taille | 3 307 Mo | 988 Mo |
-| Vulnérabilités CRITICAL | 32 | 14 |
-| Vulnérabilités HIGH | 139 | 48 |
+| | Image complète | Image réduite (pdfTeX) | Image réduite (XeLaTeX) |
+|---|---|---|---|
+| Paquets installés | 443 | 179 | 185 |
+| Taille | 3 307 Mo | 988 Mo | 1 070 Mo |
+| Vulnérabilités CRITICAL | 32 | 14 | 14 |
+| Vulnérabilités HIGH | 139 | 48 | 48 |
+
+Le passage à XeLaTeX ajoute six paquets — `texlive-xetex`,
+`texlive-lang-arabic`, `fonts-hosny-amiri`, et leurs dépendances `teckit`,
+`texlive-plain-generic`, `tipa` — et **aucune vulnérabilité élevée ou
+critique** : l'ensemble des CVE du rapport brut est identique, paire par
+paire (CVE, paquet), à celui de l'image pdfTeX. La suppression de `csvsimple`
+de notre chaîne n'allège pas l'image : le sty d'AMC l'exige de toute façon
+(voir le classement ci-dessus). Ce qu'elle supprime est ailleurs — une
+transformation intermédiaire, une surface d'injection, la logique d'échappement
+propre au CSV.
 
 Les 14 CRITICAL et 48 HIGH restantes sont analysées une par une dans
 [VEX-CANDIDATES](VEX-CANDIDATES.md). Aucune n'a de correctif disponible en
@@ -121,10 +160,15 @@ Réduire l'image ne vaut que si elle imprime toujours. Deux instruments :
   nombre de pages, une feuille-réponses et une copie nominative par élève, et
   la présence de chaque fragment attendu dans le texte extrait.
 
-On ne compare pas les PDF par empreinte : `pdflatex` horodate ses sorties, et
-deux compilations du même document diffèrent toujours. En revanche le texte
-extrait, lui, doit être identique — et il l'est, mot pour mot, entre l'image
-complète et l'image réduite, sur les six cas.
+On ne compare pas les PDF par empreinte : le moteur TeX horodate ses sorties,
+et deux compilations du même document diffèrent toujours. En revanche le texte
+extrait, lui, doit être identique — et le rendu raster d'une page de
+référence, produit dans l'environnement poppler épinglé
+(`docker/preuve-papier.Dockerfile`), est comparé **octet à octet** à une
+référence versionnée (`scripts/refs-papier/`). C'est la preuve visuelle de
+l'écriture arabe — lettres jointes, ordre droite-à-gauche, aucun glyphe
+manquant — que `pdftotext` ne sait pas lire. Deux générations concurrentes
+doivent rendre ce même raster.
 
 Relevé du 31 août 2026, image `atelier-qcm:minimal` :
 

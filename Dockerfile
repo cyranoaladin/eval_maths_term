@@ -55,7 +55,17 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Utilisateur non privilégié : le processus n'a aucune raison d'être root.
-RUN useradd --system --create-home --uid 10001 evalapp
+#
+# UID **et** GID sont fixés explicitement — décision unique, documentée ici.
+# Avant, seul l'uid l'était : le gid sortait du compteur des groupes système
+# (999 un jour, autre chose le lendemain selon l'ordre d'installation), et la
+# restauration d'un volume ne pouvait pas rendre les droits de façon
+# déterministe. `scripts/restauration.sh` et `scripts/repli-production.sh`
+# s'appuient sur ces deux nombres.
+ARG APP_UID=10001
+ARG APP_GID=10001
+RUN groupadd --system --gid ${APP_GID} evalapp \
+ && useradd --system --create-home --uid ${APP_UID} --gid ${APP_GID} evalapp
 
 COPY --from=builder --chown=evalapp:evalapp /app/dist ./dist
 COPY --from=builder --chown=evalapp:evalapp /app/node_modules ./node_modules
@@ -161,6 +171,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       texlive-latex-extra \
       texlive-fonts-recommended \
       texlive-lang-french \
+      # Le moteur de composition est XeLaTeX : UTF-8 natif, fontspec, et
+      # l'écriture arabe des noms d'élèves — pdfTeX ne sait pas la composer.
+      # `texlive-lang-arabic` apporte `bidi`, la direction droite-à-gauche.
+      texlive-xetex \
+      texlive-lang-arabic \
+      # La police de l'écriture arabe : Amiri, libre (OFL 1.1), depuis le
+      # paquet Debian officiel — pas de fichier téléchargé hors archive.
+      # Voir docs/AMC-RUNTIME.md pour la fiche police complète.
+      fonts-hosny-amiri \
  && rm -rf /var/lib/apt/lists/*
 
 # Les fichiers d'AMC arrivent de l'étape de récupération, déjà vérifiés.
@@ -182,6 +201,13 @@ RUN dpkg-deb -x /tmp/paquets/auto-multiple-choice-common_*.deb / \
 RUN which auto-multiple-choice \
  && test -f /usr/libexec/AMC/perl/AMC-prepare.pl \
  && kpsewhich automultiplechoice.sty \
+ # La chaîne XeLaTeX complète : moteur, direction droite-à-gauche, police
+ # arabe. Sans l'un d'eux, un nom arabe sortirait faux ou pas du tout.
+ && which xelatex \
+ && kpsewhich fontspec.sty \
+ && kpsewhich polyglossia.sty \
+ && kpsewhich bidi.sty \
+ && test -f /usr/share/fonts/opentype/fonts-hosny-amiri/Amiri-Regular.ttf \
  # Et l'inverse : rien de la chaîne optique ne doit être revenu. On interroge
  # l'état d'installation, pas la simple présence au catalogue : dpkg garde une
  # ligne « not-installed » pour des paquets jamais posés.
