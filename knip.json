@@ -12,13 +12,28 @@
     "vitest.setup.ts",
     "vitest.global-setup.ts",
     "eslint.config.js",
-    "drizzle.config.ts",
     "tailwind.config.js",
     "postcss.config.js",
     "vite.config.ts",
     "api/**/*.spec.ts"
   ],
-  "project": ["api/**/*.ts", "src/**/*.{ts,tsx}", "contracts/**/*.ts", "db/**/*.ts", "scripts/**/*.ts", "e2e/**/*.ts"],
-  "ignore": ["db/migrations/**", "dist/**", "coverage/**"],
-  "ignoreBinaries": ["docker", "openssl", "pdftotext", "pdfinfo"]
+  "project": [
+    "api/**/*.ts",
+    "src/**/*.{ts,tsx}",
+    "contracts/**/*.ts",
+    "db/**/*.ts",
+    "scripts/**/*.ts",
+    "e2e/**/*.ts"
+  ],
+  "ignore": [
+    "db/migrations/**",
+    "dist/**",
+    "coverage/**"
+  ],
+  "ignoreBinaries": [
+    "docker",
+    "openssl",
+    "pdftotext",
+    "pdfinfo"
+  ]
 }

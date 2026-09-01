@@ -1,0 +1,13 @@
+{
+  "name": "atelier-qcm-migrations-authoring",
+  "private": true,
+  "description": "Environnement d'AUTHORING des migrations, séparé du pipeline de release. drizzle-kit génère les fichiers de migration ; il ne les applique jamais en CI ni en production — c'est node dist/migrate.js, le migrateur livré dans l'image, qui le fait. MIGRATION_AUTHORING_TOOL != PRODUCTION_MIGRATION_RUNTIME. La dépendance à @esbuild-kit/* (défaut amont connu de la série 0.31.x, corrigé seulement dans la 1.0 encore candidate) reste donc confinée ici, hors des gates.",
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "push": "drizzle-kit push"
+  },
+  "devDependencies": {
+    "drizzle-kit": "0.31.10",
+    "dotenv": "^16.4.5"
+  }
+}

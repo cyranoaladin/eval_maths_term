@@ -43,11 +43,16 @@ const definitions = {
 console.log(`Construction de ${paquet.name} ${VERSION} (${SHA})`);
 
 // ── Navigateur ───────────────────────────────────────────────────────────────
-const vite = spawnSync("npx", ["vite", "build"], {
-  stdio: "inherit",
-  env: { ...process.env, APP_VERSION: VERSION, GIT_SHA: SHA },
-});
-if (vite.status !== 0) process.exit(vite.status ?? 1);
+// `--sans-navigateur` : seulement le serveur et le migrateur. C'est ce que le
+// job CI des migrations utilise — il éprouve `node dist/migrate.js`, le
+// migrateur réellement déployé, et n'a nul besoin du bundle du navigateur.
+if (!process.argv.includes("--sans-navigateur")) {
+  const vite = spawnSync("npx", ["vite", "build"], {
+    stdio: "inherit",
+    env: { ...process.env, APP_VERSION: VERSION, GIT_SHA: SHA },
+  });
+  if (vite.status !== 0) process.exit(vite.status ?? 1);
+}
 
 // ── Serveur et migrateur ─────────────────────────────────────────────────────
 // `createRequire` est réinjecté : le bundle est en ESM, et pdfkit charge ses
