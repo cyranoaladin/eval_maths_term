@@ -171,12 +171,12 @@ Huit procédures ne sont appelées par aucun écran :
 | P28 | Sauvegarde et restauration éprouvées | **PASS** | répétition rejouée de bout en bout : sauvegarde → destruction de l'environnement → restauration → droits → readiness → données → PDF. La remise des droits ne demande plus ni `sudo` ni geste manuel : un assistant Docker éphémère — root le temps d'un `chown`, sans réseau, capacités réduites — rend le volume à l'identité applicative fixée (10001:10001, `ARG APP_UID`/`APP_GID` du Dockerfile) |
 | P29 | Migration de production : sauvegarde → préflight → migration → postflight | **PASS** | `scripts/migration-production.sh`, jouée d'un schéma rc1 portant des copies : 6 → 10 migrations, incidents JSON recopiés — voir §10 |
 | P30 | Retour arrière éprouvé | **PASS** | répétition complète sans intervention humaine : candidat en service → dégradation des données et corruption d'un tirage → repli vers l'image précédente → base restaurée → volume des tirages restauré à l'identique (SHA-256) → droits rendus par l'assistant Docker (reprise de possession avant extraction, remise à 10001:10001 après) → `/api/ready` prêt sur la version précédente. La répétition a d'ailleurs trouvé et fait corriger un défaut : un fichier du volume appartenant à root rendait l'ancienne purge impossible sans `sudo` |
-| P31 | Performance non régressée (p95 < 500 ms, 0 erreur) | IN_PROGRESS | `FINAL_LOCAL_BENCHMARK_ENV = INVALID` (décision maintenue). Le banc propre existe désormais : workflow `Release-Performance` (`workflow_dispatch`, runner GitHub) — préflight, image candidate exacte, MySQL et k6 épinglés, **trois campagnes** de 200 concurrents avec environnement recréé entre chacune (aucun contournement de quota). Reste à l'exécuter sur le HEAD candidat — voir §18 |
-| P32 | Endurance sans fuite | IN_PROGRESS | même workflow propre : 30 minutes, relevés de dérive toutes les 30 s (mémoire, CPU, connexions MySQL, pic de file du pool via `/api/health`, croissance disque), vérification finale d'absence de tout résidu. Reste à l'exécuter sur le HEAD candidat — voir §18 |
+| P31 | Performance non régressée (p95 < 500 ms, 0 erreur) | **PASS** | exécuté sur runner GitHub propre (workflow `Release-Performance`, run 33455815897, SHA `1856e25`) : préflight relevé, image candidate exacte construite du HEAD, MySQL et k6 épinglés, environnement **détruit et recréé entre les campagnes**. Trois campagnes de 200 concurrents : p95 = **40,4 / 35,8 / 36,1 ms** (p50 ≈ 6,7 ms, p99 ≈ 52 ms), 2 600 requêtes chacune, 200 remises chacune, **0 erreur HTTP, 0 échec métier, 0 refus de quota**. `FINAL_LOCAL_BENCHMARK_ENV = INVALID` maintenu : plus aucune preuve locale |
+| P32 | Endurance sans fuite | **PASS** | même run propre : 30 minutes, 1 cadence/s — **1 801 copies remises, 0 erreur HTTP, 0 échec métier**. Mémoire : départ 154 480 ko, pic 188 708, fin 188 712 — un plateau, pas une pente (la seconde moitié des relevés est contrôlée non strictement croissante). Connexions MySQL 4 → 5, pic de file du pool 0, croissance du système de fichiers 0. À la fin : **aucun résidu** — ni conteneur, ni volume, ni port |
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 28 / 34. FAIL : 0. IN_PROGRESS : 4. BLOCKED_EXTERNAL : 2.**
+**PASS : 30 / 34. FAIL : 0. IN_PROGRESS : 2. BLOCKED_EXTERNAL : 2.**
 
 Matrice recalculée le 1ᵉʳ septembre 2026 depuis l'artefact XeLaTeX
 `sha256:1d3a03aad384e9dad64c4a8b1579e756831a6090a79a7a2d223677475a1c4b97`
@@ -187,9 +187,9 @@ nouvel artefact plutôt que reconduite. Quatre lignes ont changé d'état à cet
 examen : P18, P28 et P30 vers `PASS` (file bornée ; restauration et repli
 sans sudo), et P13 rejoué à l'identique de contrat (`APPLICABLE = 0`,
 `UNKNOWN = 0`) sur le nouveau graphe de paquets. Restent `IN_PROGRESS` :
-P20/P21 (les trois CI complètes du même SHA, à lancer en dernier) et P31/P32
-(le banc propre existe — workflow Release-Performance — et doit être exécuté
-sur le HEAD candidat).
+P20 et P21 seuls — les trois exécutions CI complètes et indépendantes du même
+SHA, à lancer en dernier. P31 et P32 sont passés sur le banc propre
+(runner GitHub, run 33455815897) le 1ᵉʳ septembre 2026.
 
 L'état précédent de la matrice (31 août, artefact
 `sha256:e885b75b90436767da3bf8a8931e30f1ebfdd879cdd0ad88d88165a6fed3d121`,
@@ -1174,6 +1174,39 @@ agrégées à un résultat valide :
 
 La quatrième (39,1 / 36,7 / 36,6 ms) est cohérente, mais elle a été prise sur un
 disque plein : elle vaut comme indication, pas comme preuve.
+
+### Le banc propre, et ce qu'il a mesuré
+
+Le workflow `Release-Performance` remplace définitivement le poste local :
+runner GitHub neuf, préflight relevé (disque, CPU, RAM, ports libres, aucun
+résidu, SHA), image candidate construite du HEAD exact, MySQL et k6 épinglés
+par empreinte. Déclenchement par branche jetable `declencheur-performance/**`
+tant que `workflow_dispatch` n'est pas disponible (le fichier n'est pas sur
+`main`, et la fusion est interdite avant la release).
+
+Run 33455815897, SHA `1856e25`, 1ᵉʳ septembre 2026 :
+
+| Campagne | p50 | p95 | p99 | requêtes | remises | erreurs |
+|---|---|---|---|---|---|---|
+| 1 | 6,8 ms | 40,4 ms | 52,2 ms | 2 600 (74,3/s) | 200 | 0 |
+| 2 | 6,6 ms | 35,8 ms | 51,0 ms | 2 600 (74,3/s) | 200 | 0 |
+| 3 | 6,7 ms | 36,1 ms | 52,2 ms | 2 600 (74,3/s) | 200 | 0 |
+
+L'environnement est détruit et recréé entre les campagnes : chacune part d'un
+service neuf, les mesures sont indépendantes, aucun quota n'est approché.
+
+Endurance, même run : 30 minutes à une copie par seconde — 1 801 copies,
+0 erreur HTTP, 0 échec métier. Mémoire 154 480 → pic 188 708 → fin
+188 712 ko : un plateau atteint en début de course, pas une pente. Connexions
+MySQL 4 → 5. Pic de file du pool : 0 — la borne de §5 n'est jamais
+approchée en régime légitime. Croissance du système de fichiers : 0. Après
+démontage : aucun conteneur, aucun volume, aucun port — la leçon de
+PROCESS_HYGIENE est dans le protocole lui-même.
+
+```
+P31 = PASS
+P32 = PASS
+```
 
 ---
 
