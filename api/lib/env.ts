@@ -123,6 +123,29 @@ const envSchema = z.object({
    * est partagée avec d'autres applications.
    */
   DB_POOL_SIZE: z.coerce.number().int().min(1).max(150).default(60),
+
+  /**
+   * Borne de la file d'attente du pool — le nombre de requêtes qui peuvent
+   * attendre une connexion avant que le service ne réponde « saturé ».
+   *
+   * Zéro — l'infini du pilote — est interdit ici : « il vaut mieux attendre
+   * que perdre une copie » est vrai, « donc file infinie » ne l'est pas. Une
+   * saturation pathologique accumulerait des attentes sans fin et
+   * transformerait une pointe en épuisement mémoire.
+   *
+   * Calibrée par la mesure (`scripts/mesure-file-pool.ts`), pas copiée : sur
+   * deux cents remises rendues dans la même seconde — le contrat, une classe
+   * entière en fin d'épreuve — la profondeur de file culmine à 140, soit
+   * exactement la simultanéité moins le pool : chaque remise n'attend qu'une
+   * connexion à la fois, le pic est borné par la simultanéité HTTP, pas par
+   * le nombre d'allers-retours. À 400 remises — deux fois le contrat — le pic
+   * mesuré est 340, 0 refus. 2 000, c'est plus de dix fois le pic du contrat :
+   * aucun trafic légitime ne l'atteint, et une file pleine de 2 000 rappels
+   * pèse quelques centaines de kilo-octets — bornée, donc. Au plafond, la
+   * requête reçoit `503` et `Retry-After` ; la remise étant idempotente, le
+   * client rejoue sans double note.
+   */
+  DB_QUEUE_LIMIT: z.coerce.number().int().min(1).default(2000),
   REDIS_URL: z.string().optional(),
 
   /**
@@ -209,6 +232,7 @@ export const env = {
   port: _env.PORT,
   databaseUrl: _env.DATABASE_URL,
   dbPoolSize: _env.DB_POOL_SIZE,
+  dbQueueLimit: _env.DB_QUEUE_LIMIT,
   redisUrl: _env.REDIS_URL,
   paperOutputDir: _env.PAPER_OUTPUT_DIR,
   kimiAuthUrl: _env.KIMI_AUTH_URL,

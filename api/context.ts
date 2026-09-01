@@ -2,6 +2,7 @@ import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 import type { User } from "@db/schema";
 import type { StudentSessionPayload } from "./anticheat/session-token";
 import { authenticateRequest } from "./kimi/auth";
+import { estSaturationPool } from "./queries/connection";
 import { currentRequestId } from "./lib/request-id";
 
 export type TrpcContext = {
@@ -23,8 +24,16 @@ export async function createContext(
   };
   try {
     ctx.user = await authenticateRequest(opts.req.headers);
-  } catch {
-    // Authentication is optional here
+  } catch (e) {
+    /*
+      L'authentification est facultative ici — un appel anonyme est légitime.
+      Mais avaler TOUTES les erreurs mentait sous charge : quand la file du
+      pool est pleine, la recherche du compte échoue par saturation, et le
+      service répondait « Authentification requise » (401) à un utilisateur
+      pourtant connecté. La saturation remonte : la couche HTTP la traduit en
+      503 + Retry-After, ce qu'elle est.
+    */
+    if (estSaturationPool(e)) throw e;
   }
   return ctx;
 }

@@ -40,6 +40,32 @@ export function arreterComptageRequetes(): void {
   compteur.actif = false;
 }
 
+/** File d'attente du pool : pic observé depuis le dernier relevé. */
+const file = { pic: 0 };
+
+export function lireFilePool(): { profondeur: number; pic: number } {
+  const noyau = pool?.pool as unknown as { _connectionQueue?: { length: number } } | undefined;
+  return { profondeur: noyau?._connectionQueue?.length ?? 0, pic: file.pic };
+}
+
+export function remettreAZeroFilePool(): void {
+  file.pic = 0;
+}
+
+/**
+ * Vrai si l'erreur est la saturation de la file du pool — le seul refus que
+ * la base oppose sous charge. La couche HTTP le traduit en `503` avec
+ * `Retry-After` : temporaire, rejouable, jamais un `500`.
+ */
+export function estSaturationPool(e: unknown): boolean {
+  let cause: unknown = e;
+  for (let i = 0; i < 10 && cause instanceof Error; i++) {
+    if (cause.message.includes("Queue limit reached")) return true;
+    cause = cause.cause;
+  }
+  return false;
+}
+
 export function getPool(): mysql.Pool {
   if (!pool) {
     pool = mysql.createPool({
@@ -49,8 +75,29 @@ export function getPool(): mysql.Pool {
       // simultanées attendent le pool bien plus qu'elles ne travaillent.
       connectionLimit: env.dbPoolSize,
       waitForConnections: true,
-      queueLimit: 0,
+      // Fini, et calibré — voir `DB_QUEUE_LIMIT` dans lib/env.ts. Une file
+      // infinie transforme une saturation pathologique en épuisement mémoire ;
+      // au plafond, le pilote rend « Queue limit reached. », que la couche
+      // HTTP traduit en 503 + Retry-After. La remise étant idempotente, rien
+      // n'est perdu : le client rejoue.
+      queueLimit: env.dbQueueLimit,
       enableKeepAlive: true,
+    });
+
+    /*
+      Relevé de la file : profondeur courante et pic. C'est la mesure qui a
+      calibré la borne, et celle que l'endurance surveille (`pool_queue_peak`).
+      Le pilote n'expose pas la profondeur ; on écoute ses événements.
+    */
+    const noyauFile = pool.pool as unknown as {
+      on: (e: string, f: () => void) => void;
+      _connectionQueue?: { length: number };
+    };
+    noyauFile.on("enqueue", () => {
+      // L'événement part juste avant l'empilement : la profondeur atteinte
+      // est celle du moment, plus un.
+      const profondeur = (noyauFile._connectionQueue?.length ?? 0) + 1;
+      if (profondeur > file.pic) file.pic = profondeur;
     });
 
     if (process.env.PROFIL_SQL === "1") {

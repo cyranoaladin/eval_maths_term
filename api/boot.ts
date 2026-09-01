@@ -5,6 +5,7 @@ import type { HttpBindings } from "@hono/node-server";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter } from "./router";
 import { createContext } from "./context";
+import { estSaturationPool } from "./queries/connection";
 import { env } from "./lib/env";
 import { STUDENT_SESSION_HEADER } from "./middleware";
 import { logger } from "./lib/logger";
@@ -75,12 +76,17 @@ app.get(Paths.oauthCallback, createOAuthCallbackHandler());
  * indisponibilité en incident.
  */
 app.get("/api/health", async (c) => {
+  const { lireFilePool } = await import("./queries/connection");
   return c.json({
     status: "ok",
     uptime: process.uptime(),
     serverTime: new Date().toISOString(),
     version: VERSION_APPLICATION,
     gitSha: EMPREINTE_GIT,
+    // La file du pool : profondeur du moment, et pic depuis le démarrage.
+    // C'est la mesure qui a calibré `DB_QUEUE_LIMIT`, et celle que
+    // l'endurance relève (`pool_queue_peak`).
+    filePool: lireFilePool(),
   });
 });
 
@@ -121,6 +127,19 @@ app.use("/api/trpc/*", async (c) => {
           code: error.code,
           message: error.message,
         });
+      },
+      /*
+        Saturation de la file du pool : la seule erreur de charge que la base
+        oppose. Ce n'est pas un `500` — rien n'est cassé, le service est
+        momentanément plein — mais un `503` avec `Retry-After` : l'appelant
+        sait que c'est temporaire et rejouable. Les remises étant
+        idempotentes, un rejeu ne double jamais une note.
+      */
+      responseMeta: ({ errors }) => {
+        if (errors.some((e) => estSaturationPool(e))) {
+          return { status: 503, headers: { "Retry-After": "5" } };
+        }
+        return {};
       },
     });
   });
