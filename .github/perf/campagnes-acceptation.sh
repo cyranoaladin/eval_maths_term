@@ -38,7 +38,7 @@ for n in $(seq 1 "$CAMPAGNES"); do
   echo "  mesure : 200 concurrents…"
   debut=$(date +%s)
   CODE_K6=0
-  docker run --rm -i --network host \
+  docker run --rm -i --network host --user "$(id -u):$(id -g)" \
     -e BASE_URL="$BASE_URL" \
     -v "$PWD/$RESULTATS":/resultats \
     "$IMAGE_K6" run --summary-export "/resultats/campagne-$n.json" - \

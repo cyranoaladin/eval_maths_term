@@ -98,8 +98,8 @@ verifier_proprete() {
   if docker volume ls --format '{{.Name}}' | grep -q '^perf-'; then
     echo "✗ volumes résiduels :"; docker volume ls | grep 'perf-'; reste=1
   fi
-  if ss -tln | awk '{print $4}' | grep -qE ":(3000|3306)$"; then
-    echo "✗ un port de mesure est resté ouvert :"; ss -tln; reste=1
+  if ss -tln | awk '{print $4}' | grep -qE ":(${PORT_APPLICATION}|3306)$"; then
+    echo "✗ un port de mesure est resté ouvert :"; ss -tln | awk '{print $4}' | grep -E ":(${PORT_APPLICATION}|3306)$"; reste=1
   fi
   [ "$reste" -eq 0 ] && echo "  aucun résidu : conteneurs, volumes, ports propres"
   return "$reste"

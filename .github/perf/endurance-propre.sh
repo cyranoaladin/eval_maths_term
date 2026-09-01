@@ -55,7 +55,7 @@ trap 'kill $ECHANTILLONNEUR 2>/dev/null || true; demonter' EXIT
 
 echo "▶ Endurance $DUREE — mémoire de départ : ${MEM_DEBUT} ko, connexions : ${CONNEXIONS_DEBUT}"
 CODE_K6=0
-docker run --rm -i --network host \
+docker run --rm -i --network host --user "$(id -u):$(id -g)" \
   -e BASE_URL="$BASE_URL" -e DUREE="$DUREE" \
   -v "$PWD/$RESULTATS":/resultats \
   "$IMAGE_K6" run --quiet --summary-export /resultats/endurance.json - \
