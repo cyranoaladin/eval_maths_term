@@ -12,11 +12,18 @@ on:
     branches: [main, "release/*"]
   pull_request:
     branches: [main]
+  # Le protocole de release exige TROIS exécutions complètes et indépendantes
+  # du même commit — pas des « rerun failed jobs ». `workflow_dispatch` permet
+  # de les lancer une à une sur le SHA candidat.
+  workflow_dispatch:
 
 # Une seule exécution par branche : une nouvelle poussée annule la précédente.
+# Les exécutions déclenchées à la main, elles, sont indépendantes par
+# construction — chacune son groupe — sinon la deuxième annulerait la première
+# et les « trois exécutions vertes consécutives » seraient inobtenables.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'branche' }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 permissions:
   contents: read
@@ -269,15 +276,23 @@ jobs:
 
       # Garde-fou : les migrations ne contenaient que des ALTER sans journal, et
       # aucune base ne pouvait être construite depuis le dépôt.
+      #
+      # Le migrateur éprouvé est celui de production — `node dist/migrate.js`,
+      # le binaire livré dans l'image — et non la CLI drizzle-kit, qui ne sert
+      # qu'à l'AUTHORING des migrations et vit dans son environnement séparé
+      # (`tools/migrations/`). Le gate teste le chemin réellement déployé.
+      - name: Construire le migrateur de production
+        run: node scripts/build.mjs --sans-navigateur
+
       - name: Monter une base vierge et la peupler
         run: |
-          npx drizzle-kit migrate
+          node dist/migrate.js
           npx tsx db/seed.ts
 
       # Rejouer sur une base déjà migrée ne doit rien changer : c'est ce qui
       # rend une mise à jour de production reproductible.
       - name: Rejouer les migrations est sans effet
-        run: npx drizzle-kit migrate
+        run: node dist/migrate.js
 
       # Les réponses annoncées par les questions et les barèmes qui les notent
       # doivent s'accorder — sinon toute une classe a faux sans qu'on le sache.
@@ -330,10 +345,13 @@ jobs:
       - name: Recette de mise en service
         run: RECETTE_IMAGE=atelier-qcm:ci bash scripts/recette-docker.sh
 
-      # La matrice de preuve papier : six tirages — un élève, trente élèves,
-      # formules, accents, énoncé long multi-pages, vrai/faux — vérifiés sur
-      # leurs invariants fonctionnels, jamais sur l'empreinte des PDF, que
-      # pdflatex horodate.
+      # La matrice de preuve papier : dix tirages — un élève, trente élèves,
+      # formules, accents, énoncé long multi-pages, vrai/faux, écriture arabe,
+      # nom mixte, corpus Unicode, classe mixte — vérifiés sur leurs
+      # invariants fonctionnels, jamais sur l'empreinte des PDF, que le moteur
+      # horodate. Les cas arabes portent en plus une preuve visuelle : rendu
+      # raster déterministe comparé aux références de scripts/refs-papier/,
+      # et deux générations concurrentes identiques à la référence.
       - name: Matrice de preuve papier
         run: |
           npx tsx scripts/matrice-preuve-papier.ts /tmp/matrice
@@ -382,9 +400,6 @@ jobs:
       - name: Vulnérabilités des dépendances de production
         run: npm run audit:prod
 
-      - name: Nomenclature des dépendances npm
-        run: npm run sbom
-
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
       - name: Construire l'image à analyser
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -420,7 +435,6 @@ jobs:
         with:
           name: securite
           path: |
-            sbom.json
             sbom-image.json
             rapport-trivy.json
             security/vex.openvex.json

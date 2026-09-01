@@ -1,0 +1,101 @@
+name: Release-Performance
+
+#
+# Les preuves P31 (acceptation) et P32 (endurance), sur un environnement
+# propre et jetable — jamais sur un poste de travail. Le poste local est
+# déclaré invalide pour ces mesures : disque saturé, autres projets, bruit.
+#
+# Le protocole :
+#   - le HEAD exact demandé, l'image exacte candidate construite de lui ;
+#   - préflight relevé avant toute chose : disque, CPU, RAM, ports, résidus ;
+#   - MySQL épinglée par empreinte, k6 épinglé par empreinte ;
+#   - P31 : trois campagnes d'acceptation, 200 concurrents chacune,
+#     p95 < 500 ms, 0 erreur HTTP, 0 échec métier. L'environnement complet est
+#     détruit et reconstruit entre les campagnes : chacune part d'un service
+#     neuf, aucun quota n'est contourné, aucune attente artificielle ;
+#   - P32 : trente minutes d'endurance sur le même environnement, relevés de
+#     dérive toutes les trente secondes, puis vérification qu'il ne reste rien.
+#
+# Toutes les actions et images sont épinglées par empreinte complète.
+#
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_MYSQL: mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb
+  IMAGE_K6: grafana/k6@sha256:5221b620a4f874faff6e32ba597aa667c058391fe4898b1c6f6377f062c6cdec
+  PORT_APPLICATION: 3000
+
+jobs:
+  performance:
+    name: P31 acceptation + P32 endurance
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # ── Préflight : l'environnement est-il propre et suffisant ? ──────────
+      - name: Préflight
+        run: |
+          echo "GIT_SHA = $(git rev-parse HEAD)"
+          echo "── disque ──";  df -h / | tail -1
+          echo "── CPU ──";     nproc; grep -m1 "model name" /proc/cpuinfo || true
+          echo "── RAM ──";     free -h | head -2
+          echo "── ports ──"
+          if ss -tln | awk '{print $4}' | grep -qE ":(3000|3306)$"; then
+            echo "✗ un port requis est déjà occupé" >&2; ss -tln; exit 1
+          fi
+          echo "  3000 et 3306 libres"
+          echo "── résidus docker ──"
+          docker ps -a --format '{{.Names}}' | grep -E "perf-" && exit 1 || echo "  aucun"
+          # Le disque du runner doit absorber l'image (~1,2 Go) et la base.
+          LIBRE_GO=$(df --output=avail -BG / | tail -1 | tr -dc 0-9)
+          [ "$LIBRE_GO" -ge 20 ] || { echo "✗ moins de 20 Go libres" >&2; exit 1; }
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Version attendue de l'artefact
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - name: Construire l'image candidate exacte
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          push: false
+          load: true
+          tags: atelier-qcm:perf
+          cache-from: type=gha
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
+            GIT_SHA=${{ github.sha }}
+
+      - name: Empreinte de l'image mesurée
+        run: docker inspect --format '{{.Id}}' atelier-qcm:perf
+
+      # ── P31 : trois campagnes, environnement neuf à chaque fois ──────────
+      - name: P31 — trois campagnes d'acceptation
+        run: bash .github/perf/campagnes-acceptation.sh atelier-qcm:perf 3
+
+      # ── P32 : endurance de trente minutes ────────────────────────────────
+      - name: P32 — endurance
+        run: bash .github/perf/endurance-propre.sh atelier-qcm:perf 30m
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: performance
+          path: |
+            perf-resultats/
+          retention-days: 90
