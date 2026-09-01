@@ -51,6 +51,10 @@ case "$AMC_SCENARIO" in
     # disparaît du document.
     echo 'Missing character: There is no ي ("062A) in font Amiri!'
     ;;
+  caractere-manquant-sans-detail)
+    # La mention sans sa ligne de détail : le refus doit tenir quand même.
+    echo 'Missing character mentionné sans détail'
+    ;;
 esac
 echo "amc appelé : $*"
 if [ "$1" = "prepare" ] && [ "$2" = "--mode" ] && [ "$3" = "s" ]; then
@@ -267,6 +271,16 @@ describe("production des documents", () => {
       await expect(runAmc(entree(workdir))).rejects.toMatchObject({
         name: "AmcFailedError",
         output: expect.stringContaining("Missing character"),
+      });
+    });
+
+    it("refuse aussi sur la seule mention, sans ligne de détail", async () => {
+      amcDeTheatre("caractere-manquant-sans-detail");
+      const workdir = await dossierDeTravail();
+
+      await expect(runAmc(entree(workdir))).rejects.toMatchObject({
+        name: "AmcFailedError",
+        output: "Missing character",
       });
     });
 

@@ -89,14 +89,15 @@ export function getPool(): mysql.Pool {
       calibré la borne, et celle que l'endurance surveille (`pool_queue_peak`).
       Le pilote n'expose pas la profondeur ; on écoute ses événements.
     */
+    // `_connectionQueue` existe dès la construction du pool : pas de garde.
     const noyauFile = pool.pool as unknown as {
       on: (e: string, f: () => void) => void;
-      _connectionQueue?: { length: number };
+      _connectionQueue: { length: number };
     };
     noyauFile.on("enqueue", () => {
       // L'événement part juste avant l'empilement : la profondeur atteinte
       // est celle du moment, plus un.
-      const profondeur = (noyauFile._connectionQueue?.length ?? 0) + 1;
+      const profondeur = noyauFile._connectionQueue.length + 1;
       if (profondeur > file.pic) file.pic = profondeur;
     });
 
