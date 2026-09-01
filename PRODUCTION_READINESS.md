@@ -153,12 +153,12 @@ Huit procédures ne sont appelées par aucun écran :
 | P10 | OAuth durci — `PUBLIC_BASE_URL`, cookie `Secure`, validation du jeton | **PASS** | `api/__tests__/security/oauth-durcissement.spec.ts` — 18 cas |
 | P11 | En-têtes de sécurité HTTP, CSP sans `unsafe-eval` | **PASS** | `surface-http.integration.spec.ts` sur du vrai HTTP + 39 parcours sur le build de production, trois moteurs |
 | P12 | Analyse de secrets dans notre CI | **PASS** | job `Sécurité` : gitleaks sur tout l'historique, `--exit-code 1` ; 6 empreintes historiques exactes dans `.gitleaksignore`, aucune règle désactivée, aucun chemin exclu, aucune wildcard |
-| P13 | Chaîne d'approvisionnement — 0 vulnérabilité applicable, SBOM, VEX | **PASS** | runtime réduit par la mesure (443 → 179 paquets, 3 307 → 988 Mo, 32 → 14 CRITICAL, 139 → 48 HIGH). Les 26 CVE distinctes restantes sont instruites une par une et toutes `NOT_AFFECTED` avec preuve statique et dynamique : `APPLICABLE = 0`, `UNKNOWN = 0`. Attestation OpenVEX liée aux versions exactes, portail fermé par défaut — voir §17 et `docs/VEX-CANDIDATES.md` |
+| P13 | Chaîne d'approvisionnement — 0 vulnérabilité applicable, SBOM, VEX | **PASS** | rejoué sur l'artefact XeLaTeX : 185 paquets, 1 070 Mo, RAW_CRITICAL = 14, RAW_HIGH = 48 — l'ensemble des CVE est identique, paire par paire, à l'image pdfTeX : la chaîne XeLaTeX (texlive-xetex, texlive-lang-arabic, fonts-hosny-amiri) n'apporte **aucune** vulnérabilité élevée ou critique. Trois analyses réinstruites pour le nouveau runtime — libexpat désormais chargée par fontconfig sans chemin d'entrée utilisateur (`vulnerable_code_cannot_be_controlled_by_adversary`), traces execve/LD_DEBUG rejouées. `APPLICABLE = 0`, `UNKNOWN = 0`, attestation OpenVEX régénérée et liée à l'empreinte du runtime — voir §17 et `docs/VEX-CANDIDATES.md` |
 | P14 | Build reproductible, images épinglées par empreinte | **PASS** | `scripts/verifier-epinglage.sh`, premier pas du travail Sécurité : `MUTABLE_CRITICAL_ACTIONS = 0`, `MUTABLE_RELEASE_IMAGES = 0`. Les deux archives d'AMC sont épinglées par version **et** vérifiées par SHA-256 à la construction |
-| P15 | Une seule image canonique de production, avec impression | **PASS** | un seul `Dockerfile` ; recette **28/28** sur l'artefact final `sha256:e885b75b…`, conteneur en lecture seule, toutes capacités retirées. Matrice papier six cas et corpus des entrées limites : PASS |
+| P15 | Une seule image canonique de production, avec impression | **PASS** | un seul `Dockerfile` ; recette **28/28** sur l'artefact XeLaTeX `sha256:1d3a03aa…`, conteneur en lecture seule, toutes capacités retirées. Matrice papier **dix cas** — preuve visuelle des écritures arabes comprise — et corpus des entrées limites (22 cas) : PASS |
 | P16 | Vivacité et disponibilité distinctes et réelles | **PASS** | `/api/health` et `/api/ready` ; 4 vérifications HTTP dans `surface-http.integration.spec.ts` ; le conteneur interroge la disponibilité |
 | P17 | Arrêt gracieux | **PASS** | régression trouvée et corrigée : le délai de garde à 125 s faisait retenir l'arrêt par une connexion inactive. `closeIdleConnections()` relâche celles-là seulement, et il faut y repasser — au moment du signal la connexion qui porte la remise n'est pas inactive. Trois passages consécutifs du smoke, 0 échec |
-| P18 | Contre-pression, remise idempotente | **PASS** | `remise-concurrente.integration.spec.ts` : une remise rejouée rend mot pour mot la même réponse ; audit des files en §5 |
+| P18 | Contre-pression, remise idempotente | **PASS** | rouvert et refermé : la file du pool est désormais **bornée** (`DB_QUEUE_LIMIT` = 2 000, calibrée par la mesure — pic de 140 à 200 remises simultanées, 340 à 400, 0 refus). Au plafond : `503` + `Retry-After`, jamais `500`, remise rejouable sans double note — `saturation-pool.integration.spec.ts`. Audit des files en §5 |
 | P19 | Observabilité — 0 `console.*`, supervision d'erreurs | **PASS** | `journalisation.spec.ts` : 0 appel direct ; supervision branchée sur `logger.error`, 9 tests de nettoyage, `scripts/verifier-supervision.ts` |
 | P20 | CI : tests navigateur obligatoires, aucun job tolérant l'échec | IN_PROGRESS | aucun `continue-on-error` ; portails ajoutés : Firefox de série sous COOP, applicabilité VEX, avertissements, budget du premier chargement, matrice papier, corpus des limites. Reste les **trois exécutions vertes consécutives** sur le HEAD candidat |
 | P21 | 0 test en échec, 0 ignoré, 0 instable (0 reprise) | IN_PROGRESS | 1 174 tests unitaires et d'intégration verts ; les trois moteurs verts fichier par fichier sur le build de production ; portail Firefox de série sous COOP, 400 navigations, 0 blocage. `PLAYWRIGHT_RETRIES = 0`, `CUSTOM_NAVIGATION_RETRY = 0`. Reste les **trois exécutions CI vertes consécutives**, sans code entre elles ni relance manuelle |
@@ -168,22 +168,32 @@ Huit procédures ne sont appelées par aucun écran :
 | P25 | Aucune erreur navigateur inattendue tolérée | **PASS** | surveillance installée sur chaque test sans qu'il ait à la demander ; exceptions, pageerror, `console.error` et 5xx ; aucun filtre global |
 | P26 | 0 code mort, 0 dépendance inutilisée, 0 duplication métier | **PASS** | `knip` ne signale plus rien ; `jscpd` 1,34 % — voir §4 |
 | P27 | `main` protégée, tags protégés | **PASS** | protection posée et éprouvée : poussée directe refusée, réécriture de `v1.0.0-rc1` refusée — voir §11 |
-| P28 | Sauvegarde et restauration éprouvées | **PASS** | répétition rejouée : sauvegarde, restauration, « Restauration vérifiée », 11 migrations et décomptes cohérents. La remise des droits du dossier de tirages à l'utilisateur applicatif exige `root` ; le script la tente et, à défaut, imprime la commande exacte |
+| P28 | Sauvegarde et restauration éprouvées | **PASS** | répétition rejouée de bout en bout : sauvegarde → destruction de l'environnement → restauration → droits → readiness → données → PDF. La remise des droits ne demande plus ni `sudo` ni geste manuel : un assistant Docker éphémère — root le temps d'un `chown`, sans réseau, capacités réduites — rend le volume à l'identité applicative fixée (10001:10001, `ARG APP_UID`/`APP_GID` du Dockerfile) |
 | P29 | Migration de production : sauvegarde → préflight → migration → postflight | **PASS** | `scripts/migration-production.sh`, jouée d'un schéma rc1 portant des copies : 6 → 10 migrations, incidents JSON recopiés — voir §10 |
-| P30 | Retour arrière éprouvé | IN_PROGRESS | `scripts/repli-production.sh` démarre désormais le conteneur avec les mêmes restrictions que le compose. La répétition n'a pas pu aller à son terme sur ce poste : la restauration ne peut pas rendre le dossier de tirages à l'uid 10001 sans `root`, et `/api/ready` répond alors « tirages : EACCES ». Le script le détecte et l'écrit. À rejouer là où le restaurateur peut le faire |
-| P31 | Performance non régressée (p95 < 500 ms, 0 erreur) | IN_PROGRESS | trois campagnes conformes (39,1 / 36,7 / 36,6 ms, 0 erreur) **mais sur un banc invalide** : `FINAL_LOCAL_BENCHMARK_ENV = INVALID`, disque à 95 %. À rejouer sur runner dédié ou staging — voir §18 |
-| P32 | Endurance sans fuite | IN_PROGRESS | 30 min, 1 801 copies, 0 erreur, mémoire plafonnée — **même banc invalide**, à rejouer sur environnement propre — voir §18 |
+| P30 | Retour arrière éprouvé | **PASS** | répétition complète sans intervention humaine : candidat en service → dégradation des données et corruption d'un tirage → repli vers l'image précédente → base restaurée → volume des tirages restauré à l'identique (SHA-256) → droits rendus par l'assistant Docker (reprise de possession avant extraction, remise à 10001:10001 après) → `/api/ready` prêt sur la version précédente. La répétition a d'ailleurs trouvé et fait corriger un défaut : un fichier du volume appartenant à root rendait l'ancienne purge impossible sans `sudo` |
+| P31 | Performance non régressée (p95 < 500 ms, 0 erreur) | IN_PROGRESS | `FINAL_LOCAL_BENCHMARK_ENV = INVALID` (décision maintenue). Le banc propre existe désormais : workflow `Release-Performance` (`workflow_dispatch`, runner GitHub) — préflight, image candidate exacte, MySQL et k6 épinglés, **trois campagnes** de 200 concurrents avec environnement recréé entre chacune (aucun contournement de quota). Reste à l'exécuter sur le HEAD candidat — voir §18 |
+| P32 | Endurance sans fuite | IN_PROGRESS | même workflow propre : 30 minutes, relevés de dérive toutes les 30 s (mémoire, CPU, connexions MySQL, pic de file du pool via `/api/health`, croissance disque), vérification finale d'absence de tout résidu. Reste à l'exécuter sur le HEAD candidat — voir §18 |
 | P33 | Déploiement et recette sur staging | BLOCKED_EXTERNAL | aucune cible désignée |
 | P34 | Déploiement et recette de production | BLOCKED_EXTERNAL | aucune cible désignée |
 
-**PASS : 27 / 34. FAIL : 0. IN_PROGRESS : 5. BLOCKED_EXTERNAL : 2.**
+**PASS : 28 / 34. FAIL : 0. IN_PROGRESS : 4. BLOCKED_EXTERNAL : 2.**
 
-Matrice recalculée le 31 août 2026 depuis l'artefact final
-`sha256:e885b75b90436767da3bf8a8931e30f1ebfdd879cdd0ad88d88165a6fed3d121`
-(HEAD `85ef835`), et non reconduite depuis l'état précédent : la réduction du
-runtime, le durcissement du conteneur et le redécoupage des paquets touchaient
-assez de lignes pour qu'aucun `PASS` ne soit repris sans preuve. Trois lignes
-ont changé d'état à l'examen — P14 et P17 vers `PASS`, P30 vers `IN_PROGRESS`.
+Matrice recalculée le 1ᵉʳ septembre 2026 depuis l'artefact XeLaTeX
+`sha256:1d3a03aad384e9dad64c4a8b1579e756831a6090a79a7a2d223677475a1c4b97`
+(HEAD `8f62c3e`). Le passage du renderer à XeLaTeX a **rouvert
+automatiquement** toute preuve attachée à l'image — P13, P15, la matrice
+papier, le corpus des limites, la recette — et chacune a été rejouée sur le
+nouvel artefact plutôt que reconduite. Quatre lignes ont changé d'état à cet
+examen : P18, P28 et P30 vers `PASS` (file bornée ; restauration et repli
+sans sudo), et P13 rejoué à l'identique de contrat (`APPLICABLE = 0`,
+`UNKNOWN = 0`) sur le nouveau graphe de paquets. Restent `IN_PROGRESS` :
+P20/P21 (les trois CI complètes du même SHA, à lancer en dernier) et P31/P32
+(le banc propre existe — workflow Release-Performance — et doit être exécuté
+sur le HEAD candidat).
+
+L'état précédent de la matrice (31 août, artefact
+`sha256:e885b75b90436767da3bf8a8931e30f1ebfdd879cdd0ad88d88165a6fed3d121`,
+HEAD `85ef835`) reste consultable dans l'historique.
 
 Le décompte précédent — « 32 / 34 » — était faux. Il est corrigé ci-dessus, et
 ce qui l'a rendu faux est écrit en §16 et §17 plutôt que résumé.
@@ -226,7 +236,7 @@ avant l'expiration de son propre délai. Inventaire de ce qui borne quoi.
 
 | File ou ressource | Borne | Comportement au plafond |
 |---|---|---|
-| Connexions MySQL | `DB_POOL_SIZE` = 60 | **attend** — `queueLimit: 0`, file non bornée |
+| Connexions MySQL | `DB_POOL_SIZE` = 60, `DB_QUEUE_LIMIT` = 2 000 | attend jusqu'à la borne ; au-delà `503` + `Retry-After`, remise rejouable |
 | Corps de requête | 10 Mo | refuse (`413`) |
 | Ouverture de session, par candidat | 5 / min | refuse (`429`) |
 | Ouverture de session, par adresse IP | 600 / 5 min | refuse (`429`) |
@@ -238,13 +248,22 @@ avant l'expiration de son propre délai. Inventaire de ce qui borne quoi.
 | Envoi d'un brouillon depuis le client | 8 s | bascule sur IndexedDB, rejoue toutes les 5 s |
 | Arrêt du serveur | 20 s | ferme quand même |
 
-**La file du pool n'est pas bornée, et c'est délibéré.** Une remise de copie
-enchaîne une vingtaine d'allers-retours ; deux cents copies rendues dans la même
-seconde — la fin d'une épreuve — demandent plus de connexions qu'il n'y en a.
-Refuser serait perdre des copies ; faire attendre les sert toutes. La mesure de
-charge donne le prix de cette attente : p95 ≈ 2,09 s sur deux cents remises
-artificiellement simultanées, sans une seule erreur. C'est le seul endroit du
-système où l'on préfère attendre à refuser, et c'est le bon.
+**La file du pool est bornée — rouvert et corrigé.** « Il vaut mieux attendre
+que perdre une copie » est vrai ; « donc file infinie » ne l'est pas : une
+saturation pathologique aurait accumulé des attentes sans fin et transformé
+une pointe en épuisement mémoire. La borne est calibrée par la mesure
+(`scripts/mesure-file-pool.ts`) : sur deux cents remises rendues dans la même
+seconde — le contrat — le pic de file est de **140**, exactement la
+simultanéité moins le pool ; à quatre cents remises — deux fois le contrat —
+**340**, toujours 0 refus. `DB_QUEUE_LIMIT` = 2 000, plus de dix fois le pic
+du contrat : aucun trafic légitime ne l'atteint. Au plafond, la requête reçoit
+`503` avec `Retry-After` — jamais un `500`, et jamais un `401` mensonger : la
+saturation rencontrée pendant l'authentification remonte désormais comme
+telle. Une requête déjà assise dans la file n'est jamais abandonnée ; une
+remise refusée puis rejouée aboutit sans double note — la remise est
+idempotente. Le tout est éprouvé par
+`api/__tests__/integration/saturation-pool.integration.spec.ts`, et le pic de
+file est exposé par `/api/health` (`filePool`) pour l'endurance.
 
 **`answerSave` était déclarée et jamais appliquée.** La seule écriture qu'un
 élève peut répéter à volonté n'avait aucune borne. Elle en a une, calibrée sur
@@ -449,11 +468,25 @@ dossier des tirages effacé, puis restauration : 1 évaluation, 20 questions,
 2 copies, 5 réponses, 10 migrations, 1 fichier de tirage. L'application a été
 redémarrée dessus et a servi l'évaluation restaurée. `RESTORE_DRILL = PASS`.
 
-Ce que la répétition a montré : l'archive des tirages, extraite par
-l'utilisateur qui restaure, revenait avec les droits de celui-ci et non ceux du
-conteneur — `/api/ready` répondait alors « tirages : EACCES ». Le script rend
-désormais le dossier à l'uid de l'application, ou le dit à voix haute quand il
-ne le peut pas.
+Ce que la première répétition avait montré : l'archive des tirages, extraite
+par l'utilisateur qui restaure, revenait avec les droits de celui-ci et non
+ceux du conteneur — `/api/ready` répondait alors « tirages : EACCES ».
+
+Ce qui a été corrigé depuis, puis rejoué : la remise des droits ne repose plus
+sur un `chown` manuel ni sur un `sudo` de circonstance. L'identité applicative
+est **fixée** dans le Dockerfile — `ARG APP_UID=10001`, `ARG APP_GID=10001` ;
+le gid n'est plus le compteur implicite des groupes système — et le script
+lance un **assistant Docker éphémère** : l'image de l'application (ou, à
+défaut, l'image MySQL déjà exigée par la restauration), `--user 0`, sans
+réseau, toutes capacités retirées sauf le changement de propriétaire,
+entrypoint `chown` explicite, détruite aussitôt. Avant l'extraction, le même
+assistant reprend possession du volume existant — la deuxième répétition a
+précisément trouvé qu'un fichier appartenant à root rendait la purge
+impossible sans cela. Après extraction, il rend tout à 10001:10001, et le
+script **vérifie** le propriétaire avant de déclarer la restauration réussie.
+Répétition rejouée de bout en bout (sauvegarde → destruction → restauration →
+droits → readiness → données → PDF à l'empreinte identique) :
+`RESTORE_DRILL = PASS`, zéro intervention humaine.
 
 ### Migration de production
 
@@ -486,6 +519,14 @@ simulé : dix questions supprimées, toutes les notes remises à zéro, le sujet
 imprimé effacé. Après repli : service prêt sur les six contrôles, version
 annoncée `v1.0.0-rc1` avec son empreinte git, vingt questions, deux copies avec
 leurs notes, le sujet revenu. `ROLLBACK_DRILL = PASS`.
+
+**Répétition rejouée** après le passage à l'assistant Docker : candidat
+XeLaTeX en service, données dégradées (questions supprimées, tirage corrompu
+par root), puis `repli-production.sh` seul — arrêt gracieux, restauration de
+la base et du volume, droits rendus par l'assistant (le repli passe sa propre
+image comme `IMAGE_DROITS`), service prêt sur la version précédente, données
+et tirage à l'empreinte identique. Aucune commande manuelle, aucun `sudo` :
+`ROLLBACK_DRILL = PASS`.
 
 Ce que la répétition a montré : `scripts/recette-docker.sh` construisait l'image
 **sans** `APP_VERSION` ni `GIT_SHA`. La recette éprouvait donc un artefact qui
@@ -1133,3 +1174,93 @@ agrégées à un résultat valide :
 
 La quatrième (39,1 / 36,7 / 36,6 ms) est cohérente, mais elle a été prise sur un
 disque plein : elle vaut comme indication, pas comme preuve.
+
+---
+
+## 19. Le papier Unicode : le renderer requalifié
+
+La restriction au répertoire latin n'était pas tenable pour un établissement
+français de Tunis : « محمد بن علي » est un nom d'élève légitime. Le renderer a
+été requalifié, et chaque preuve attachée à l'ancien artefact a été refaite.
+
+### Le moteur
+
+**XeLaTeX**, demandé explicitement (`prepare --mode s --with xelatex`) —
+UTF-8 natif, `fontspec`, `polyglossia` pour la typographie française et la
+direction droite-à-gauche des seuls fragments arabes (`\textarabic`, posé
+après échappement, jamais sur la page entière). La police arabe est **Amiri**,
+du paquet Debian officiel `fonts-hosny-amiri 1.001-1` (licence OFL) — aucune
+police téléchargée d'une URL non versionnée. `--no-shell-escape` inchangé,
+lancement par `execFile` inchangé. Fiche complète : `docs/AMC-RUNTIME.md`.
+
+### L'identité d'une copie
+
+`\AMCassociation` reçoit désormais un identifiant machine stable et ASCII —
+`student-<id interne>` — jamais le nom. Le nom réel, Unicode et échappé, ne
+sert qu'à l'affichage. L'association logique d'une copie ne dépend plus du
+rendu d'un nom, et une future correction optique lira cette clé.
+
+### La fin du CSV
+
+Le serveur connaît les élèves : chaque copie est un bloc `\copiepour{clé}{nom}`
+généré directement dans le document. Disparus : `eleves.csv`, la logique de
+neutralisation propre au CSV, la réinjection du nom par `\csvreader`. Le
+paquet TeX `csvsimple` reste dans l'image — `automultiplechoice.sty` en fait
+un `\RequirePackage` inconditionnel — mais plus aucune donnée du produit ne le
+traverse.
+
+### Ce qui est interdit, et tenu
+
+Aucun nom n'est translittéré ; aucun caractère remplacé par « ? » ; aucune
+suppression silencieuse. Deux gardes le tiennent : le répertoire (latin +
+arabe pour les textes ; latin seul pour les énoncés, qui sont du LaTeX brut
+auquel on ne peut pas poser d'enveloppe de direction) refuse en nommant le
+caractère ; et la composition **échoue** si le journal du moteur porte un
+« Missing character » — mesuré : XeLaTeX ampute silencieusement, code de
+sortie nul, et ce chemin est fermé (`amc-runner.ts`).
+
+### Ce que la requalification a trouvé
+
+Deux défauts du moteur, mesurés puis bornés :
+
+- un mot insécable de 1 000 caractères en mode texte fait tomber XeTeX en
+  erreur de segmentation ; de 1 100 à 2 000, il **boucle sans fin** — AMC
+  rendant un code nul dans les deux cas. `LIMITES.motInsecable = 500`
+  (les formules `$…$` exclues du décompte : cent vingt fractions imbriquées de
+  1 200 caractères composent, cas 42 du corpus) ;
+- sous saturation du pool, l'authentification avalait l'erreur et répondait
+  « Authentification requise » — voir §5.
+
+### Les preuves
+
+- **Matrice papier** : dix cas — dont un élève arabe seul, un nom mixte
+  « Ben Salah Mohamed محمد », le corpus Unicode complet (accents, apostrophes
+  typographique et ASCII, tiret, arabe, mixte, accent décomposé U+0308
+  normalisé NFC), trente élèves mêlant latin et arabe sur plusieurs pages.
+  `MATRICE_PAPIER = PASS`.
+- **Preuve visuelle** : la page de référence des cas arabes est rendue en
+  raster déterministe dans l'environnement poppler épinglé
+  (`docker/preuve-papier.Dockerfile`) et comparée **octet à octet** aux
+  références versionnées (`scripts/refs-papier/`), examinées à l'œil :
+  lettres jointes, ordre droite-à-gauche, aucun glyphe manquant. `pdftotext`
+  ne sait pas lire l'arabe ; les pixels, si.
+- **Concurrence** : deux générations simultanées du même sujet, chacune
+  identique au raster de référence.
+- **Corpus des limites** : 22 cas, `AMONT = PASS`, `AVAL = PASS` — dont les
+  trois nouveaux cas Unicode qui composent, et les deux mots insécables qui
+  refusent en nommant la question.
+- **Recette Docker** : 28/28 sur l'artefact XeLaTeX, chaîne enseignant
+  complète, grille alignée, 20/20 sur copie juste.
+- **Tests** : 1 185 unitaires et d'intégration verts, dont le rendu
+  d'affichage (NFC, enveloppes de direction, échappement avant enveloppe) et
+  la clé d'association.
+
+### L'image
+
+185 paquets (+6 : `texlive-xetex`, `texlive-lang-arabic`, `fonts-hosny-amiri`,
+`teckit`, `texlive-plain-generic`, `tipa`), 1 070 Mo (+82), `RAW_CRITICAL = 14`
+et `RAW_HIGH = 48` — l'ensemble des CVE est **identique, paire par paire**, à
+l'image pdfTeX. Traces execve et LD_DEBUG rejouées : la chaîne d'exécution est
+plus courte (cinq programmes, plus de génération de polices bitmap), et seules
+les bibliothèques de composition OpenType s'ajoutent (fontconfig, freetype,
+harfbuzz, graphite2, ICU, TECkit, expat — réinstruite, voir §17).

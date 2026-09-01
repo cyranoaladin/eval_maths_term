@@ -15,7 +15,7 @@
     "justification": "vulnerable_code_not_in_execute_path",
     "impact": "Sur les 81 modules chargés par une génération, deux seulement bâtissent une alternation depuis des données : AMC::Config::csv_build_0 et AMC::Basic::check_fonts. Les deux sont muettes pendant une génération complète. Les bornes de api/paper/amc-template.ts plafonnent par ailleurs chaque champ d'enseignant très au-dessous de 65 535 branches.",
     "statique": "Recherche exhaustive de join('|') sur les 81 fichiers de modules chargés : deux occurrences, toutes deux dans AMC. 61 motifs interpolés recensés, aucun ne bâtit d'alternation.",
-    "dynamique": "Enveloppement des deux fonctions pendant une génération avec corpus hostile : zéro appel, alors que les témoins AMC::Basic::debug et AMC::Config::get sont appelés 225 fois. Une entrée de 70 000 branches dans un nom d'élève n'atteint aucun motif Perl : la chaîne s'arrête dans pdfTeX."
+    "dynamique": "Enveloppement des deux fonctions pendant une génération avec corpus hostile : zéro appel, alors que les témoins AMC::Basic::debug et AMC::Config::get sont appelés 225 fois. Une entrée de 70 000 branches dans un nom d'élève n'atteint aucun motif Perl : la chaîne s'arrête dans le moteur TeX. Depuis le passage à XeLaTeX, plus aucune liste d'élèves n'est même transmise à AMC — les copies nominatives sont générées directement dans le document, sans CSV : AMC::Config::csv_build_0 n'a plus aucune donnée à recevoir."
   },
   "CVE-2026-57432": {
     "composant": "S_measure_struct, opérations pack et unpack",
@@ -174,19 +174,19 @@
     "composant": "Expat, déni de service par XML fabriqué",
     "declencheur": "Analyser un document XML fabriqué.",
     "entree_controlee": "Un document XML.",
-    "justification": "vulnerable_code_not_in_execute_path",
-    "impact": "libexpat n'est jamais chargée pendant une génération.",
-    "statique": "Aucun analyseur XML natif dans le chemin de composition.",
-    "dynamique": "LD_DEBUG=libs : libexpat.so absente des 32 objets chargés."
+    "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+    "impact": "Réinstruit après le passage à XeLaTeX : libexpat est désormais chargée — fontconfig s'en sert pour lire sa propre configuration. Mais l'attaque exige de faire analyser un document XML fabriqué de plusieurs mégaoctets, et aucun XML venant d'un utilisateur n'atteint jamais l'analyseur : fontconfig ne lit que les fichiers de configuration de l'image.",
+    "statique": "Le produit n'analyse aucun XML côté serveur ; AMC écrit du XML (XML::Writer) mais expat n'est atteint que par fontconfig. Les seuls fichiers lus sont ceux de /etc/fonts et /usr/share/fontconfig — root, mode 644, dans un conteneur en lecture seule. Aucune donnée d'enseignant ou d'élève n'est jamais présentée comme XML.",
+    "dynamique": "Trace openat d'une composition XeLaTeX réelle (cas 09-corpus-unicode) : tous les .conf/.xml ouverts appartiennent à l'image — /etc/fonts/**, /usr/share/fontconfig/** — aucun chemin inscriptible par l'uid applicatif (10001), aucun chemin dérivé d'une donnée saisie."
   },
   "CVE-2026-11940": {
     "composant": "CPython, filtre d'extraction de tarfile",
     "declencheur": "Extraire une archive tar avec le module tarfile de Python.",
     "entree_controlee": "Une archive tar.",
     "justification": "vulnerable_code_not_in_execute_path",
-    "impact": "Aucun interpréteur Python n'est exécuté. Python n'est présent que parce que texlive-latex-extra en dépend, lequel apporte csvsimple, dont le gabarit se sert pour associer chaque copie à son élève.",
+    "impact": "Aucun interpréteur Python n'est exécuté. Python n'est présent que parce que texlive-latex-extra en dépend — paquet exigé par automultiplechoice.sty lui-même (csvsimple, bophook, environ, storebox), alors même que le gabarit du produit n'emploie plus csvsimple.",
     "statique": "Aucun appel à Python dans le produit ni dans AMC.",
-    "dynamique": "Trace execve d'une génération complète : 27 programmes exécutés, aucun Python. LD_DEBUG : libpython3.13.so jamais chargée."
+    "dynamique": "Trace execve rejouée sur la chaîne XeLaTeX (prepare --mode s --with xelatex) : cinq programmes exécutés — sh, auto-multiple-choice, perl, xelatex, xdvipdfmx — aucun Python. LD_DEBUG : libpython3.13.so jamais chargée."
   },
   "CVE-2026-15308": {
     "composant": "CPython, analyseur HTML",
@@ -195,7 +195,7 @@
     "justification": "vulnerable_code_not_in_execute_path",
     "impact": "Aucun interpréteur Python n'est exécuté.",
     "statique": "Aucun appel à Python dans le produit ni dans AMC.",
-    "dynamique": "Trace execve : aucun Python parmi les 27 programmes exécutés. LD_DEBUG : libpython3.13.so jamais chargée."
+    "dynamique": "Trace execve rejouée sur la chaîne XeLaTeX : cinq programmes — sh, auto-multiple-choice, perl, xelatex, xdvipdfmx — aucun Python. LD_DEBUG : libpython3.13.so jamais chargée."
   },
   "CVE-2026-7210": {
     "composant": "CPython lié à Expat, analyse XML",
@@ -204,7 +204,7 @@
     "justification": "vulnerable_code_not_in_execute_path",
     "impact": "Aucun interpréteur Python n'est exécuté.",
     "statique": "Aucun appel à Python dans le produit ni dans AMC.",
-    "dynamique": "Trace execve : aucun Python. LD_DEBUG : ni libpython3.13.so ni libexpat.so chargées."
+    "dynamique": "Trace execve rejouée sur la chaîne XeLaTeX : cinq programmes, aucun Python. LD_DEBUG : libpython3.13.so jamais chargée (libexpat l'est désormais, par fontconfig — voir CVE-2026-66046)."
   },
   "CVE-2025-69720": {
     "composant": "ncurses, débordement de tampon",

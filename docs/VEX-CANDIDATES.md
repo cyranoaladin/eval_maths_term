@@ -84,7 +84,7 @@ silencieusement une montée de version.
 | **Condition de déclenchement** | Compiler un motif dont l'alternation compte plus de 65 535 branches de chaînes fixes. |
 | **Entrée contrôlée par un tiers** | Un motif d'expression régulière bâti depuis des données. |
 | **Atteignabilité statique** | Recherche exhaustive de join('\|') sur les 81 fichiers de modules chargés : deux occurrences, toutes deux dans AMC. 61 motifs interpolés recensés, aucun ne bâtit d'alternation. |
-| **Atteignabilité dynamique** | Enveloppement des deux fonctions pendant une génération avec corpus hostile : zéro appel, alors que les témoins AMC::Basic::debug et AMC::Config::get sont appelés 225 fois. Une entrée de 70 000 branches dans un nom d'élève n'atteint aucun motif Perl : la chaîne s'arrête dans pdfTeX. |
+| **Atteignabilité dynamique** | Enveloppement des deux fonctions pendant une génération avec corpus hostile : zéro appel, alors que les témoins AMC::Basic::debug et AMC::Config::get sont appelés 225 fois. Une entrée de 70 000 branches dans un nom d'élève n'atteint aucun motif Perl : la chaîne s'arrête dans le moteur TeX. Depuis le passage à XeLaTeX, plus aucune liste d'élèves n'est même transmise à AMC — les copies nominatives sont générées directement dans le document, sans CSV : AMC::Config::csv_build_0 n'a plus aucune donnée à recevoir. |
 | **Justification VEX** | `vulnerable_code_not_in_execute_path` |
 | **Portée de l'impact** | Sur les 81 modules chargés par une génération, deux seulement bâtissent une alternation depuis des données : AMC::Config::csv_build_0 et AMC::Basic::check_fonts. Les deux sont muettes pendant une génération complète. Les bornes de api/paper/amc-template.ts plafonnent par ailleurs chaque champ d'enseignant très au-dessous de 65 535 branches. |
 | **Statut** | `NOT_AFFECTED` |
@@ -228,9 +228,9 @@ silencieusement une montée de version.
 | **Condition de déclenchement** | Extraire une archive tar avec le module tarfile de Python. |
 | **Entrée contrôlée par un tiers** | Une archive tar. |
 | **Atteignabilité statique** | Aucun appel à Python dans le produit ni dans AMC. |
-| **Atteignabilité dynamique** | Trace execve d'une génération complète : 27 programmes exécutés, aucun Python. LD_DEBUG : libpython3.13.so jamais chargée. |
+| **Atteignabilité dynamique** | Trace execve rejouée sur la chaîne XeLaTeX (prepare --mode s --with xelatex) : cinq programmes exécutés — sh, auto-multiple-choice, perl, xelatex, xdvipdfmx — aucun Python. LD_DEBUG : libpython3.13.so jamais chargée. |
 | **Justification VEX** | `vulnerable_code_not_in_execute_path` |
-| **Portée de l'impact** | Aucun interpréteur Python n'est exécuté. Python n'est présent que parce que texlive-latex-extra en dépend, lequel apporte csvsimple, dont le gabarit se sert pour associer chaque copie à son élève. |
+| **Portée de l'impact** | Aucun interpréteur Python n'est exécuté. Python n'est présent que parce que texlive-latex-extra en dépend — paquet exigé par automultiplechoice.sty lui-même (csvsimple, bophook, environ, storebox), alors même que le gabarit du produit n'emploie plus csvsimple. |
 | **Statut** | `NOT_AFFECTED` |
 
 ### CVE-2026-15308
@@ -244,7 +244,7 @@ silencieusement une montée de version.
 | **Condition de déclenchement** | Analyser du HTML fabriqué avec html.parser. |
 | **Entrée contrôlée par un tiers** | Un document HTML. |
 | **Atteignabilité statique** | Aucun appel à Python dans le produit ni dans AMC. |
-| **Atteignabilité dynamique** | Trace execve : aucun Python parmi les 27 programmes exécutés. LD_DEBUG : libpython3.13.so jamais chargée. |
+| **Atteignabilité dynamique** | Trace execve rejouée sur la chaîne XeLaTeX : cinq programmes — sh, auto-multiple-choice, perl, xelatex, xdvipdfmx — aucun Python. LD_DEBUG : libpython3.13.so jamais chargée. |
 | **Justification VEX** | `vulnerable_code_not_in_execute_path` |
 | **Portée de l'impact** | Aucun interpréteur Python n'est exécuté. |
 | **Statut** | `NOT_AFFECTED` |
@@ -451,10 +451,10 @@ silencieusement une montée de version.
 | **Composant vulnérable** | Expat, déni de service par XML fabriqué |
 | **Condition de déclenchement** | Analyser un document XML fabriqué. |
 | **Entrée contrôlée par un tiers** | Un document XML. |
-| **Atteignabilité statique** | Aucun analyseur XML natif dans le chemin de composition. |
-| **Atteignabilité dynamique** | LD_DEBUG=libs : libexpat.so absente des 32 objets chargés. |
-| **Justification VEX** | `vulnerable_code_not_in_execute_path` |
-| **Portée de l'impact** | libexpat n'est jamais chargée pendant une génération. |
+| **Atteignabilité statique** | Le produit n'analyse aucun XML côté serveur ; AMC écrit du XML (XML::Writer) mais expat n'est atteint que par fontconfig. Les seuls fichiers lus sont ceux de /etc/fonts et /usr/share/fontconfig — root, mode 644, dans un conteneur en lecture seule. Aucune donnée d'enseignant ou d'élève n'est jamais présentée comme XML. |
+| **Atteignabilité dynamique** | Trace openat d'une composition XeLaTeX réelle (cas 09-corpus-unicode) : tous les .conf/.xml ouverts appartiennent à l'image — /etc/fonts/**, /usr/share/fontconfig/** — aucun chemin inscriptible par l'uid applicatif (10001), aucun chemin dérivé d'une donnée saisie. |
+| **Justification VEX** | `vulnerable_code_cannot_be_controlled_by_adversary` |
+| **Portée de l'impact** | Réinstruit après le passage à XeLaTeX : libexpat est désormais chargée — fontconfig s'en sert pour lire sa propre configuration. Mais l'attaque exige de faire analyser un document XML fabriqué de plusieurs mégaoctets, et aucun XML venant d'un utilisateur n'atteint jamais l'analyseur : fontconfig ne lit que les fichiers de configuration de l'image. |
 | **Statut** | `NOT_AFFECTED` |
 
 ### CVE-2026-7210
@@ -468,7 +468,7 @@ silencieusement une montée de version.
 | **Condition de déclenchement** | Analyser un document XML fabriqué depuis Python. |
 | **Entrée contrôlée par un tiers** | Un document XML. |
 | **Atteignabilité statique** | Aucun appel à Python dans le produit ni dans AMC. |
-| **Atteignabilité dynamique** | Trace execve : aucun Python. LD_DEBUG : ni libpython3.13.so ni libexpat.so chargées. |
+| **Atteignabilité dynamique** | Trace execve rejouée sur la chaîne XeLaTeX : cinq programmes, aucun Python. LD_DEBUG : libpython3.13.so jamais chargée (libexpat l'est désormais, par fontconfig — voir CVE-2026-66046). |
 | **Justification VEX** | `vulnerable_code_not_in_execute_path` |
 | **Portée de l'impact** | Aucun interpréteur Python n'est exécuté. |
 | **Statut** | `NOT_AFFECTED` |
