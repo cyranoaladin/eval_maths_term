@@ -20,7 +20,17 @@ name: Release-Performance
 #
 
 on:
+  # `workflow_dispatch` n'est utilisable qu'une fois le fichier sur la branche
+  # par défaut — et la fusion vers main est interdite avant la release. D'ici
+  # là, le déclencheur est une branche jetable pointant sur le SHA candidat :
+  #
+  #   git push origin <sha>:refs/heads/declencheur-performance/rc2-run1
+  #
+  # La branche se supprime après la mesure ; le SHA mesuré est celui du HEAD
+  # poussé, relevé par le préflight.
   workflow_dispatch:
+  push:
+    branches: ["declencheur-performance/**"]
 
 permissions:
   contents: read
