@@ -53,7 +53,11 @@ fi
 
 # ── 2. Remettre les données dans l'état d'avant ──────────────────────────────
 etape "2/4 · restauration des données"
-DATABASE_URL="$URL" PAPER_OUTPUT_DIR="$TIRAGES" bash scripts/restauration.sh "$SAUVEGARDE"
+# La remise des droits du volume des tirages se fait par un assistant Docker
+# éphémère — l'image de repli elle-même, root le temps d'un chown, puis
+# détruite. Aucun sudo, aucun geste manuel au milieu du repli.
+DATABASE_URL="$URL" PAPER_OUTPUT_DIR="$TIRAGES" IMAGE_DROITS="$IMAGE" \
+  bash scripts/restauration.sh "$SAUVEGARDE"
 
 # ── 3. Redémarrer la version précédente ──────────────────────────────────────
 etape "3/4 · démarrage de la version précédente"
@@ -62,7 +66,7 @@ etape "3/4 · démarrage de la version précédente"
 # moment : celui où l'on revient en arrière parce que quelque chose ne va pas.
 docker run -d --name "$CONTENEUR" --network host \
   --read-only --tmpfs /tmp:rw,size=512m,mode=1777 \
-  --tmpfs /home/evalapp:rw,size=64m,mode=0700,uid=10001,gid=999 \
+  --tmpfs /home/evalapp:rw,size=64m,mode=0700,uid=10001,gid=10001 \
   --cap-drop ALL --security-opt no-new-privileges \
   --pids-limit 512 --memory 2g --cpus 2 \
   -e NODE_ENV=production \

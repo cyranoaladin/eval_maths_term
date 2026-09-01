@@ -214,9 +214,15 @@ brancherait, le jour où ce coût se justifie.
 
 ```bash
 npm run audit:prod    # 0 vulnérabilité élevée ou critique en production
-npm run sbom          # nomenclature CycloneDX 1.6
+npm run sbom:image    # nomenclature CycloneDX de l'IMAGE exacte — la canonique
 npm run scan:image    # vulnérabilités de l'image
 ```
+
+La nomenclature canonique est celle de l'image (`sbom-image.json`) : elle
+décrit Debian, TeX Live, AMC, Node **et** npm — tout ce que l'artefact déployé
+contient réellement. L'ancien SBOM npm (`@cyclonedx/cyclonedx-npm`) ne
+décrivait que la couche npm, déjà incluse : il a été retiré avec sa chaîne de
+dépendances dépréciées.
 
 Le seuil du scan d'image est « aucune vulnérabilité élevée ou critique **pour
 laquelle un correctif existe** ». C'est le seul critère actionnable : une faille
@@ -301,16 +307,28 @@ figure pas dans la migration et n'y figurera pas.
 
 ### Si vous montez un dossier de l'hôte plutôt qu'un volume
 
-Le conteneur s'exécute sous un utilisateur non privilégié — `evalapp`, uid
-`10001`. Les volumes nommés de `docker-compose.yml` héritent des droits du
-dossier de l'image et ne posent pas de question. Un dossier de l'hôte monté à
-la place, lui, appartient à l'utilisateur qui l'a créé : l'application ne peut
-pas y écrire, aucun sujet n'est produit, et `/api/ready` répond `503` avec
-`tirages: EACCES`. Donnez-le à l'uid du conteneur avant de démarrer :
+Le conteneur s'exécute sous un utilisateur non privilégié — `evalapp`,
+uid `10001`, gid `10001`. Les deux nombres sont fixés explicitement dans le
+`Dockerfile` (`ARG APP_UID` / `ARG APP_GID`) : c'est une décision unique,
+documentée là, et non un compteur de groupes système qui varierait d'une
+construction à l'autre. Les volumes nommés de `docker-compose.yml` héritent
+des droits du dossier de l'image et ne posent pas de question. Un dossier de
+l'hôte monté à la place, lui, appartient à l'utilisateur qui l'a créé :
+l'application ne peut pas y écrire, aucun sujet n'est produit, et
+`/api/ready` répond `503` avec `tirages: EACCES`. Rendez-le à l'application
+par le moteur Docker déjà présent — un assistant éphémère, root le temps d'un
+`chown`, sans réseau ni autre capacité, puis détruit :
 
 ```bash
-sudo chown -R 10001:10001 /chemin/vers/tirages
+docker run --rm --user 0:0 --network none \
+  --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
+  --security-opt no-new-privileges \
+  -v /chemin/vers/tirages:/volume-droits \
+  --entrypoint chown <image-de-l-application> -R 10001:10001 /volume-droits
 ```
+
+C'est le geste que `scripts/restauration.sh` et `scripts/repli-production.sh`
+font eux-mêmes : aucune restauration n'exige de `sudo` interactif.
 
 ## Sauvegardes
 

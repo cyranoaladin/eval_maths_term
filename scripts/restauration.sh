@@ -53,24 +53,52 @@ gzip -dc "$SOURCE/base.sql.gz" | mysql_client "$BASE"
 echo "  base       : restaurée"
 
 # ── 3. Les tirages ───────────────────────────────────────────────────────────
+# L'identité applicative (10001:10001) est fixée par le Dockerfile — ARG
+# APP_UID / APP_GID. La remise des droits ne demande ni sudo ni geste manuel :
+# le moteur Docker — déjà requis par ce script pour le client MySQL — lance un
+# assistant éphémère, root le temps d'un chown et de rien d'autre : sans
+# réseau, capacités réduites au changement de propriétaire, détruit aussitôt.
+UID_APPLICATION="${APP_UID:-10001}"
+GID_APPLICATION="${APP_GID:-10001}"
+# De préférence l'image de l'application elle-même (le repli la passe) ;
+# à défaut, l'image MySQL épinglée déjà exigée par la restauration.
+IMAGE_DROITS="${IMAGE_DROITS:-$IMAGE_MYSQL}"
+
+assistant_droits() { # assistant_droits <uid:gid> <chemin>
+  docker run --rm --user 0:0 --network none \
+    --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
+    --security-opt no-new-privileges --pids-limit 64 \
+    -v "$2":/volume-droits \
+    --entrypoint chown "$IMAGE_DROITS" -R "$1" /volume-droits
+}
+
 if [ -f "$SOURCE/tirages.tar.gz" ]; then
   mkdir -p "$(dirname "$TIRAGES")"
+  # Le volume existant appartient à l'application (10001), pas au
+  # restaurateur : sans reprise de possession, ni la purge ni l'extraction ne
+  # peuvent le toucher. L'assistant le rend d'abord au restaurateur, puis le
+  # rendra à l'application.
+  if [ -d "$TIRAGES" ]; then
+    assistant_droits "$(id -u):$(id -g)" "$(realpath "$TIRAGES")"
+  fi
   rm -rf "$TIRAGES"
   tar -xzf "$SOURCE/tirages.tar.gz" -C "$(dirname "$TIRAGES")"
   echo "  tirages    : $(find "$TIRAGES" -type f | wc -l) fichier(s)"
 
-  # L'archive est extraite par l'utilisateur qui restaure ; l'application, elle,
-  # s'exécute sous un utilisateur non privilégié dans son conteneur. Sans ce
-  # geste, le dossier revient avec les droits du restaurateur, l'application ne
-  # peut plus y écrire, et `/api/ready` répond « tirages : EACCES » — un service
-  # restauré qui ne sait plus imprimer.
-  UID_APPLICATION="${UID_APPLICATION:-10001}"
-  if chown -R "$UID_APPLICATION:$UID_APPLICATION" "$TIRAGES" 2>/dev/null; then
-    echo "  droits     : rendus à l'uid $UID_APPLICATION"
+  # L'archive vient d'être extraite par l'utilisateur qui restaure ;
+  # l'application, elle, s'exécute sous son identité non privilégiée. Sans
+  # remise des droits, l'application ne peut plus écrire dans le dossier et
+  # `/api/ready` répond « tirages : EACCES » — un service restauré qui ne
+  # sait plus imprimer.
+  CHEMIN_TIRAGES="$(realpath "$TIRAGES")"
+  assistant_droits "$UID_APPLICATION:$GID_APPLICATION" "$CHEMIN_TIRAGES"
+  # Et la preuve, côté hôte : le dossier appartient bien à l'application.
+  PROPRIETAIRE="$(stat -c '%u:%g' "$CHEMIN_TIRAGES")"
+  if [ "$PROPRIETAIRE" = "$UID_APPLICATION:$GID_APPLICATION" ]; then
+    echo "  droits     : rendus à $UID_APPLICATION:$GID_APPLICATION, sans sudo"
   else
-    echo "  droits     : ⚠ impossible de donner « $TIRAGES » à l'uid $UID_APPLICATION."
-    echo "               Faites-le avant de redémarrer l'application :"
-    echo "                 sudo chown -R $UID_APPLICATION:$UID_APPLICATION $TIRAGES"
+    echo "✗ Le dossier des tirages appartient à $PROPRIETAIRE au lieu de $UID_APPLICATION:$GID_APPLICATION." >&2
+    exit 1
   fi
 else
   echo "  tirages    : absents de l'archive"

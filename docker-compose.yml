@@ -74,7 +74,7 @@ services:
     # chaque démarrage : rien de ce que le produit conserve n'y vit.
     tmpfs:
       - /tmp:rw,size=512m,mode=1777
-      - /home/evalapp:rw,size=64m,mode=0700,uid=10001,gid=999
+      - /home/evalapp:rw,size=64m,mode=0700,uid=10001,gid=10001
     cap_drop:
       - ALL
     security_opt:
