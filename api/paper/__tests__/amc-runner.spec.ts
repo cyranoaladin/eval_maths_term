@@ -45,6 +45,12 @@ case "$AMC_SCENARIO" in
     echo "! Unable to read an entire line---bufsize=200000." >&2
     exit 1
     ;;
+  caractere-manquant)
+    # Mesuré sur XeLaTeX : un caractère sans glyphe ne fait PAS échouer la
+    # composition — le moteur le signale, rend un code nul, et le caractère
+    # disparaît du document.
+    echo 'Missing character: There is no ي ("062A) in font Amiri!'
+    ;;
 esac
 echo "amc appelé : $*"
 if [ "$1" = "prepare" ] && [ "$2" = "--mode" ] && [ "$3" = "s" ]; then
@@ -67,8 +73,7 @@ async function dossierDeTravail(): Promise<string> {
 
 const entree = (workdir: string) => ({
   workdir,
-  tex: "\\documentclass{article}\\begin{document}Sujet\\end{document}",
-  studentsCsv: "nom,prenom\nBenkhelifa,Aïcha\n",
+  tex: "\\documentclass{article}\\begin{document}Aïcha Benkhelifa\\end{document}",
   timeoutMs: 20_000,
 });
 
@@ -135,12 +140,18 @@ describe("production des documents", () => {
     const resultat = await runAmc(entree(workdir));
 
     // Les sources sont posées avant l'appel, dans le dossier du tirage.
-    expect(await readFile(join(workdir, "sujet.tex"), "utf8")).toContain("\\documentclass");
-    // L'accent survit à l'écriture : AMC lit le CSV en UTF-8.
-    expect(await readFile(join(workdir, "eleves.csv"), "utf8")).toContain("Aïcha");
+    // L'accent survit à l'écriture : le fichier part en UTF-8.
+    const tex = await readFile(join(workdir, "sujet.tex"), "utf8");
+    expect(tex).toContain("\\documentclass");
+    expect(tex).toContain("Aïcha");
+    // Plus de CSV : les copies nominatives vivent dans le document lui-même.
+    await expect(readFile(join(workdir, "eleves.csv"), "utf8")).rejects.toThrow(/ENOENT/);
 
-    // Une seule étape : la production des documents.
-    expect(resultat.log).toContain("prepare --mode s --prefix ./ sujet.tex");
+    // Une seule étape : la production des documents, par le moteur XeLaTeX —
+    // le document (fontspec, écriture arabe) ne compile que sur lui.
+    expect(resultat.log).toContain(
+      "prepare --mode s --with xelatex --prefix ./ sujet.tex",
+    );
 
     /*
       Et rien d'autre. `meptex` et `prepare --mode b` ne servent qu'à lire des
@@ -240,6 +251,22 @@ describe("production des documents", () => {
       await expect(runAmc(entree(workdir))).rejects.toMatchObject({
         name: "AmcFailedError",
         output: expect.stringContaining("forgotten"),
+      });
+    });
+
+    it("refuse un document où un caractère n'a pas de glyphe, même si AMC dit oui", async () => {
+      /*
+        Mesuré : XeLaTeX imprime « Missing character », rend un code de sortie
+        nul, et le caractère disparaît du document composé. Un nom d'élève
+        amputé en silence est interdit : le tirage échoue en nommant le
+        caractère plutôt que d'imprimer un nom faux.
+      */
+      amcDeTheatre("caractere-manquant");
+      const workdir = await dossierDeTravail();
+
+      await expect(runAmc(entree(workdir))).rejects.toMatchObject({
+        name: "AmcFailedError",
+        output: expect.stringContaining("Missing character"),
       });
     });
 

@@ -53,7 +53,15 @@ const AMC = "auto-multiple-choice";
 */
 const SORTIE_MAX = 8 * 1024 * 1024;
 const TEX_NAME = "sujet.tex";
-const CSV_NAME = "eleves.csv";
+
+/*
+  Le moteur de composition. XeLaTeX, et il est demandé explicitement : le
+  défaut d'AMC est `latex`, et le document — fontspec, polyglossia, écriture
+  arabe — ne compile que sur XeLaTeX. L'interdiction d'exécution de commandes
+  reste entière : AMC passe `--no-shell-escape` au moteur, et le moteur
+  lui-même est lancé par AMC, jamais par un shell.
+*/
+const MOTEUR = "xelatex";
 
 export interface AmcArtifact {
   /** Nom de fichier dans le dossier de travail. */
@@ -107,9 +115,9 @@ const EXPLICATIONS: Array<{ signature: RegExp; message: string }> = [
       "Un énoncé, une proposition ou un nom d'élève est trop long pour le moteur de composition. Raccourcissez-le.",
   },
   {
-    signature: /Unicode character/,
+    signature: /Unicode character|Missing character/,
     message:
-      "Un caractère d'un énoncé ne peut pas être imprimé : la composition se fait en alphabet latin.",
+      "Un caractère du document ne peut pas être imprimé par les polices de la composition. Aucun caractère n'est remplacé ni supprimé : corrigez ou signalez le caractère en cause.",
   },
   {
     signature: /File .* not found|not found/,
@@ -158,7 +166,6 @@ export interface RunAmcInput {
   /** Dossier de travail dédié au tirage. */
   workdir: string;
   tex: string;
-  studentsCsv: string;
   timeoutMs?: number;
 }
 
@@ -175,10 +182,12 @@ export async function runAmc(input: RunAmcInput): Promise<AmcResult> {
   const projectData = TEX_NAME.replace(/\.tex$/, "-data");
   await mkdir(join(workdir, projectData), { recursive: true });
   await writeFile(join(workdir, TEX_NAME), input.tex, "utf8");
-  await writeFile(join(workdir, CSV_NAME), input.studentsCsv, "utf8");
 
   const etapes: Array<{ nom: string; args: string[] }> = [
-    { nom: "prepare --mode s", args: ["prepare", "--mode", "s", "--prefix", "./", TEX_NAME] },
+    {
+      nom: "prepare --mode s",
+      args: ["prepare", "--mode", "s", "--with", MOTEUR, "--prefix", "./", TEX_NAME],
+    },
   ];
 
   for (const etape of etapes) {
@@ -198,6 +207,21 @@ export async function runAmc(input: RunAmcInput): Promise<AmcResult> {
       logger.error("[amc] Étape en échec", { etape: etape.nom, sortie: sortie.slice(-400) });
       throw new AmcFailedError(etape.nom, sortie);
     }
+  }
+
+  /*
+    Mesuré : un caractère sans glyphe dans la police ne fait PAS échouer la
+    composition — XeLaTeX imprime « Missing character », rend un code de sortie
+    nul, et le caractère disparaît du document. Un nom d'élève amputé en
+    silence est interdit : la validation du gabarit refuse ces caractères en
+    amont, et ce contrôle-ci ferme le chemin si un caractère passait quand
+    même — le tirage échoue en le nommant plutôt que d'imprimer un nom faux.
+  */
+  const sortieComplete = journal.join("\n");
+  if (/Missing character/.test(sortieComplete)) {
+    const detail = sortieComplete.match(/Missing character:[^\n]*/g) ?? [];
+    logger.error("[amc] Caractères sans glyphe", { workdir, detail: detail.slice(0, 5) });
+    throw new AmcFailedError("prepare --mode s", detail.join("\n") || "Missing character");
   }
 
   const artifacts: AmcArtifact[] = [];

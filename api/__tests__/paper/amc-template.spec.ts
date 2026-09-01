@@ -13,6 +13,8 @@ import {
   LIMITES,
   assertSafeLatex,
   escapeLatexText,
+  renderDisplayText,
+  associationKey,
   UnsafeLatexError,
   type TemplateInput,
   type TemplateQuestion,
@@ -58,12 +60,16 @@ function input(overrides: Partial<TemplateInput> = {}): TemplateInput {
     durationMinutes: 45,
     questions: [QCM, VF],
     students: [
-      { lastName: "DUPONT", firstName: "Marie" },
-      { lastName: "BEN ALI", firstName: "Youcef" },
+      { id: 11, lastName: "DUPONT", firstName: "Marie" },
+      { id: 12, lastName: "BEN ALI", firstName: "Youcef" },
     ],
     ...overrides,
   };
 }
+
+/** Attache des identifiants aux élèves d'un cas de test. */
+const avecIds = (eleves: Array<{ lastName: string; firstName: string }>) =>
+  eleves.map((e, i) => ({ id: i + 1, ...e }));
 
 describe("structure du document", () => {
   it("produit un document complet et compilable en apparence", () => {
@@ -75,48 +81,52 @@ describe("structure du document", () => {
     expect(tex).toContain("\\AMCform");
   });
 
-  it("émet une copie par élève via le CSV", () => {
-    const { tex, studentsCsv } = buildAmcDocument(input());
-    expect(tex).toContain("\\csvreader");
+  it("émet une copie par élève, directement dans le document", () => {
+    /*
+      Plus de CSV intermédiaire : le serveur connaît les élèves, chaque copie
+      est un bloc `\copiepour{clé}{nom}` généré directement. La clé
+      d'association est l'identifiant machine, jamais le nom.
+    */
+    const { tex } = buildAmcDocument(input());
+    expect(tex).not.toContain("\\csvreader");
     expect(tex).toContain("\\onecopy{1}");
-    expect(tex).toContain("\\AMCassociation{\\Eleves}");
-    // Sans guillemets : csvsimple ne les retire pas et ils s'imprimeraient
-    // tels quels sur la feuille-réponses.
-    expect(studentsCsv.split("\n")).toEqual([
-      "Eleves",
-      "DUPONT Marie",
-      "BEN ALI Youcef",
-    ]);
+    expect(tex).toContain("\\AMCassociation{#1}");
+    expect(tex).toContain("\\copiepour{student-11}{DUPONT Marie}");
+    expect(tex).toContain("\\copiepour{student-12}{BEN ALI Youcef}");
   });
 
-  it("échappe le nom de l'élève avant de l'écrire dans le CSV", () => {
-    /*
-      Le nom part dans `eleves.csv`, que `\csvreader` réinjecte dans le
-      document : il redevient du LaTeX. Non échappé, un nom qui porte une
-      contre-oblique ou une accolade fait échouer toute la composition — et
-      `\AMCassociation` refuse d'ailleurs une séquence de contrôle, ce qui
-      transforme un caractère inattendu dans une liste importée en tirage
-      perdu, avec une erreur LaTeX pour seul message.
+  it("associe la copie à l'identifiant machine, pas au nom", () => {
+    // L'identité logique d'une copie ne dépend pas du rendu Unicode d'un nom :
+    // c'est cette clé, ASCII et stable, qu'une correction optique lirait.
+    expect(associationKey({ id: 123 })).toBe("student-123");
+    const { tex } = buildAmcDocument(
+      input({ students: [{ id: 7, lastName: "بن علي", firstName: "محمد" }] }),
+    );
+    expect(tex).toContain("\\copiepour{student-7}{");
+    // La clé ne contient jamais le nom.
+    expect(tex).not.toMatch(/\\copiepour\{[^}]*محمد/u);
+  });
 
-      Éprouvé sur AMC 1.7.0 : chacune de ces formes échappées s'imprime bien
-      comme le caractère d'origine.
+  it("échappe le nom de l'élève avant de l'écrire dans le document", () => {
+    /*
+      Le nom est inséré dans le corps LaTeX : non échappé, une contre-oblique
+      ou une accolade ferait échouer toute la composition. Éprouvé sur
+      AMC 1.7.0 : chacune de ces formes échappées s'imprime bien comme le
+      caractère d'origine.
     */
-    const { studentsCsv } = buildAmcDocument(
+    const { tex } = buildAmcDocument(
       input({
-        students: [
+        students: avecIds([
           { lastName: "Dupont & Fils", firstName: "Amina" },
           { lastName: "O'Neill \\textbf{gras}", firstName: "Bilel" },
           { lastName: "Coût 100%", firstName: "Chloé_M" },
-        ],
+        ]),
       }),
     );
 
-    expect(studentsCsv.split("\n")).toEqual([
-      "Eleves",
-      "Dupont \\& Fils Amina",
-      "O'Neill \\textbackslash{}textbf\\{gras\\} Bilel",
-      "Coût 100\\% Chloé\\_M",
-    ]);
+    expect(tex).toContain("\\copiepour{student-1}{Dupont \\& Fils Amina}");
+    expect(tex).toContain("\\copiepour{student-2}{O'Neill \\textbackslash{}textbf\\{gras\\} Bilel}");
+    expect(tex).toContain("\\copiepour{student-3}{Coût 100\\% Chloé\\_M}");
   });
 
   it("conserve la feuille-réponses séparée", () => {
@@ -229,7 +239,7 @@ describe("sûreté du LaTeX", () => {
       taille, ce dont dépend l'analyse d'applicabilité de CVE-2026-13221
       (voir docs/VEX-CANDIDATES.md).
     */
-    const eleve = (i: number) => ({ lastName: `NOM${i}`, firstName: `Prenom${i}` });
+    const eleve = (i: number) => ({ id: i + 1, lastName: `NOM${i}`, firstName: `Prenom${i}` });
 
     it("refuse une classe démesurée en nommant la borne", () => {
       const trop = Array.from({ length: LIMITES.eleves + 1 }, (_, i) => eleve(i));
@@ -243,10 +253,12 @@ describe("sûreté du LaTeX", () => {
       expect(() => buildAmcDocument(input({ students: pile }))).not.toThrow();
     });
 
-    it("refuse un nom d'élève qui déborderait le tampon de pdfTeX", () => {
+    it("refuse un nom d'élève qui déborderait le tampon du moteur TeX", () => {
       const long = "N".repeat(LIMITES.nomEleve + 1);
       expect(() =>
-        buildAmcDocument(input({ students: [{ lastName: long, firstName: "Amina" }] })),
+        buildAmcDocument(
+          input({ students: [{ id: 1, lastName: long, firstName: "Amina" }] }),
+        ),
       ).toThrow(/nom.*trop long/i);
     });
 
@@ -255,6 +267,24 @@ describe("sûreté du LaTeX", () => {
       expect(() =>
         buildAmcDocument(input({ questions: [{ ...QCM, question: enonce }] })),
       ).toThrow(/question 1/i);
+    });
+
+    it("refuse un mot insécable démesuré : mesuré, le moteur XeTeX tombe ou boucle au-delà", () => {
+      /*
+        Mesuré sur XeTeX + AMC 1.7.0 : un mot sans espace de 1 000 caractères
+        tue le moteur (erreur de segmentation), et de 1 100 à 2 000 il boucle
+        sans fin — AMC rendant un code de sortie nul dans les deux cas. La
+        borne coupe très au-dessous, en nommant la question.
+      */
+      const mot = "q".repeat(LIMITES.motInsecable + 1);
+      expect(() =>
+        buildAmcDocument(input({ questions: [{ ...QCM, question: `Voici ${mot}` }] })),
+      ).toThrow(/sans espace/);
+      // À la borne exacte, l'énoncé passe.
+      const auRas = "q".repeat(LIMITES.motInsecable);
+      expect(() =>
+        buildAmcDocument(input({ questions: [{ ...QCM, question: `Voici ${auRas}` }] })),
+      ).not.toThrow();
     });
 
     it("refuse une proposition démesurée", () => {
@@ -280,15 +310,51 @@ describe("sûreté du LaTeX", () => {
       expect(() => buildAmcDocument(input({ questions: trop }))).toThrow(/questions/i);
     });
 
-    it("refuse un caractère que la composition ne sait pas imprimer", () => {
-      /*
-        Éprouvé sur AMC 1.7.0 : « م » arrête pdfTeX sur « Unicode character not
-        set up for use with LaTeX », et le tirage entier est perdu sans que
-        rien ne désigne l'élève en cause.
-      */
+    it("refuse un caractère hors répertoire en le nommant", () => {
+      // Le répertoire couvre le latin et l'arabe ; le reste — ici du
+      // sinogramme — est refusé par son nom, jamais remplacé ni supprimé.
       expect(() =>
-        buildAmcDocument(input({ students: [{ lastName: "مرحبا", firstName: "Amina" }] })),
-      ).toThrow(/U\+0645/);
+        buildAmcDocument(
+          input({ students: [{ id: 1, lastName: "東京", firstName: "Amina" }] }),
+        ),
+      ).toThrow(/U\+6771/);
+    });
+
+    it("accepte un nom en écriture arabe, et le compose en droite-à-gauche", () => {
+      /*
+        Le produit sert un lycée français de Tunis : « محمد بن علي » est une
+        donnée légitime. Le nom est accepté, jamais translittéré, et son
+        fragment arabe reçoit l'enveloppe de direction `\textarabic`
+        (polyglossia). Rendu éprouvé pour de vrai — lettres jointes, ordre
+        droite-à-gauche — par la matrice papier et sa preuve visuelle.
+      */
+      const { tex } = buildAmcDocument(
+        input({ students: [{ id: 5, lastName: "بن علي", firstName: "محمد" }] }),
+      );
+      expect(tex).toContain("\\textarabic{بن علي محمد}");
+    });
+
+    it("compose un nom mixte latin/arabe, chaque écriture dans son sens", () => {
+      const { tex } = buildAmcDocument(
+        input({
+          students: [{ id: 6, lastName: "Ben Salah", firstName: "Mohamed محمد" }],
+        }),
+      );
+      // Seul le fragment arabe est enveloppé ; le latin reste hors de
+      // l'enveloppe, dans l'ordre d'origine.
+      expect(tex).toContain("Ben Salah Mohamed \\textarabic{محمد}");
+    });
+
+    it("refuse l'arabe dans un énoncé : du LaTeX brut ne reçoit pas d'enveloppe", () => {
+      // Un énoncé est du LaTeX inséré tel quel : impossible d'y poser
+      // automatiquement l'enveloppe de direction sans réécrire le LaTeX de
+      // l'enseignant. Le refus est nommé, il désigne la question et le
+      // caractère.
+      expect(() =>
+        buildAmcDocument(
+          input({ questions: [{ ...QCM, question: "Traduire مرحبا." }] }),
+        ),
+      ).toThrow(/question 1/);
     });
 
     it("accepte tout le répertoire latin, la ponctuation et l'euro", () => {
@@ -299,7 +365,7 @@ describe("sûreté du LaTeX", () => {
         buildAmcDocument(
           input({
             title: "Contrôle — l\u2019épreuve à 5 € : ñ, ł, ő, ș, e\u0301",
-            students: [{ lastName: "O\u2019Neill-Dupré", firstName: "Chloé" }],
+            students: [{ id: 1, lastName: "O\u2019Neill-Dupré", firstName: "Chloé" }],
           }),
         ),
       ).not.toThrow();
@@ -339,13 +405,39 @@ describe("sûreté du LaTeX", () => {
     expect(escapeLatexText("{x}")).toBe("\\{x\\}");
   });
 
-  it("neutralise les caractères qui casseraient le CSV", () => {
-    const { studentsCsv } = buildAmcDocument(
-      input({ students: [{ lastName: 'MARTIN; "Le"', firstName: "Anne\nB" }] }),
+  it("replie les blancs d'un nom sur une seule espace, sans perdre un caractère", () => {
+    /*
+      Plus de CSV : le point-virgule et le guillemet n'ont plus rien à casser,
+      ils s'impriment tels quels. Seuls les blancs — dont un saut de ligne
+      accidentel d'une liste importée — sont repliés en une espace, pour que le
+      nom tienne sur sa ligne d'affichage.
+    */
+    const { tex } = buildAmcDocument(
+      input({ students: [{ id: 1, lastName: 'MARTIN; "Le"', firstName: "Anne\nB" }] }),
     );
-    const ligne = studentsCsv.split("\n")[1];
-    expect(ligne).not.toMatch(/[;"]/);
-    expect(ligne).toBe("MARTIN Le Anne B");
-    expect(studentsCsv.split("\n")).toHaveLength(2);
+    expect(tex).toContain('\\copiepour{student-1}{MARTIN; "Le" Anne B}');
+  });
+
+  describe("préparation du texte d'affichage", () => {
+    it("normalise en NFC : un accent décomposé redevient sa forme composée", () => {
+      // « e » + U+0301 et « é » sont la même donnée ; ils doivent produire le
+      // même document.
+      expect(renderDisplayText("Noe\u0308l")).toBe("Noël");
+      expect(renderDisplayText("e\u0301")).toBe("é");
+    });
+
+    it("enveloppe chaque séquence arabe, espaces intérieurs compris", () => {
+      expect(renderDisplayText("محمد بن علي")).toBe("\\textarabic{محمد بن علي}");
+      // Le fragment médian d'un nom mixte est enveloppé seul, à sa place.
+      expect(renderDisplayText("Mohamed محمد Ben Salah")).toBe(
+        "Mohamed \\textarabic{محمد} Ben Salah",
+      );
+    });
+
+    it("échappe avant d'envelopper : un nom arabe ne casse pas le LaTeX", () => {
+      expect(renderDisplayText("محمد & علي")).toBe(
+        "\\textarabic{محمد} \\& \\textarabic{علي}",
+      );
+    });
   });
 });

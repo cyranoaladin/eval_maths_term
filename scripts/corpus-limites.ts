@@ -41,11 +41,15 @@ const question = (texte: string, options: string[] = ["A", "B"]): TemplateQuesti
   gradingRubric: QCM,
 });
 
+/** Attache un identifiant interne à chaque élève : la clé d'association AMC. */
+const avecIds = (eleves: Array<{ lastName: string; firstName: string }>) =>
+  eleves.map((e, i) => ({ id: i + 1, ...e }));
+
 const base = (o: Partial<TemplateInput> = {}): TemplateInput => ({
   title: "Contrôle",
   durationMinutes: 60,
   questions: [question("Capitale de la Tunisie ?", ["Tunis", "Sfax"])],
-  students: [{ lastName: "Dupont", firstName: "Amina" }],
+  students: avecIds([{ lastName: "Dupont", firstName: "Amina" }]),
   ...o,
 });
 
@@ -84,8 +88,11 @@ const cas: Cas[] = [
     attente: { sorte: "refuse", motif: /def/ },
   },
   {
-    nom: "04-ecriture-arabe",
-    entree: base({ students: [{ lastName: "مرحبا", firstName: "Amina" }] }),
+    // L'arabe est légitime dans un NOM — voir 24 — mais pas dans un énoncé :
+    // du LaTeX brut ne peut pas recevoir automatiquement son enveloppe de
+    // direction, et un caractère hors police serait perdu en silence.
+    nom: "04-ecriture-arabe-dans-un-enonce",
+    entree: base({ questions: [question("Traduire مرحبا en français.")] }),
     attente: { sorte: "refuse", motif: /U\+0645/ },
   },
   {
@@ -101,7 +108,7 @@ const cas: Cas[] = [
   {
     nom: "07-nom-demesure",
     entree: base({
-      students: [{ lastName: "N".repeat(LIMITES.nomEleve + 1), firstName: "A" }],
+      students: avecIds([{ lastName: "N".repeat(LIMITES.nomEleve + 1), firstName: "A" }]),
     }),
     attente: { sorte: "refuse", motif: /trop long/i },
   },
@@ -109,6 +116,7 @@ const cas: Cas[] = [
     nom: "08-classe-demesuree",
     entree: base({
       students: Array.from({ length: LIMITES.eleves + 1 }, (_, i) => ({
+        id: i + 1,
         lastName: `N${i}`,
         firstName: "A",
       })),
@@ -119,6 +127,22 @@ const cas: Cas[] = [
     nom: "09-enonce-demesure",
     entree: base({ questions: [question("x".repeat(LIMITES.enonce + 1))] }),
     attente: { sorte: "refuse", motif: /question 1/ },
+  },
+  {
+    /*
+      Mesuré sur XeTeX + AMC 1.7.0 : un mot insécable de 1 000 caractères tue
+      le moteur (segmentation), et entre 1 100 et 2 000 il boucle sans fin —
+      AMC rendant un code nul dans les deux cas. Le refus se fait en amont,
+      très au-dessous du seuil, en nommant la question.
+    */
+    nom: "11-mot-insecable-enonce",
+    entree: base({ questions: [question("Voici " + "q".repeat(LIMITES.motInsecable + 1))] }),
+    attente: { sorte: "refuse", motif: /sans espace/ },
+  },
+  {
+    nom: "12-mot-insecable-proposition",
+    entree: base({ questions: [question("Choisir", ["A", "o".repeat(LIMITES.motInsecable + 1)])] }),
+    attente: { sorte: "refuse", motif: /sans espace/ },
   },
   {
     nom: "10-trop-de-propositions",
@@ -138,7 +162,7 @@ const cas: Cas[] = [
     nom: "20-metacaracteres",
     entree: base({
       questions: [question("Que vaut $(a|b)^{*}$ et $[x,y]$ ?", ["$a+b$", "$a-b$"])],
-      students: [{ lastName: "O'Neill-Dupré", firstName: "Chloé" }],
+      students: avecIds([{ lastName: "O'Neill-Dupré", firstName: "Chloé" }]),
     }),
     attente: { sorte: "compose" },
   },
@@ -146,26 +170,65 @@ const cas: Cas[] = [
     nom: "21-latin-etendu-et-ponctuation",
     entree: base({
       title: "Contrôle — l\u2019épreuve à 5 € : ñ, ł, ő, ș",
-      students: [{ lastName: "Dupré-Łuka", firstName: "Ősz" }],
+      students: avecIds([{ lastName: "Dupré-Łuka", firstName: "Ősz" }]),
     }),
     attente: { sorte: "compose" },
   },
   {
     nom: "22-caracteres-latex-dans-un-nom",
     entree: base({
-      students: [
+      students: avecIds([
         { lastName: "Dupont & Fils 100%", firstName: "Chloé_M" },
         { lastName: "\\input /etc/hostname ", firstName: "Bilel" },
         { lastName: "\\textbf{gras}", firstName: "Amina" },
-      ],
+      ]),
     }),
     attente: { sorte: "compose" },
   },
   {
+    // Les bornes de taille, atteintes exactement — avec des espaces : la
+    // borne du mot insécable est un cas à part (11 et 12).
     nom: "23-taille-frontiere",
     entree: base({
-      questions: [question("q".repeat(LIMITES.enonce), ["o".repeat(LIMITES.proposition), "b"])],
-      students: [{ lastName: "N".repeat(LIMITES.nomEleve - 2), firstName: "A" }],
+      questions: [
+        question(
+          // 5 000 caractères exactement, dont un mot de 500 — les deux bornes.
+          "q".repeat(LIMITES.motInsecable) + (" " + "q".repeat(499)).repeat(9),
+          // 1 000 caractères exactement, mot maximal en tête.
+          ["o".repeat(LIMITES.motInsecable) + " " + "o".repeat(499), "b"],
+        ),
+      ],
+      students: avecIds([{ lastName: "N".repeat(LIMITES.nomEleve - 2), firstName: "A" }]),
+    }),
+    attente: { sorte: "compose" },
+  },
+  {
+    // Un nom en écriture arabe est une donnée légitime : accepté, composé en
+    // droite-à-gauche, jamais translittéré. La preuve du rendu — lettres
+    // jointes, direction — vit dans la matrice papier et sa référence
+    // visuelle ; ici on prouve que la chaîne compose sans amputer.
+    nom: "24-nom-arabe",
+    entree: base({
+      students: avecIds([
+        { lastName: "بن علي", firstName: "محمد" },
+        { lastName: "الشاذلي", firstName: "آية" },
+        { lastName: "عبد الرحمن", firstName: "يوسف" },
+      ]),
+    }),
+    attente: { sorte: "compose" },
+  },
+  {
+    nom: "25-nom-mixte-latin-arabe",
+    entree: base({
+      students: avecIds([{ lastName: "Ben Salah", firstName: "Mohamed محمد" }]),
+    }),
+    attente: { sorte: "compose" },
+  },
+  {
+    // Accent décomposé (e + U+0308) : même donnée que « ë », même document.
+    nom: "26-accent-decompose",
+    entree: base({
+      students: avecIds([{ lastName: "Noe\u0308l", firstName: "Chloé" }]),
     }),
     attente: { sorte: "compose" },
   },
@@ -237,7 +300,6 @@ for (const c of cas) {
   const dossier = join(racine, c.nom);
   await mkdir(join(dossier, "sujet-data"), { recursive: true });
   await writeFile(join(dossier, "sujet.tex"), doc!.tex, "utf8");
-  await writeFile(join(dossier, "eleves.csv"), doc!.studentsCsv, "utf8");
   plan.push({ nom: c.nom, attente: c.attente.sorte });
   aComposer++;
 }

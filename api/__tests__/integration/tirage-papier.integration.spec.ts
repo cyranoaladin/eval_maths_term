@@ -191,8 +191,10 @@ describe("production d'un tirage", () => {
     // Le sujet remis à AMC porte le titre et le sous-titre du tirage.
     const tex = await readFile(join(workdirFor(examId), "sujet.tex"), "utf8");
     expect(tex).toContain("Tirage du 12 février");
-    const csv = await readFile(join(workdirFor(examId), "eleves.csv"), "utf8");
-    expect(csv).toContain("Aïcha");
+    // Le nom de l'élève vit dans le document lui-même — plus de CSV — et la
+    // clé d'association est l'identifiant machine, pas le nom.
+    expect(tex).toContain("Aïcha");
+    expect(tex).toContain(`\\copiepour{student-${studentIds[0]}}{`);
   });
 
   it("réimprime sans laisser les anciennes copies derrière", async () => {

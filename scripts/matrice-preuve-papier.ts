@@ -1,13 +1,20 @@
 /**
  * scripts/matrice-preuve-papier.ts
  *
- * Génère les cas de la matrice de preuve papier : pour chacun, le `.tex` et le
- * `.csv` que produirait un vrai tirage, plus les invariants attendus.
+ * Génère les cas de la matrice de preuve papier : pour chacun, le `.tex` que
+ * produirait un vrai tirage, plus les invariants attendus.
  *
- * On ne compare pas les PDF octet à octet — `pdflatex` horodate ses sorties et
- * deux compilations identiques diffèrent toujours. On vérifie ce qui compte :
- * le document existe, il a le bon nombre de copies, le texte attendu s'y
- * trouve, les accents ont survécu, la feuille-réponses et le corrigé sont là.
+ * On ne compare pas les PDF octet à octet — le moteur TeX horodate ses sorties
+ * et deux compilations identiques diffèrent toujours. On vérifie ce qui
+ * compte : le document existe, il a le bon nombre de copies, le texte attendu
+ * s'y trouve, les accents ont survécu, la feuille-réponses et le corrigé sont
+ * là.
+ *
+ * L'écriture arabe échappe à `pdftotext`, qui perd ou mutile les glyphes en
+ * formes de présentation : sa preuve est **visuelle** — la première page des
+ * cas marqués `pageReference` est rendue en raster déterministe et comparée à
+ * une référence versionnée (`scripts/refs-papier/`). Une police attendue
+ * (`policeAttendue`) doit en outre être embarquée dans le PDF.
  *
  * Usage : npx tsx scripts/matrice-preuve-papier.ts <dossier>
  */
@@ -50,8 +57,36 @@ const question = (
 
 const eleves = (combien: number) =>
   Array.from({ length: combien }, (_, i) => ({
+    id: i + 1,
     lastName: ["Benali", "Cherif", "Dupont", "Éloi", "Ferraün"][i % 5] + String(i + 1),
     firstName: ["Amina", "Bilel", "Chloé", "Dhia", "Éva"][i % 5],
+  }));
+
+/*
+  Le corpus Unicode obligatoire : latin, accents, apostrophes typographique et
+  ASCII, tiret, écriture arabe, nom mixte, accent décomposé (U+0308 combinant).
+  Aucun de ces noms n'est translittéré, remplacé ni tronqué.
+*/
+const CORPUS_UNICODE = [
+  { id: 1, lastName: "DUPONT", firstName: "Jean" },
+  { id: 2, lastName: "Noël", firstName: "Éléonore" },
+  { id: 3, lastName: "O'Connor", firstName: "Brian" },
+  { id: 4, lastName: "D’Angelo", firstName: "Maria" },
+  { id: 5, lastName: "Ben-Salah", firstName: "Karim" },
+  { id: 6, lastName: "بن علي", firstName: "محمد" },
+  { id: 7, lastName: "الشاذلي", firstName: "آية" },
+  { id: 8, lastName: "عبد الرحمن", firstName: "يوسف" },
+  { id: 9, lastName: "Ben Salah", firstName: "Mohamed محمد" },
+  // Accent décomposé : « e » + U+0308 combinant, même donnée que « ë ».
+  { id: 10, lastName: "Noe\u0308l", firstName: "Chloé" },
+];
+
+/** Trente élèves, mélange latin/arabe : la classe réelle d'un lycée de Tunis. */
+const elevesMixtes = (combien: number) =>
+  Array.from({ length: combien }, (_, i) => ({
+    id: i + 1,
+    lastName: ["Benali", "بن يوسف", "Dupont", "الشاذلي", "Ferraün", "عبد الرحمن"][i % 6] + (i % 2 ? String(i + 1) : ""),
+    firstName: ["Amina", "محمد", "Chloé", "سارة", "Éva", "آية"][i % 6],
   }));
 
 /** Un cas : ce qu'on imprime, et ce qu'on doit retrouver dedans. */
@@ -66,6 +101,14 @@ interface Cas {
   copies: number;
   /** Nombre de pages minimal du sujet. */
   pagesMin: number;
+  /** Police devant être embarquée dans le PDF (écriture arabe : Amiri). */
+  policeAttendue?: string;
+  /**
+   * Page du sujet à rendre en raster et à comparer à la référence versionnée
+   * `scripts/refs-papier/<nom>.png` — la preuve visuelle des cas que
+   * `pdftotext` ne sait pas lire (écriture arabe, direction, glyphes).
+   */
+  pageReference?: number;
 }
 
 const FORMULES = [
@@ -153,6 +196,65 @@ const cas: Cas[] = [
     copies: 1,
     pagesMin: 2,
   },
+  {
+    /*
+      Un élève en écriture arabe, seul : sa copie est la page 1, rendue en
+      raster et comparée à la référence versionnée. C'est elle qui prouve les
+      lettres jointes, l'ordre droite-à-gauche et l'absence de glyphes
+      manquants — `pdftotext` ne sait pas lire cette écriture.
+    */
+    nom: "07-un-eleve-arabe",
+    questions: [question("qcm", "Capitale de la Tunisie ?", ["Tunis", "Sfax", "Sousse"], qcm(1, 0))],
+    eleves: [{ id: 501, lastName: "بن علي", firstName: "محمد" }],
+    titre: "Contrôle de géographie",
+    attendu: ["Tunis", "Élève"],
+    copies: 1,
+    pagesMin: 2,
+    policeAttendue: "Amiri",
+    pageReference: 1,
+  },
+  {
+    // Nom mixte latin/arabe : chaque écriture dans son sens, sur une page.
+    nom: "08-nom-mixte",
+    questions: [question("true_false", "Tunis est la capitale de la Tunisie.", null, vf("true"))],
+    eleves: [{ id: 502, lastName: "Ben Salah", firstName: "Mohamed محمد" }],
+    titre: "Vrai ou faux",
+    attendu: ["Ben Salah Mohamed"],
+    copies: 1,
+    pagesMin: 2,
+    policeAttendue: "Amiri",
+    pageReference: 1,
+  },
+  {
+    // Le corpus Unicode obligatoire, ensemble sur un même tirage.
+    nom: "09-corpus-unicode",
+    questions: ACCENTS.slice(0, 2),
+    eleves: CORPUS_UNICODE,
+    titre: "Épreuve commune — toutes écritures",
+    attendu: [
+      "DUPONT Jean",
+      "Noël Éléonore",
+      "O'Connor Brian",
+      "D’Angelo Maria",
+      "Ben-Salah Karim",
+      "Ben Salah Mohamed",
+      "Noël Chloé",
+    ],
+    copies: 10,
+    pagesMin: 20,
+    policeAttendue: "Amiri",
+  },
+  {
+    // Trente élèves, mélange latin/arabe, plusieurs pages par copie.
+    nom: "10-trente-mixtes",
+    questions: FORMULES.slice(0, 3),
+    eleves: elevesMixtes(30),
+    titre: "Devoir surveillé — classe mixte",
+    attendu: ["Devoir surveill", "Benali Amina", "Chloé"],
+    copies: 30,
+    pagesMin: 30,
+    policeAttendue: "Amiri",
+  },
 ];
 
 await rm(racine, { recursive: true, force: true });
@@ -168,11 +270,19 @@ for (const c of cas) {
   const dossier = join(racine, c.nom);
   await mkdir(join(dossier, "sujet-data"), { recursive: true });
   await writeFile(join(dossier, "sujet.tex"), doc.tex, "utf8");
-  await writeFile(join(dossier, "eleves.csv"), doc.studentsCsv, "utf8");
   await writeFile(
     join(dossier, "attendu.json"),
     JSON.stringify(
-      { nom: c.nom, attendu: c.attendu, copies: c.copies, pagesMin: c.pagesMin, questions: doc.includedQuestionIds.length, exclues: doc.excluded.length },
+      {
+        nom: c.nom,
+        attendu: c.attendu,
+        copies: c.copies,
+        pagesMin: c.pagesMin,
+        questions: doc.includedQuestionIds.length,
+        exclues: doc.excluded.length,
+        ...(c.policeAttendue ? { policeAttendue: c.policeAttendue } : {}),
+        ...(c.pageReference ? { pageReference: c.pageReference } : {}),
+      },
       null,
       2,
     ),

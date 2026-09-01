@@ -47,7 +47,7 @@ while read -r nom attente; do
     --pids-limit 256 --memory 2g --cpus 2 \
     -v "$(realpath "$dossier")":/travail -w /travail \
     --entrypoint auto-multiple-choice "$IMAGE" \
-    prepare --mode s --prefix ./ sujet.tex > "$dossier/amc.log" 2>&1
+    prepare --mode s --with xelatex --prefix ./ sujet.tex > "$dossier/amc.log" 2>&1
   code=$?
   duree=$(( $(date +%s) - debut ))
 

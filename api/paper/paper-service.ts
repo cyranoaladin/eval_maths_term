@@ -101,7 +101,9 @@ export async function generatePaperExam(args: {
         ? GradingRubricSchema.safeParse(q.gradingRubric).data ?? null
         : null,
     })),
-    students: actifs.map((s) => ({ lastName: s.lastName, firstName: s.firstName })),
+    // L'identifiant interne devient la clé d'association AMC ; le nom ne sert
+    // qu'à l'affichage.
+    students: actifs.map((s) => ({ id: s.id, lastName: s.lastName, firstName: s.firstName })),
   });
 
   if (doc.includedQuestionIds.length === 0) {
@@ -114,11 +116,10 @@ export async function generatePaperExam(args: {
   const { artifacts } = await runAmc({
     workdir,
     tex: doc.tex,
-    studentsCsv: doc.studentsCsv,
   });
 
-  // Une copie par élève, dans l'ordre du CSV : c'est cet ordre qu'AMC
-  // numérote, et celui que l'enseignant retrouvera à la saisie.
+  // Une copie par élève, dans l'ordre des blocs du document : c'est cet ordre
+  // qu'AMC numérote, et celui que l'enseignant retrouvera à la saisie.
   await db.transaction(async (tx) => {
     await tx.delete(paperCopies).where(eq(paperCopies.paperExamId, exam.id));
     for (const [i, s] of actifs.entries()) {

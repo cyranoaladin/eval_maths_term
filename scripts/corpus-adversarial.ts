@@ -107,14 +107,17 @@ const questions: TemplateQuestion[] = [
 ];
 
 /*
-  Les noms d'élèves partent dans `eleves.csv`, puis dans `\csvreader`, puis
-  dans l'association AMC. C'est le chemin le plus long parcouru par une donnée
-  saisie, et celui qui traverse le lecteur CSV d'AMC.
+  Les noms d'élèves sont échappés puis insérés directement dans le document —
+  plus de CSV intermédiaire, plus de lecteur `csvsimple` sur nos données. La
+  clé d'association, elle, est l'identifiant machine : le nom, si hostile
+  soit-il, n'atteint jamais `\AMCassociation`. Le chemin arabe — enveloppe de
+  direction posée après échappement — est éprouvé lui aussi.
 */
 const eleves = [
-  { lastName: hostileNom("nom1"), firstName: hostileNom("prenom1") },
-  { lastName: `${MARQUEUR}-nom2`, firstName: `${MARQUEUR}-prenom2` },
-  { lastName: `${MARQUEUR}-nom3 ${ACCENTS}`, firstName: `${MARQUEUR}-prenom3` },
+  { id: 1, lastName: hostileNom("nom1"), firstName: hostileNom("prenom1") },
+  { id: 2, lastName: `${MARQUEUR}-nom2`, firstName: `${MARQUEUR}-prenom2` },
+  { id: 3, lastName: `${MARQUEUR}-nom3 ${ACCENTS}`, firstName: `${MARQUEUR}-prenom3` },
+  { id: 4, lastName: `${MARQUEUR}-nom4 بن علي & محمد`, firstName: `${MARQUEUR}-prenom4` },
 ];
 
 const doc = buildAmcDocument({
@@ -129,11 +132,8 @@ const doc = buildAmcDocument({
 await rm(racine, { recursive: true, force: true });
 await mkdir(join(racine, "sujet-data"), { recursive: true });
 await writeFile(join(racine, "sujet.tex"), doc.tex, "utf8");
-await writeFile(join(racine, "eleves.csv"), doc.studentsCsv, "utf8");
 
 const occurrences = (doc.tex.match(new RegExp(MARQUEUR, "g")) ?? []).length;
-const dansCsv = (doc.studentsCsv.match(new RegExp(MARQUEUR, "g")) ?? []).length;
 console.log(`marqueur : ${MARQUEUR}`);
 console.log(`  ${occurrences} occurrences dans sujet.tex`);
-console.log(`  ${dansCsv} occurrences dans eleves.csv`);
 console.log(`  ${doc.includedQuestionIds.length} questions, ${eleves.length} élèves`);
