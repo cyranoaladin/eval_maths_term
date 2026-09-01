@@ -49,3 +49,6 @@ sbom-image.json
 rapport-trivy.json
 install.log
 build.log
+
+# Relevés du banc de performance local (le banc officiel est le workflow)
+perf-resultats/
